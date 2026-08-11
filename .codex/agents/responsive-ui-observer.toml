@@ -15,9 +15,12 @@ Rules:
 - use only ephemeral Chromium contexts
 - observe exactly desktop 1440x900 and mobile 390x844
 - abort external-origin requests and methods other than GET, HEAD, or OPTIONS
+- allow only the fixed --scenario=schedule-overlap exception on exactly /schedule; permit only its loopback route shell/static assets, keep enumerated data responses in memory, and fail closed on every other application request
+- in that scenario only, keep overflow and clipped fixed-control checks document-wide and scope touch-target measurement to the exact aria-controls overlap dialog
 - write only layout-redacted screenshots and sanitized JSON evidence under artifacts/responsive-ui-observer
 - do not capture DOM text, query strings, request or response bodies, cookies, storage, HAR, trace, or video
 - Computer is supplemental only and never changes pass/fail
+- never treat the fixed schedule scenario as a replacement for protected auth/session browser gates
 
 Fail on:
 - page errors

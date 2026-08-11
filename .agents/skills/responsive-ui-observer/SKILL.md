@@ -23,6 +23,7 @@ Make deterministic responsive observation mandatory for visible UI changes witho
 - Treat artifact writes as one run: remove the current partial pair and every earlier pair from that invocation if any write or observation throws.
 - Do not capture DOM text, request or response bodies, query strings, emails, tokens, UUIDs, or credentials in artifacts.
 - Abort external-origin requests and methods other than `GET`, `HEAD`, or `OPTIONS`.
+- The sole exception is `--scenario=schedule-overlap` on exactly one `/schedule` route. It may seed one fixed PHI-free localhost stub, load the loopback route shell/static assets, and fulfill only its enumerated same-origin data responses in memory; every other application request must fail closed. It must not contact an external host or mutate the loopback server.
 - Computer inspection is supplemental only. It is never gating or authoritative for pass/fail.
 
 ## Required Viewports
@@ -38,6 +39,14 @@ npm run test:ui:responsive -- --base-url=http://127.0.0.1:4173 --route=/example
 
 Add one `--route` flag per affected route.
 
+For the fixed schedule-overlap proof only:
+
+```bash
+npm run test:ui:responsive -- --base-url=http://127.0.0.1:4173 --route=/schedule --scenario=schedule-overlap
+```
+
+The scenario name is an enum, not a fixture path or caller-selected identity. It is rejected for every other route and does not replace auth/session browser gates. In scenario mode, overflow and clipped fixed-control checks remain document-wide while touch-target measurement is scoped to the exact overlap dialog named by the trigger's `aria-controls`, so unrelated background schedule controls do not change the dialog-state verdict.
+
 ## Required Evidence
 
 For each route and viewport, the observer must write:
@@ -46,6 +55,7 @@ For each route and viewport, the observer must write:
 - sanitized JSON evidence under `artifacts/responsive-ui-observer`
 - screenshot hash
 - evidence hash
+- fixed scenario ID when a built-in synthetic scenario is active
 
 ## Failure Conditions
 

@@ -1,5 +1,6 @@
 /* eslint-disable jsx-a11y/no-static-element-interactions */
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import { addMinutes, differenceInMinutes, format, parseISO } from 'date-fns';
 import { Clock, Edit2, Plus } from 'lucide-react';
 import type { Session } from '../types';
@@ -22,6 +23,7 @@ const SLOT_HEIGHT_PX = 40;
 const OVERLAY_HORIZONTAL_INSET_PX = 4;
 const OVERLAY_VERTICAL_INSET_PX = 2;
 const MIN_OVERLAY_HEIGHT_PX = 20;
+const CLUSTER_DIALOG_VIEWPORT_MARGIN_PX = 8;
 const VISIBLE_GRID_START_HOUR = 8;
 const VISIBLE_GRID_END_HOUR = 18;
 const NEUTRAL_CARD_CLASSES =
@@ -175,6 +177,34 @@ function getCreateSessionLabel(position: ScheduleSlotPosition): string {
     position.date,
     'h:mm a',
   )}`;
+}
+
+function getClusterDialogPosition(triggerRect: DOMRect, dialogRect: DOMRect) {
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const dialogWidth = dialogRect.width || 320;
+  const dialogHeight = dialogRect.height || 240;
+
+  const preferredLeft = triggerRect.left;
+  const maxLeft = Math.max(CLUSTER_DIALOG_VIEWPORT_MARGIN_PX, viewportWidth - dialogWidth - CLUSTER_DIALOG_VIEWPORT_MARGIN_PX);
+  const left = Math.min(Math.max(preferredLeft, CLUSTER_DIALOG_VIEWPORT_MARGIN_PX), maxLeft);
+
+  const belowTop = triggerRect.bottom + CLUSTER_DIALOG_VIEWPORT_MARGIN_PX;
+  const aboveTop = triggerRect.top - dialogHeight - CLUSTER_DIALOG_VIEWPORT_MARGIN_PX;
+  const canFitBelow = belowTop + dialogHeight <= viewportHeight - CLUSTER_DIALOG_VIEWPORT_MARGIN_PX;
+  const canFitAbove = aboveTop >= CLUSTER_DIALOG_VIEWPORT_MARGIN_PX;
+
+  let top = belowTop;
+  if (!canFitBelow && canFitAbove) {
+    top = aboveTop;
+  } else if (!canFitBelow) {
+    top = Math.max(
+      CLUSTER_DIALOG_VIEWPORT_MARGIN_PX,
+      viewportHeight - dialogHeight - CLUSTER_DIALOG_VIEWPORT_MARGIN_PX,
+    );
+  }
+
+  return { left, top };
 }
 
 /**
@@ -833,6 +863,11 @@ function ScheduleOverlayItem({
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const firstRowRef = useRef<HTMLButtonElement | null>(null);
+  const [dialogStyle, setDialogStyle] = useState<React.CSSProperties>({
+    left: CLUSTER_DIALOG_VIEWPORT_MARGIN_PX,
+    top: CLUSTER_DIALOG_VIEWPORT_MARGIN_PX,
+    opacity: 0,
+  });
 
   useEffect(() => {
     if (!open) {
@@ -875,6 +910,37 @@ function ScheduleOverlayItem({
       return;
     }
     firstRowRef.current?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const updateDialogPosition = () => {
+      if (!triggerRef.current || !dialogRef.current) {
+        return;
+      }
+
+      const nextPosition = getClusterDialogPosition(
+        triggerRef.current.getBoundingClientRect(),
+        dialogRef.current.getBoundingClientRect(),
+      );
+
+      setDialogStyle({
+        left: nextPosition.left,
+        top: nextPosition.top,
+        opacity: 1,
+      });
+    };
+
+    updateDialogPosition();
+    window.addEventListener('resize', updateDialogPosition);
+    window.addEventListener('scroll', updateDialogPosition, true);
+    return () => {
+      window.removeEventListener('resize', updateDialogPosition);
+      window.removeEventListener('scroll', updateDialogPosition, true);
+    };
   }, [open]);
 
   const style = {
@@ -964,34 +1030,38 @@ function ScheduleOverlayItem({
         </div>
       ) : null}
 
-      {open ? (
-        <div
-          id={`schedule-cluster-${item.sessions.map((session) => session.id).join('-')}`}
-          ref={dialogRef}
-          role="dialog"
-          aria-label={`${item.sessions.length} overlapping appointments, ${clusterRangeLabel}`}
-          tabIndex={-1}
-          className="absolute left-0 top-0 z-30 min-w-[16rem] max-w-[20rem] rounded-lg border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900"
-        >
-          <div className="mb-2 text-xs font-medium text-slate-600 dark:text-slate-300">{clusterLabel}</div>
-          <div className="space-y-2">
-            {item.sessions.map((session, index) => (
-              <OverlaySessionCard
-                key={session.id}
-                session={session}
-                onEditSession={onEditSession}
-                allowDragAndDrop={allowDragAndDrop}
-                activeDragSessionId={activeDragSessionId}
-                onStartSessionDrag={onStartSessionDrag}
-                onEndSessionDrag={onEndSessionDrag}
-                className="shadow-none"
-                showStatus
-                buttonRef={index === 0 ? firstRowRef : undefined}
-              />
-            ))}
-          </div>
-        </div>
-      ) : null}
+      {open
+        ? createPortal(
+            <div
+              id={`schedule-cluster-${item.sessions.map((session) => session.id).join('-')}`}
+              ref={dialogRef}
+              role="dialog"
+              aria-label={`${item.sessions.length} overlapping appointments, ${clusterRangeLabel}`}
+              tabIndex={-1}
+              className="fixed z-30 max-h-[calc(100vh-1rem)] w-[calc(100vw-1rem)] min-w-0 max-w-[20rem] overflow-y-auto overscroll-contain rounded-lg border border-slate-200 bg-white p-2 shadow-xl sm:min-w-[16rem] dark:border-slate-700 dark:bg-slate-900"
+              style={dialogStyle}
+            >
+              <div className="mb-2 text-xs font-medium text-slate-600 dark:text-slate-300">{clusterLabel}</div>
+              <div className="space-y-2">
+                {item.sessions.map((session, index) => (
+                  <OverlaySessionCard
+                    key={session.id}
+                    session={session}
+                    onEditSession={onEditSession}
+                    allowDragAndDrop={allowDragAndDrop}
+                    activeDragSessionId={activeDragSessionId}
+                    onStartSessionDrag={onStartSessionDrag}
+                    onEndSessionDrag={onEndSessionDrag}
+                    className="shadow-none"
+                    showStatus
+                    buttonRef={index === 0 ? firstRowRef : undefined}
+                  />
+                ))}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

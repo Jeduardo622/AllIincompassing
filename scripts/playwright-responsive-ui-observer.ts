@@ -8,6 +8,7 @@ import {
   OBSERVER_VIEWPORTS,
   type LayoutMetrics,
   type ObserverArgs,
+  type ObserverScenario,
   type ObserverViewport,
   buildEvidenceCard,
   classifyLayout,
@@ -35,6 +36,35 @@ const INTERACTIVE_CONTROL_SELECTOR = [
   '[role="tab"]',
   '[contenteditable="true"]',
 ].join(', ');
+const SCHEDULE_OVERLAP_TRIGGER_SELECTOR = '[data-layout-kind="cluster"] button[aria-haspopup="dialog"]';
+const SCHEDULE_SCENARIO_SHELL_PREFIXES = [
+  '/@fs/',
+  '/@id/',
+  '/@vite/',
+  '/assets/',
+  '/node_modules/',
+  '/src/',
+];
+const SCHEDULE_SCENARIO_STATIC_PATH_PATTERN = /\.(?:css|gif|ico|jpe?g|js|map|mjs|png|svg|ttf|webmanifest|webp|woff2?)$/i;
+
+const SYNTHETIC_AUTH_STORAGE_KEY = 'auth-storage';
+const SYNTHETIC_AUTH_STORAGE_PAYLOAD = {
+  role: 'admin_schedule',
+  roleAssignments: ['admin_schedule'],
+  accessToken: 'observer-local-access-token',
+  refreshToken: 'observer-local-refresh-token',
+  expiresAt: 4_102_444_800_000,
+  access_token: 'observer-local-access-token',
+  refresh_token: 'observer-local-refresh-token',
+  expires_at: 4_102_444_800,
+  token_type: 'bearer',
+  user: {
+    id: '00000000-0000-4000-8000-000000000001',
+    aud: 'authenticated',
+    role: 'admin_schedule',
+    email: 'observer-localhost@example.test',
+  },
+};
 
 export const RESPONSIVE_CAPTURE_REDACTION_CSS = `
   *, *::before, *::after {
@@ -102,8 +132,213 @@ const isSameOrigin = (value: string, origin: string): boolean => {
   }
 };
 
-export const collectLayoutMetrics = async (page: Page): Promise<LayoutMetrics> =>
-  page.evaluate((interactiveControlSelector) => {
+const isAllowedScenarioShellRequest = (
+  parsedArgs: ObserverArgs,
+  requestUrl: URL,
+): boolean => {
+  if (parsedArgs.scenario !== 'schedule-overlap') {
+    return true;
+  }
+
+  const { pathname } = requestUrl;
+  return pathname === parsedArgs.routes[0]
+    || pathname === '/@react-refresh'
+    || SCHEDULE_SCENARIO_SHELL_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+    || SCHEDULE_SCENARIO_STATIC_PATH_PATTERN.test(pathname);
+};
+
+const buildSyntheticRuntimeConfig = (baseOrigin: string) => ({
+  supabaseUrl: baseOrigin,
+  supabaseAnonKey: 'observer-local-anon-key',
+  defaultOrganizationId: 'observer-local-org',
+});
+
+const buildSyntheticScheduleEntities = (): {
+  sessions: Array<Record<string, string>>;
+  therapists: Array<Record<string, string>>;
+  clients: Array<Record<string, string>>;
+} => {
+  const dayStart = new Date();
+  dayStart.setHours(9, 0, 0, 0);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setHours(10, 0, 0, 0);
+
+  const therapists = Array.from({ length: 12 }, (_, index) => ({
+    id: `synthetic-therapist-${index + 1}`,
+    first_name: `ObserverTherapist${index + 1}`,
+    last_name: 'Schedule',
+    full_name: `ObserverTherapist${index + 1} Schedule`,
+  }));
+
+  const clients = Array.from({ length: 12 }, (_, index) => ({
+    id: `synthetic-client-${index + 1}`,
+    first_name: `ObserverClient${index + 1}`,
+    last_name: 'Schedule',
+    full_name: `ObserverClient${index + 1} Schedule`,
+  }));
+
+  const sessions = Array.from({ length: 12 }, (_, index) => ({
+    id: `synthetic-session-${index + 1}`,
+    therapist_id: therapists[index].id,
+    client_id: clients[index].id,
+    status: 'scheduled',
+    session_type: 'direct',
+    start_time: dayStart.toISOString(),
+    end_time: dayEnd.toISOString(),
+    therapist_name: therapists[index].full_name,
+    client_name: clients[index].full_name,
+  }));
+
+  return { sessions, therapists, clients };
+};
+
+const buildSyntheticSchedulePayload = () => {
+  const { sessions, therapists, clients } = buildSyntheticScheduleEntities();
+  return { sessions, therapists, clients };
+};
+
+const buildSyntheticDropdownPayload = () => {
+  const { therapists, clients } = buildSyntheticScheduleEntities();
+  return { therapists, clients };
+};
+
+const maybeEnableScenarioContext = async (
+  context: BrowserContext,
+  scenario: ObserverScenario | undefined,
+): Promise<void> => {
+  if (scenario !== 'schedule-overlap') {
+    return;
+  }
+
+  await context.addInitScript(([storageKey, storageValue]) => {
+    window.localStorage.setItem(storageKey, storageValue);
+  }, [
+    SYNTHETIC_AUTH_STORAGE_KEY,
+    JSON.stringify(SYNTHETIC_AUTH_STORAGE_PAYLOAD),
+  ]);
+};
+
+const maybeFulfillScenarioRequest = async (
+  parsedArgs: ObserverArgs,
+  routeHandler: Parameters<BrowserContext['route']>[1] extends (arg: infer T) => unknown ? T : never,
+): Promise<boolean> => {
+  if (parsedArgs.scenario !== 'schedule-overlap') {
+    return false;
+  }
+
+  const request = routeHandler.request();
+  const requestUrl = new URL(request.url());
+  if (requestUrl.origin !== new URL(parsedArgs.baseUrl).origin) {
+    return false;
+  }
+
+  if (request.method().toUpperCase() === 'GET' && requestUrl.pathname === '/api/runtime-config') {
+    await routeHandler.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(buildSyntheticRuntimeConfig(requestUrl.origin)),
+    });
+    return true;
+  }
+
+  if (
+    request.method().toUpperCase() === 'GET'
+    && requestUrl.pathname === '/rest/v1/message_thread_participants'
+  ) {
+    await routeHandler.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: '[]',
+    });
+    return true;
+  }
+
+  if (
+    request.method().toUpperCase() === 'POST'
+    && requestUrl.pathname === '/rest/v1/rpc/get_schedule_data_batch'
+  ) {
+    await routeHandler.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(buildSyntheticSchedulePayload()),
+    });
+    return true;
+  }
+
+  if (
+    request.method().toUpperCase() === 'POST'
+    && requestUrl.pathname === '/rest/v1/rpc/get_dropdown_data'
+  ) {
+    await routeHandler.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(buildSyntheticDropdownPayload()),
+    });
+    return true;
+  }
+
+  if (
+    request.method().toUpperCase() === 'POST'
+    && requestUrl.pathname === '/rest/v1/rpc/get_sessions_optimized'
+  ) {
+    await routeHandler.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: '[]',
+    });
+    return true;
+  }
+
+  return false;
+};
+
+const maybeOpenScenarioDialog = async (
+  page: Page,
+  scenario: ObserverScenario | undefined,
+): Promise<{ dialogId?: string; failure?: string }> => {
+  if (scenario !== 'schedule-overlap') {
+    return {};
+  }
+
+  const trigger = page.locator(SCHEDULE_OVERLAP_TRIGGER_SELECTOR).first();
+  try {
+    await trigger.waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS });
+  } catch {
+    return { failure: 'scenario-trigger-missing' };
+  }
+
+  await trigger.click();
+  const dialogId = await trigger.getAttribute('aria-controls');
+  if (!dialogId) {
+    return { failure: 'scenario-dialog-missing' };
+  }
+  try {
+    await page.waitForFunction((expectedDialogId) => {
+      const dialog = document.getElementById(expectedDialogId);
+      if (dialog?.getAttribute('role') !== 'dialog') {
+        return false;
+      }
+      const style = window.getComputedStyle(dialog);
+      const rect = dialog.getBoundingClientRect();
+      return style.display !== 'none'
+        && style.visibility !== 'hidden'
+        && style.opacity !== '0'
+        && rect.width > 0
+        && rect.height > 0;
+    }, dialogId, { timeout: SETTLE_TIMEOUT_MS });
+  } catch {
+    return { failure: 'scenario-dialog-missing' };
+  }
+
+  await page.waitForTimeout(EXTRA_SETTLE_MS);
+  return { dialogId };
+};
+
+export const collectLayoutMetrics = async (
+  page: Page,
+  interactiveRootId?: string,
+): Promise<LayoutMetrics> =>
+  page.evaluate(({ interactiveControlSelector, interactiveRootId }) => {
     const horizontalOverflow = Math.ceil(
       Math.max(
         document.documentElement.scrollWidth,
@@ -119,11 +354,36 @@ export const collectLayoutMetrics = async (page: Page): Promise<LayoutMetrics> =
       .filter((element) => {
         const style = window.getComputedStyle(element);
         const rect = element.getBoundingClientRect();
-        return style.display !== 'none'
-          && style.visibility !== 'hidden'
-          && style.opacity !== '0'
-          && rect.width > 0
-          && rect.height > 0;
+        if (
+          style.display === 'none'
+          || style.visibility === 'hidden'
+          || style.opacity === '0'
+          || rect.width <= 0
+          || rect.height <= 0
+          || rect.right <= 0
+          || rect.bottom <= 0
+          || rect.left >= window.innerWidth
+          || rect.top >= window.innerHeight
+        ) {
+          return false;
+        }
+
+        const left = Math.max(0, rect.left);
+        const right = Math.min(window.innerWidth, rect.right);
+        const top = Math.max(0, rect.top);
+        const bottom = Math.min(window.innerHeight, rect.bottom);
+        const points = [
+          [(left + right) / 2, (top + bottom) / 2],
+          [left + 1, top + 1],
+          [right - 1, top + 1],
+          [left + 1, bottom - 1],
+          [right - 1, bottom - 1],
+        ];
+
+        return points.some(([x, y]) => {
+          const hitTarget = document.elementFromPoint(x, y);
+          return hitTarget === element || (hitTarget !== null && element.contains(hitTarget));
+        });
       });
 
     const clippedFixedControls = visibleControls
@@ -139,7 +399,12 @@ export const collectLayoutMetrics = async (page: Page): Promise<LayoutMetrics> =
       })
       .map((_, index) => `fixed-control-${index + 1}`);
 
-    const visibleTouchTargets = visibleControls.map((element) => {
+    const interactiveRoot = interactiveRootId
+      ? document.getElementById(interactiveRootId)
+      : document;
+    const visibleTouchTargets = visibleControls
+      .filter((element) => interactiveRoot?.contains(element) ?? false)
+      .map((element) => {
         const rect = element.getBoundingClientRect();
         return {
           width: Math.round(rect.width),
@@ -152,7 +417,7 @@ export const collectLayoutMetrics = async (page: Page): Promise<LayoutMetrics> =
       clippedFixedControls,
       visibleTouchTargets,
     };
-  }, INTERACTIVE_CONTROL_SELECTOR);
+  }, { interactiveControlSelector: INTERACTIVE_CONTROL_SELECTOR, interactiveRootId });
 
 export const redactPageForCapture = async (page: Page): Promise<void> => {
   await page.addStyleTag({ content: RESPONSIVE_CAPTURE_REDACTION_CSS });
@@ -184,10 +449,15 @@ const observeRouteAtViewport = async (
   });
 
   try {
+    await maybeEnableScenarioContext(context, parsedArgs.scenario);
     await context.route('**/*', async (routeHandler) => {
       const request = routeHandler.request();
       const requestUrl = request.url();
       const method = request.method().toUpperCase();
+
+      if (await maybeFulfillScenarioRequest(parsedArgs, routeHandler)) {
+        return;
+      }
 
       if (!ALLOWED_METHODS.has(method)) {
         failures.push('method blocked: non-read method');
@@ -197,6 +467,12 @@ const observeRouteAtViewport = async (
 
       if (!isSameOrigin(requestUrl, baseOrigin)) {
         failures.push('external origin request blocked');
+        await routeHandler.abort('blockedbyclient');
+        return;
+      }
+
+      if (!isAllowedScenarioShellRequest(parsedArgs, new URL(requestUrl))) {
+        failures.push('unexpected-scenario-request');
         await routeHandler.abort('blockedbyclient');
         return;
       }
@@ -233,8 +509,12 @@ const observeRouteAtViewport = async (
 
     await page.waitForLoadState('networkidle', { timeout: SETTLE_TIMEOUT_MS }).catch(() => undefined);
     await page.waitForTimeout(EXTRA_SETTLE_MS);
+    const scenarioResult = await maybeOpenScenarioDialog(page, parsedArgs.scenario);
+    if (scenarioResult.failure) {
+      failures.push(scenarioResult.failure);
+    }
     try {
-      metrics = await collectLayoutMetrics(page);
+      metrics = await collectLayoutMetrics(page, scenarioResult.dialogId);
       failures.push(...classifyLayout(metrics, viewport.name));
     } catch {
       failures.push('layout evaluation failed');
@@ -255,6 +535,7 @@ const observeRouteAtViewport = async (
       metrics,
       screenshotHash,
       evidenceHash: 'sha256:pending',
+      scenario: parsedArgs.scenario,
     });
     const evidenceHash = sha256(JSON.stringify(evidenceSeed));
     const evidenceCard = buildEvidenceCard({
@@ -265,6 +546,7 @@ const observeRouteAtViewport = async (
       metrics,
       screenshotHash,
       evidenceHash,
+      scenario: parsedArgs.scenario,
     });
 
     const screenshotPath = artifactAbsolutePath(evidenceCard.screenshotPath);

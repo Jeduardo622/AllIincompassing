@@ -7,7 +7,8 @@
 - Linear: required before implementation; not created during design
 - Classification: `high-risk human-reviewed`
 - Lane: `critical`
-- Status: approved design; implementation not started
+- Status: approved design; implementation plan written; implementation not started
+- Implementation plan: `docs/superpowers/plans/2026-08-11-payroll-grade-timekeeping.md`
 
 ## Purpose
 

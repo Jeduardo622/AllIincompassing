@@ -84,12 +84,12 @@ export function AutoScheduleModal({
         uniqueClientIds.map(async (clientId) => {
           const programsResponse = await callEdgeFunctionHttp(`programs?client_id=${clientId}`);
           if (!programsResponse.ok) {
-            throw new Error(`Failed to load programs for client ${clientId}`);
+            throw new Error(`Failed to load domains for client ${clientId}`);
           }
           const programs = await programsResponse.json() as Array<{ id: string; status: string }>;
           const activePrograms = programs.filter((p) => p.status === 'active');
           if (activePrograms.length === 0) {
-            throw new Error(`No active program found for client ${clientId}`);
+            throw new Error(`No active domain found for client ${clientId}`);
           }
           for (const program of activePrograms) {
             const goalsResponse = await callEdgeFunctionHttp(`goals?program_id=${program.id}`);
@@ -110,7 +110,7 @@ export function AutoScheduleModal({
       const sessions = preview.slots.map(slot => {
         const programGoal = programGoalMap.get(slot.client.id);
         if (!programGoal) {
-          throw new Error(`Missing program/goal for client ${slot.client.id}`);
+          throw new Error(`Missing domain/goal for client ${slot.client.id}`);
         }
         return {
           therapist_id: slot.therapist.id,

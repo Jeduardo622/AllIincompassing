@@ -218,7 +218,54 @@ describe('AutoScheduleModal warnings', () => {
     await screen.findByRole('button', { name: /^schedule all sessions$/i });
     expect(onSchedule).not.toHaveBeenCalled();
     expect(mockedShowError).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining('No active domain found'),
+    }));
+    expect(mockedShowError).not.toHaveBeenCalledWith(expect.objectContaining({
       message: expect.stringContaining('No active program found'),
+    }));
+  });
+
+  it('surfaces domain terminology when loading live domains fails', async () => {
+    const therapist = createTherapist();
+    const client = createClient();
+    const onSchedule = vi.fn();
+    mockedGenerateOptimalSchedule.mockReturnValue({
+      slots: [
+        {
+          therapist,
+          client,
+          startTime: new Date('2025-03-18T09:00:00.000Z').toISOString(),
+          endTime: new Date('2025-03-18T10:00:00.000Z').toISOString(),
+          score: 0.9,
+        },
+      ],
+      cappedClients: [],
+    });
+    mockedCallEdgeFunctionHttp.mockResolvedValue(
+      new Response(JSON.stringify({ error: 'boom' }), { status: 500 }),
+    );
+
+    render(
+      <AutoScheduleModal
+        isOpen
+        onClose={() => {}}
+        onSchedule={onSchedule}
+        therapists={[therapist]}
+        clients={[client]}
+        existingSessions={[] as Session[]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /generate preview/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^schedule all sessions$/i }));
+
+    await screen.findByRole('button', { name: /^schedule all sessions$/i });
+    expect(onSchedule).not.toHaveBeenCalled();
+    expect(mockedShowError).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining('Failed to load domains for client'),
+    }));
+    expect(mockedShowError).not.toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining('Failed to load programs for client'),
     }));
   });
 

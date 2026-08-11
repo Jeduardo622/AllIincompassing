@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "issue": "WIN-275",
+  "attestationType": "supplemental-successor-evidence-skeleton",
+  "successorKey": "clinical-domain-terminology",
+  "repository": "Jeduardo622/AllIincompassing",
+  "createdAt": "2026-08-11T11:35:27.4621824-07:00",
+  "status": "PENDING_REVIEW_EVIDENCE",
+  "authorization": {
+    "uiOnlyEvidence": true,
+    "hostedAction": false,
+    "runtimeActivation": false,
+    "workflowDispatch": false,
+    "activeMode": false,
+    "providerCall": false,
+    "phiBearingFixture": false
+  },
+  "routeTask": {
+    "classification": "high-risk human-reviewed",
+    "lane": "critical",
+    "why": "The combined successor branch refreshes hash-bound WIN-275 approval evidence after a protected UI surface changed; the presentation-only implementation does not expand runtime authority.",
+    "triggeringPaths": [
+      "docs/ai/reviews/WIN-275-clinical-domain-terminology-successor-attestation.json",
+      "docs/ai/handoffs/WIN-275-clinical-domain-terminology-successor.md"
+    ],
+    "reviewerRequired": true,
+    "verifyChangeRequired": true,
+    "mandatoryChecks": [
+      "critical specialist review",
+      "exact-head required CI",
+      "verify-change",
+      "pr-hygiene"
+    ]
+  },
+  "branchContext": {
+    "branch": "codex/win-275-terminology-successor",
+    "baseMergeCommit": "2a2d95def06fb11e172012b9541106b4f354329f",
+    "implementationHeadCommit": "e81bf7eac4673ae283c6b8807d989e95efdf2b65"
+  },
+  "successorAgents": {
+    "specification-engineer": {
+      "agentId": "019ff210-a818-7343-9346-973dad5b7590",
+      "status": "RECORDED_NO_PASS_CLAIM"
+    },
+    "software-architect": {
+      "agentId": "019ff213-6b0e-7cb3-a895-c2cab62ed4d9",
+      "status": "RECORDED_NO_PASS_CLAIM"
+    }
+  },
+  "predecessorReferences": [
+    {
+      "path": "docs/ai/reviews/WIN-275-solo-maintainer-attestation.json",
+      "sha256": "53e83bd78fef02c24dbd4bf8fbd66bdd4f92c38b44f0edfd61d9aceb1b5aa322"
+    },
+    {
+      "path": "docs/ai/reviews/WIN-275-agent-work-ledger-adoption-contract-attestation.json",
+      "sha256": "8b7517861e1a5ade3a6c6a8f385866a334f7f0d08aa45ac67a6e068d02d87303"
+    },
+    {
+      "path": "docs/ai/reviews/WIN-275-retention-policy-encoding-attestation.json",
+      "sha256": "14cfe7c62cc44d9191fa7727a3d9f1cd022c343c610d96bb4a572a0682fb5f95"
+    },
+    {
+      "path": "docs/ai/reviews/WIN-275-local-operator-responsive-observer-attestation.json",
+      "sha256": "4ebba04d72666b1d78454834dfd8dedc81b72906ec80398b52e678f3d86a9f93"
+    },
+    {
+      "path": "docs/ai/reviews/WIN-275-hosted-shadow-proof-attestation.md"
+    },
+    {
+      "path": "docs/ai/handoffs/WIN-275-ledger-hash-baseline-repair.md"
+    },
+    {
+      "path": "docs/ai/handoffs/WIN-275-supabase-validate-playwright.md"
+    }
+  ],
+  "implementationEvidence": {
+    "uiOnlyDiff": true,
+    "internalProgramContractsUnchanged": true,
+    "basis": [
+      "docs/superpowers/plans/2026-08-11-clinical-domain-terminology.md",
+      "docs/superpowers/specs/2026-08-11-clinical-domain-terminology-design.md",
+      "git diff --name-only origin/main...HEAD"
+    ],
+    "changedUiSurfaces": [
+      "src/pages/ClientDetails.tsx",
+      "src/components/ClientDetails/ProgramsGoalsTab.tsx",
+      "src/components/SessionModal.tsx",
+      "src/components/AddSessionNoteModal.tsx",
+      "src/components/AutoScheduleModal.tsx",
+      "src/components/session-notes/BtAbaSessionNoteForm.tsx"
+    ],
+    "changedUiTests": [
+      "src/pages/__tests__/ClientDetails.test.tsx",
+      "src/components/__tests__/ProgramsGoalsTab.test.tsx",
+      "src/components/__tests__/SessionModal.test.tsx",
+      "src/components/__tests__/AddSessionNoteModal.test.tsx",
+      "src/components/__tests__/AutoScheduleModalWarnings.test.tsx",
+      "src/components/__tests__/SchedulingFlow.test.tsx",
+      "src/components/session-notes/__tests__/BtAbaSessionNoteForm.test.tsx"
+    ],
+    "currentUiHashes": {
+      "src/components/ClientDetails/ProgramsGoalsTab.tsx": "c985272569a74c67c676c31e2f2a6490af2bfcce139e7852364209b3c8a64dc8",
+      "src/pages/ClientDetails.tsx": "29cf207ff1305ed4dcf426cb307f628b6bc044423855373f7806bf5452ecd094",
+      "src/components/SessionModal.tsx": "0b4faa809e99c3cc2842f36b818cefce0517f0a7f2f787858e8ed3fe8c9947b9",
+      "src/components/AddSessionNoteModal.tsx": "6478ebf0bdd044f59a57799d95a78e5f4c499e94305f98753a0f50aff49691c1"
+    }
+  },
+  "expectedHashDrift": {
+    "rollingManifestPath": "docs/ai/reviews/WIN-275-solo-maintainer-attestation.json",
+    "status": "DEFERRED_UNTIL_LATER_REVIEWERS_EXIST",
+    "driftedProtectedSurfaceHashes": [
+      {
+        "path": "src/components/ClientDetails/ProgramsGoalsTab.tsx",
+        "manifestSha256": "fbc032c2dddca32dd846ce1a89e80fdd0cb45500bb31f21c773cc2c33dd74fa4",
+        "currentBranchSha256": "c985272569a74c67c676c31e2f2a6490af2bfcce139e7852364209b3c8a64dc8"
+      }
+    ],
+    "noManifestUpdatePerformed": true
+  },
+  "laterRollingManifestUpdateRequired": {
+    "path": "docs/ai/reviews/WIN-275-solo-maintainer-attestation.json",
+    "requiredWhen": [
+      "exact-head successor reviewer IDs and verdict evidence exist for the terminology branch",
+      "the successor head commit to attest is chosen",
+      "the rolling manifest can truthfully reference this supplemental attestation"
+    ],
+    "requiredChanges": [
+      "add a supplemental attestation pointer for docs/ai/reviews/WIN-275-clinical-domain-terminology-successor-attestation.json",
+      "refresh protectedSurfaceHashes for any successor-bound protected files, including src/components/ClientDetails/ProgramsGoalsTab.tsx if this head remains the review target",
+      "record only actually completed reviewer evidence; do not infer PASS"
+    ]
+  }
+}

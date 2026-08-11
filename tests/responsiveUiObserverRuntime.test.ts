@@ -12,6 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   buildFatalObserverSummary,
+  getSyntheticScheduleNow,
   runResponsiveUiObserver,
 } from '../scripts/playwright-responsive-ui-observer';
 
@@ -151,6 +152,13 @@ afterAll(async () => {
 });
 
 describe('responsive UI observer browser runtime', () => {
+  it('pins the synthetic schedule clock and overlap to Monday at 9 AM', () => {
+    const syntheticNow = getSyntheticScheduleNow();
+
+    expect(syntheticNow).toEqual(new Date(2026, 7, 10, 9, 0));
+    expect(getSyntheticScheduleNow()).not.toBe(syntheticNow);
+  });
+
   it.each([
     new Error('token=super-secret-token'),
     'https://hosted.example.invalid/private-route',

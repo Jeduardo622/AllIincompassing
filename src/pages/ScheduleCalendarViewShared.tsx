@@ -1038,7 +1038,9 @@ function ScheduleOverlayItem({
               role="dialog"
               aria-label={`${item.sessions.length} overlapping appointments, ${clusterRangeLabel}`}
               tabIndex={-1}
-              className="fixed z-30 max-h-[calc(100vh-1rem)] w-[calc(100vw-1rem)] min-w-0 max-w-[20rem] overflow-y-auto overscroll-contain rounded-lg border border-slate-200 bg-white p-2 shadow-xl sm:min-w-[16rem] dark:border-slate-700 dark:bg-slate-900"
+              className={`fixed z-30 max-h-[calc(100vh-1rem)] w-[calc(100vw-1rem)] min-w-0 max-w-[20rem] overflow-y-auto overscroll-contain rounded-lg border border-slate-200 bg-white p-2 shadow-xl sm:min-w-[16rem] dark:border-slate-700 dark:bg-slate-900 ${
+                activeDragSessionId !== null ? 'pointer-events-none' : 'pointer-events-auto'
+              }`}
               style={dialogStyle}
             >
               <div className="mb-2 text-xs font-medium text-slate-600 dark:text-slate-300">{clusterLabel}</div>

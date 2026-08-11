@@ -60,6 +60,7 @@ describe('BtAbaSessionNoteForm', () => {
     expect(screen.getByText('Modifier 4')).toBeVisible();
     expect(screen.getByText('HN')).toBeVisible();
     expect(screen.getByText('HO')).toBeVisible();
+    expect(screen.getByText('Domains and Goals')).toBeVisible();
     expect(screen.getByText('Functional Communication — Request a break')).toBeVisible();
     expect(screen.getByText('12 collected data points')).toBeVisible();
     expect(screen.getByText('Request a break: 8 correct / 10 trials')).toBeVisible();

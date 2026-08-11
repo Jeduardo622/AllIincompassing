@@ -1887,7 +1887,7 @@ export function SessionModal({
     if (!isDataCollectionOnly && isSavingUnstartedScheduledSession && hasProgramValue && !hasProgramOptionForValue) {
       setError('program_id', {
         type: 'validate',
-        message: 'Select an active program before saving this scheduled session.',
+        message: 'Select an active domain before saving this scheduled session.',
       });
       return;
     }
@@ -2287,7 +2287,7 @@ export function SessionModal({
       return;
     }
     if (!programId || !goalId) {
-      showError("Select a program and primary goal before starting.");
+      showError("Select a domain and primary goal before starting.");
       return;
     }
     try {
@@ -3753,7 +3753,7 @@ export function SessionModal({
                     ? 'Session details are read-only. Save clinical capture to sync data collection.'
                     : shouldHideGoalCaptureFields
                       ? 'Session details stay focused on scheduling fields while active.'
-                      : 'You can adjust program and goals while active; save to keep the plan in sync with the schedule.'}
+                      : 'You can adjust domains and goals while active; save to keep the plan in sync with the schedule.'}
                 </p>
               </div>
             )}
@@ -3962,10 +3962,10 @@ export function SessionModal({
               <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-200 sm:p-4">
                 {isProgramsError && (
                   <div className="flex items-center justify-between gap-3">
-                    <span>Could not load programs.</span>
+                    <span>Could not load domains.</span>
                     <button
                       type="button"
-                      aria-label="Retry programs"
+                      aria-label="Retry domains"
                       onClick={() => {
                         void refetchPrograms();
                       }}
@@ -3999,7 +3999,7 @@ export function SessionModal({
               (programs.length === 0 || activePrograms.length === 0 || availableProgramGroups.length === 0) && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200 sm:p-4">
                 {programs.length === 0 || activePrograms.length === 0
-                  ? 'No active programs found for this client. Create or activate a program before starting a session.'
+                  ? 'No active domains found for this client.'
                   : 'No active goals found for this client. Add or activate a goal before starting a session.'}
               </div>
             )}
@@ -4008,7 +4008,7 @@ export function SessionModal({
               <>
             <div className="space-y-2 sm:space-y-0">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 sm:sr-only">
-                Program &amp; goals
+                Domains &amp; goals
               </p>
               <input type="hidden" {...register('program_id')} />
               <input type="hidden" {...register('goal_id')} />
@@ -4022,9 +4022,9 @@ export function SessionModal({
               <div className="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Programs in this session</p>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Domains in this session</p>
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      Choose one or more programs, then select the goals you want to track without waiting on another fetch.
+                      Choose one or more domains, then select the goals you want to track without waiting on another fetch.
                     </p>
                   </div>
                   <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:bg-blue-900/20 dark:text-blue-200">
@@ -4065,7 +4065,7 @@ export function SessionModal({
                 >
                   <summary className="cursor-pointer list-none px-3 py-2.5 [&::-webkit-details-marker]:hidden">
                     <div className="flex min-h-11 items-center justify-between gap-2 text-sm font-medium text-gray-800 dark:text-gray-100">
-                      <span>Selected programs</span>
+                      <span>Selected domains</span>
                       <span className="shrink-0 text-xs font-normal text-gray-500 dark:text-gray-400">
                         {selectedProgramIds.length} chosen
                       </span>
@@ -4097,13 +4097,13 @@ export function SessionModal({
                 </details>
                 {selectedPrograms.length > 0 && (
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Tracking: {selectedPrograms.map((program) => program.name).join(', ')}
+                    Tracking domains: {selectedPrograms.map((program) => program.name).join(', ')}
                   </p>
                 )}
                   </>
                 ) : (
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Select a client to load active programs and goals.
+                    Select a client to load active domains and goals.
                   </p>
                 )}
               </div>
@@ -4180,7 +4180,7 @@ export function SessionModal({
                     })}
                     {selectedPrograms.length === 0 && (
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        Select at least one program to choose goals.
+                        Select at least one domain to choose goals.
                       </p>
                     )}
                     {selectedGoalsSummary && (
@@ -4259,7 +4259,7 @@ export function SessionModal({
                     )}
                     {selectedPrograms.length === 0 && (
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        Select at least one program to choose goals.
+                        Select at least one domain to choose goals.
                       </p>
                     )}
                   </div>
@@ -4268,7 +4268,7 @@ export function SessionModal({
             )}
             {availableProgramGroups.length > 0 && selectedProgramGoals.length === 0 && (
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-200">
-                Select one or more programs above to load goals instantly on mobile and desktop.
+                Select one or more domains above to load goals instantly on mobile and desktop.
               </div>
             )}
               </>
@@ -4504,7 +4504,7 @@ export function SessionModal({
                 </div>
                 {sessionNoteGoalIds.length === 0 ? (
                   <p className="text-sm text-indigo-900/90 dark:text-indigo-200/90">
-                    Select program and goals under People &amp; Plan, or tap Add skill / Add behavior to record ad-hoc
+                    Select a domain and goals under People &amp; Plan, or tap Add skill / Add behavior to record ad-hoc
                     targets for this session.
                   </p>
                 ) : (
@@ -4893,7 +4893,7 @@ export function SessionModal({
                                     ) : !planTargetText ? (
                                       <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-100">
                                         No plan target is set for this goal. Ask an admin to add the target under
-                                        Programs &amp; Goals.
+                                        Domains &amp; Goals.
                                       </p>
                                     ) : null}
                                   </div>

@@ -218,7 +218,7 @@ export function BtAbaSessionNoteForm({ initialResponses, context, onSaveDraft, o
           ))}
         </dl>
         <div>
-          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-200">Programs and Goals</h4>
+          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-200">Domains and Goals</h4>
           <ul className="mt-1 space-y-1 text-sm text-gray-900 dark:text-gray-100">
             {context.programs.flatMap((program) => program.goals.map((goal) => (
               <li key={`${program.name}-${goal}`}>{program.name} — {goal}</li>

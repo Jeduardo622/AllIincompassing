@@ -1507,7 +1507,7 @@ describe('SessionModal', () => {
     await selectGoalFromLowerControls(/Second Goal/i);
 
     expect(screen.getAllByText(/Selected goals: Default Goal, Second Goal/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Tracking: Default Program, Second Program/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Tracking domains: Default Program, Second Program/i).length).toBeGreaterThan(0);
   });
 
   it('shows conflict banner and proceeds after user confirmation', async () => {
@@ -3433,7 +3433,7 @@ describe('SessionModal', () => {
       />
     );
 
-    expect(await screen.findByText(/No active programs found for this client/i)).toBeInTheDocument();
+    expect(await screen.findByText(/No active domains found for this client/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Default Program/i })).not.toBeInTheDocument();
     const unavailableUpdateButton = screen.getByRole('button', { name: /Update Session/i });
     await waitFor(() => expect(unavailableUpdateButton).not.toBeDisabled());
@@ -3441,7 +3441,7 @@ describe('SessionModal', () => {
 
     await waitFor(() => {
       expect(onSubmit).not.toHaveBeenCalled();
-      expect(screen.getByText(/Select an active program before saving this scheduled session\./i)).toBeInTheDocument();
+      expect(screen.getByText(/Select an active domain before saving this scheduled session\./i)).toBeInTheDocument();
     });
   });
 
@@ -3567,7 +3567,7 @@ describe('SessionModal', () => {
         status: 'scheduled',
       }));
     });
-    expect(screen.queryByText(/Select an active program before saving this scheduled session/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Select an active domain before saving this scheduled session/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Select an active primary goal before saving this scheduled session/i)).not.toBeInTheDocument();
   });
 
@@ -4547,7 +4547,7 @@ describe('SessionModal', () => {
       expectVisiblePlanSelectorsRemoved();
       expect(screen.queryByRole('button', { name: /Default Program/i })).not.toBeInTheDocument();
     });
-    expect(screen.getByText(/No active programs found for this client/i)).toBeInTheDocument();
+    expect(screen.getByText(/No active domains found for this client/i)).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Inactive Published Program' })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Paused Published Goal' })).not.toBeInTheDocument();
 
@@ -4593,11 +4593,11 @@ describe('SessionModal', () => {
     renderWithProviders(<SessionModal {...defaultProps} />);
     await userEvent.selectOptions(screen.getByLabelText(/Client/i), 'test-client-1');
 
-    expect(await screen.findByText('Could not load programs.')).toBeInTheDocument();
+    expect(await screen.findByText('Could not load domains.')).toBeInTheDocument();
     expect(await screen.findByText('Could not load goals.')).toBeInTheDocument();
-    expect(screen.queryByText(/No active programs found for this client/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No active domains found for this client/i)).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Retry programs' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Retry domains' }));
     await waitFor(() => expect(programOrder).toHaveBeenCalledTimes(2));
     await userEvent.click(screen.getByRole('button', { name: 'Retry goals' }));
     await waitFor(() => expect(goalOrder).toHaveBeenCalledTimes(2));
@@ -4901,7 +4901,7 @@ describe('SessionModal', () => {
     const disclosure = screen.getByRole('button', { name: /plan & goals/i });
 
     expect(disclosure).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('Programs in this session')).toBeVisible();
+    expect(screen.getByText('Domains in this session')).toBeVisible();
   });
 
   it('defaults a valid edited plan to a compact summary and preserves values across expansion', async () => {
@@ -4913,7 +4913,8 @@ describe('SessionModal', () => {
     expect(screen.getByText(/Default Program.*Default Goal/i)).toBeVisible();
 
     await userEvent.click(disclosure);
-    expect(screen.getByText('Programs in this session')).toBeVisible();
+    expect(screen.getByText('Domains in this session')).toBeVisible();
+    expect(screen.getByText('Selected domains')).toBeVisible();
 
     await userEvent.click(disclosure);
     await userEvent.click(disclosure);
@@ -4973,8 +4974,8 @@ describe('SessionModal', () => {
 
     const disclosure = await screen.findByRole('button', { name: /plan & goals/i });
     await waitFor(() => expect(disclosure).toHaveAttribute('aria-expanded', 'true'));
-    expect(screen.getByText(/No active programs found for this client/i)).toBeVisible();
-    expect(screen.getByText('Programs in this session')).toBeVisible();
+    expect(screen.getByText(/No active domains found for this client/i)).toBeVisible();
+    expect(screen.getByText('Domains in this session')).toBeVisible();
   });
 
   it('preserves create-mode plan selections across collapse and re-expansion after a valid plan exists', async () => {
@@ -4994,7 +4995,7 @@ describe('SessionModal', () => {
 
     const disclosure = screen.getByRole('button', { name: /plan & goals/i });
     await userEvent.click(disclosure);
-    expect(screen.queryByText('Programs in this session')).not.toBeVisible();
+    expect(screen.queryByText('Domains in this session')).not.toBeVisible();
 
     await userEvent.click(disclosure);
 

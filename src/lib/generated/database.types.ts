@@ -8946,6 +8946,7 @@ export type Database = {
           exception_code: string
           id: string
           organization_id: string
+          source_session_attendance_event_id: string | null
         }
         Insert: {
           created_at?: string
@@ -8954,6 +8955,7 @@ export type Database = {
           exception_code: string
           id?: string
           organization_id: string
+          source_session_attendance_event_id?: string | null
         }
         Update: {
           created_at?: string
@@ -8962,6 +8964,7 @@ export type Database = {
           exception_code?: string
           id?: string
           organization_id?: string
+          source_session_attendance_event_id?: string | null
         }
         Relationships: [
           {
@@ -8977,6 +8980,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timekeeping_exceptions_source_session_attendance_event_fkey"
+            columns: ["source_session_attendance_event_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "session_attendance_events"
+            referencedColumns: ["id", "organization_id"]
           },
         ]
       }
@@ -10456,6 +10466,7 @@ export type Database = {
         Args: { p_metadata: Json }
         Returns: string
       }
+      get_payroll_day: { Args: { local_date: string }; Returns: Json }
       get_pending_supervision_review_packets: {
         Args: never
         Returns: {

@@ -277,6 +277,12 @@ const main = async () => {
       assert(privileges.rows[0].service_role, `${signature} is not executable by service_role.`);
     }
 
+    await expectReject(
+      () => getPayrollDay(admin, IDS.schedulerA, "2026-08-11"),
+      /42501|time\.view_self capability is required/i,
+      "in-org actor without self-view and without employment",
+    );
+
     const disabledDay = await getPayrollDay(admin, IDS.userA, "2026-08-11");
     assert(
       disabledDay.state === "feature_disabled",
@@ -694,6 +700,46 @@ const main = async () => {
       true,
     );
     assert(attendanceCorrection.request_id, "Attendance correction was not appended.");
+    const currentAttendanceCorrection = await withRole(
+      admin,
+      "authenticated",
+      IDS.userA,
+      async () =>
+        (
+          await admin.query(
+            "select public.request_session_attendance_correction($1::jsonb, $2::text) as result",
+            [
+              {
+                data: {
+                  sessionAttendanceEventId: attendanceStart.event_id,
+                  reasonCode: "missed_attendance",
+                },
+              },
+              "current-attendance-correction",
+            ],
+          )
+        ).rows[0].result,
+      true,
+    );
+    assert(
+      currentAttendanceCorrection.request_id,
+      "Current-employment attendance correction was not appended.",
+    );
+
+    const laterDay = await getPayrollDay(admin, IDS.userA, "2026-08-18");
+    assert(laterDay.state === "ok", "Later payroll day read did not return ok.");
+    assert(
+      !laterDay.day?.timeCorrectionRequests?.some(
+        (request) => request.id === correction.request_id,
+      ),
+      "Older time correction appeared on a later payroll day.",
+    );
+    assert(
+      !laterDay.day?.sessionAttendanceCorrectionRequests?.some(
+        (request) => request.id === currentAttendanceCorrection.request_id,
+      ),
+      "Older attendance correction appeared on a later payroll day.",
+    );
 
     await setFeature(admin, false);
     await expectReject(

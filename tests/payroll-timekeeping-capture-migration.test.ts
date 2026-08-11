@@ -61,6 +61,15 @@ describe("payroll timekeeping capture migration contract", () => {
     expect(definition).toMatch(/auth\.uid\(\)/i);
     expect(definition).toMatch(/app\.resolve_user_organization_id/i);
     expect(definition).toMatch(/time\.view_self/i);
+    expect(definition.indexOf("v_can_view_self :=")).toBeGreaterThan(
+      definition.indexOf("v_actor_org :="),
+    );
+    expect(definition.indexOf("v_can_view_self :=")).toBeLessThan(
+      definition.indexOf("select count(*)"),
+    );
+    expect(definition.indexOf("time.view_self capability is required")).toBeLessThan(
+      definition.indexOf("no_employment_profile"),
+    );
     expect(definition).toMatch(/feature_disabled/i);
     expect(definition).toMatch(/unsupported_jurisdiction/i);
     expect(definition).toMatch(/no_employment_profile/i);
@@ -76,6 +85,17 @@ describe("payroll timekeeping capture migration contract", () => {
     expect(definition).toMatch(/\[day_start,\s*next_day_start\)/i);
     expect(captureSql).toMatch(/revoke all on function public\.get_payroll_day\(date\) from public, anon/i);
     expect(captureSql).toMatch(/grant execute on function public\.get_payroll_day\(date\) to authenticated, service_role/i);
+  });
+
+  it("scopes correction history to source events in the requested payroll-day window", () => {
+    const definition = functionDefinition("public.get_payroll_day");
+
+    expect(definition).toMatch(
+      /from public\.time_correction_requests request_row\s+join public\.employee_time_events source_event\s+on source_event\.id = request_row\.original_event_id\s+and source_event\.organization_id = request_row\.organization_id[\s\S]*source_event\.event_at >= v_day_start[\s\S]*source_event\.event_at < v_next_day_start/i,
+    );
+    expect(definition).toMatch(
+      /from public\.session_attendance_correction_requests request_row\s+join public\.session_attendance_events source_event\s+on source_event\.id = request_row\.session_attendance_event_id\s+and source_event\.organization_id = request_row\.organization_id[\s\S]*source_event\.event_at >= v_day_start[\s\S]*source_event\.event_at < v_next_day_start/i,
+    );
   });
 
   it("replaces attendance recording to atomically create and trace one outside-shift exception", () => {

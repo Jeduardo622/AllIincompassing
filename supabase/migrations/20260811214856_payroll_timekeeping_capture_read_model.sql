@@ -75,6 +75,11 @@ begin
     raise exception using errcode = '42501', message = 'organization scope mismatch';
   end if;
 
+  v_can_view_self := app.payroll_actor_has_capability(v_actor_org, 'time.view_self');
+  if v_can_view_self is not true then
+    raise exception using errcode = '42501', message = 'time.view_self capability is required';
+  end if;
+
   select count(*)
   into v_employment_count
   from public.employment_profiles employment
@@ -128,11 +133,6 @@ begin
     )
   order by employment.active_from desc
   limit 1;
-
-  v_can_view_self := app.payroll_actor_has_capability(v_actor_org, 'time.view_self');
-  if v_can_view_self is not true then
-    raise exception using errcode = '42501', message = 'time.view_self capability is required';
-  end if;
 
   v_can_clock_self := app.payroll_actor_has_capability(v_actor_org, 'time.clock_self');
   v_can_request_correction_self := app.payroll_actor_has_capability(
@@ -345,9 +345,14 @@ begin
   )
   into v_time_correction_requests
   from public.time_correction_requests request_row
+  join public.employee_time_events source_event
+    on source_event.id = request_row.original_event_id
+   and source_event.organization_id = request_row.organization_id
   where request_row.organization_id = v_actor_org
     and request_row.employment_profile_id = v_employment.id
-    and request_row.requested_by = v_actor;
+    and request_row.requested_by = v_actor
+    and source_event.event_at >= v_day_start
+    and source_event.event_at < v_next_day_start;
 
   select coalesce(
     jsonb_agg(
@@ -365,9 +370,14 @@ begin
   )
   into v_session_attendance_correction_requests
   from public.session_attendance_correction_requests request_row
+  join public.session_attendance_events source_event
+    on source_event.id = request_row.session_attendance_event_id
+   and source_event.organization_id = request_row.organization_id
   where request_row.organization_id = v_actor_org
     and request_row.employment_profile_id = v_employment.id
-    and request_row.requested_by = v_actor;
+    and request_row.requested_by = v_actor
+    and source_event.event_at >= v_day_start
+    and source_event.event_at < v_next_day_start;
 
   select coalesce(
     jsonb_agg(

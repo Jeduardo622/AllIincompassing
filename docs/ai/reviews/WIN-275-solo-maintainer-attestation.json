@@ -64,9 +64,9 @@
   },
   "terminologySuccessorAttestation": {
     "path": "docs/ai/reviews/WIN-275-clinical-domain-terminology-successor-attestation.json",
-    "sha256": "74e58de96d29b5a12ef99cec31929d7b0ebe0947a9f9f1728f464a2eb3ed209b",
-    "implementationHeadCommit": "c40d61342f17635c1797677eff0df03e5cf54017",
-    "mergedVerificationHeadCommit": "c40d61342f17635c1797677eff0df03e5cf54017",
+    "sha256": "fda3785abf69c05a14488f3251fdb6b13d56ca51ef4fb737a78c3588597919a9",
+    "implementationHeadCommit": "ba7605e4d29faf83009821fade02946914008f00",
+    "mergedVerificationHeadCommit": "ba7605e4d29faf83009821fade02946914008f00",
     "hostedActionAuthorized": false
   },
   "terminologySuccessorReviews": {
@@ -96,6 +96,18 @@
     },
     "continuation-security-engineer": {
       "agentId": "019ff283-ab49-7f23-9d9e-d9f12447434e",
+      "verdict": "APPROVE"
+    },
+    "responsive-closure-code-review-engineer": {
+      "agentId": "019ff29c-fada-7c43-9723-09afe5640ce6",
+      "verdict": "APPROVE"
+    },
+    "responsive-closure-test-engineer": {
+      "agentId": "019ff29c-ffed-7363-b07f-e896271f5881",
+      "verdict": "PASS"
+    },
+    "responsive-closure-security-engineer": {
+      "agentId": "019ff29d-0687-7e60-a659-535a66c25a49",
       "verdict": "APPROVE"
     }
   },

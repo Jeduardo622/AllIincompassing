@@ -117,6 +117,24 @@ Deno.test("rejects forbidden authority fields before RPC execution", async () =>
   assertMatch(body.error, /authority/i);
 });
 
+Deno.test("rejects forbidden top-level authority fields before schema parsing can strip them", async () => {
+  const response = await handlePayrollTimeEvents({
+    req: createRequest({
+      action: "get_day",
+      localDate: "2026-08-11",
+      organization_id: "33333333-3333-3333-3333-333333333333",
+    }),
+    userContext: createUserContext(),
+    db: createRpcClient(() => {
+      throw new Error("RPC should not run when top-level authority fields are present");
+    }),
+  });
+
+  const body = await response.json() as { error: string };
+  assertEquals(response.status, 400);
+  assertMatch(body.error, /authority/i);
+});
+
 Deno.test("get_day calls get_payroll_day without requiring an idempotency key", async () => {
   const calls: RpcCall[] = [];
   const response = await handlePayrollTimeEvents({
@@ -186,6 +204,26 @@ Deno.test("maps same-key payload conflicts to 409 without leaking SQL details", 
   assertEquals(response.status, 409);
   assertEquals(body.code, "conflict");
   assertMatch(body.error, /idempotency/i);
+});
+
+Deno.test("maps SQLSTATE 23514 state conflicts to 409 with a distinct safe code", async () => {
+  const response = await handlePayrollTimeEvents({
+    req: createRequest(
+      { action: "record_session_attendance", event: validAttendanceEvent },
+      { headers: { "Idempotency-Key": "attendance-key-23514" } },
+    ),
+    userContext: createUserContext(),
+    db: createRpcClient(() => ({
+      data: null,
+      error: { code: "23514", message: "session end requires an active session" },
+    })),
+  });
+
+  const body = await response.json() as { error: string; code?: string; idempotencyKey?: string };
+  assertEquals(response.status, 409);
+  assertEquals(body.code, "state_conflict");
+  assertEquals(body.idempotencyKey, "attendance-key-23514");
+  assertMatch(body.error, /state/i);
 });
 
 Deno.test("attendance correction uses the exact protected RPC and response headers stay CORS-safe", async () => {

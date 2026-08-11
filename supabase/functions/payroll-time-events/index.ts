@@ -153,6 +153,13 @@ const containsForbiddenAuthority = (value: unknown): boolean => {
   );
 };
 
+const containsForbiddenTopLevelAuthority = (value: unknown): boolean => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  return Object.keys(value as Record<string, unknown>).some((key) => FORBIDDEN_AUTHORITY_KEYS.has(key));
+};
+
 const getNestedIdempotencyKey = (value: unknown): string | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -252,7 +259,15 @@ const mapRpcError = (req: Request, error: { code?: string; message?: string } | 
     }, extraHeaders);
   }
 
-  if (code === "22023" || code === "23514") {
+  if (code === "23514") {
+    return jsonResponse(req, 409, {
+      code: "state_conflict",
+      error: "Payroll state conflict.",
+      ...extraBody,
+    }, extraHeaders);
+  }
+
+  if (code === "22023") {
     return jsonResponse(req, 400, {
       code: "validation_error",
       error: "Invalid payroll request.",
@@ -299,6 +314,10 @@ export async function handlePayrollTimeEvents({ req, userContext: _userContext, 
     payload = await req.json();
   } catch {
     return jsonResponse(req, 400, { error: "Invalid JSON body" });
+  }
+
+  if (containsForbiddenTopLevelAuthority(payload)) {
+    return jsonResponse(req, 400, { error: "Authority fields are not allowed in payroll requests." });
   }
 
   const parsedResult = payrollActionSchema.safeParse(payload);

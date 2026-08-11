@@ -121,6 +121,13 @@ const containsForbiddenAuthority = (value: unknown): boolean => {
   );
 };
 
+const containsForbiddenTopLevelAuthority = (value: unknown): boolean => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  return Object.keys(value as Record<string, unknown>).some((key) => FORBIDDEN_AUTHORITY_KEYS.has(key));
+};
+
 const getNestedIdempotencyKey = (value: unknown): string | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -225,6 +232,34 @@ const buildSuccessResponse = (
   headers: Record<string, string> = {},
 ) => jsonForRequest(request, body, 200, { ...traceHeaders, ...headers });
 
+const buildStateConflictResponse = (
+  request: Request,
+  traceHeaders: Record<string, string>,
+  idempotencyKey: string | null,
+) => {
+  const headers: Record<string, string> = { ...traceHeaders };
+  const body: Record<string, unknown> = {
+    success: false,
+    error: "Payroll state conflict.",
+    requestId: request.headers.get("x-request-id")?.trim() || crypto.randomUUID(),
+    code: "state_conflict",
+    message: "Payroll state conflict.",
+    classification: {
+      category: "request",
+      severity: "medium",
+      retryable: false,
+      httpStatus: 409,
+    },
+  };
+
+  if (idempotencyKey) {
+    headers["Idempotency-Key"] = idempotencyKey;
+    body.idempotencyKey = idempotencyKey;
+  }
+
+  return jsonForRequest(request, body, 409, headers);
+};
+
 const mapLegacyError = (
   request: Request,
   traceHeaders: Record<string, string>,
@@ -238,6 +273,10 @@ const mapLegacyError = (
   if (idempotencyKey) {
     headers["Idempotency-Key"] = idempotencyKey;
     extra.idempotencyKey = idempotencyKey;
+  }
+
+  if (normalizeSafeMessage((result.data as { code?: unknown } | null)?.code) === "23514") {
+    return buildStateConflictResponse(request, traceHeaders, idempotencyKey);
   }
 
   if (message.includes("IDEMPOTENCY_CONFLICT") || result.status === 409 || normalizeSafeMessage((result.data as { code?: unknown } | null)?.code).includes("23505")) {
@@ -380,6 +419,12 @@ export async function payrollTimeEventsHandler(request: Request): Promise<Respon
       payload = await request.json();
     } catch {
       return errorResponse(request, "validation_error", "Invalid JSON body", { headers: traceHeaders });
+    }
+
+    if (containsForbiddenTopLevelAuthority(payload)) {
+      return errorResponse(request, "validation_error", "Authority fields are not allowed in payroll requests.", {
+        headers: traceHeaders,
+      });
     }
 
     const parsed = payrollActionSchema.safeParse(payload);

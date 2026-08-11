@@ -226,6 +226,27 @@ describe("payrollTimeEventsHandler", () => {
     expect(vi.mocked(fetchJson)).not.toHaveBeenCalled();
   });
 
+  it("rejects forbidden top-level authority fields in legacy mode before schema parsing can strip them", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
+
+    const response = await payrollTimeEventsHandler(
+      new Request("http://localhost/api/payroll-time-events", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${createAuthToken()}`,
+        },
+        body: JSON.stringify({
+          action: "get_day",
+          localDate: "2026-08-11",
+          actor_id: "malicious-user",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(vi.mocked(fetchJson)).not.toHaveBeenCalled();
+  });
+
   it("returns 429 with Retry-After when rate limited", async () => {
     vi.mocked(consumeRateLimit).mockResolvedValue({
       limited: true,
@@ -294,5 +315,34 @@ describe("payrollTimeEventsHandler", () => {
     expect(body.code).toBe("conflict");
     expect(body.idempotencyKey).toBe("runtime-key-conflict");
     expect(response.headers.get("Idempotency-Key")).toBe("runtime-key-conflict");
+  });
+
+  it("maps SQLSTATE 23514 state conflicts to 409 with a distinct safe code and keeps idempotency parity", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
+    vi.mocked(fetchJson).mockResolvedValue({
+      ok: false,
+      status: 400,
+      data: {
+        message: "shift end requires an open shift",
+        code: "23514",
+      },
+    });
+
+    const response = await payrollTimeEventsHandler(
+      new Request("http://localhost/api/payroll-time-events", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${createAuthToken()}`,
+          "Idempotency-Key": "runtime-key-23514",
+        },
+        body: JSON.stringify(validMutationPayload),
+      }),
+    );
+
+    const body = await response.json() as { code: string; message: string; idempotencyKey: string };
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("state_conflict");
+    expect(body.idempotencyKey).toBe("runtime-key-23514");
+    expect(response.headers.get("Idempotency-Key")).toBe("runtime-key-23514");
   });
 });

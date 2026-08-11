@@ -106,6 +106,14 @@
       "wave": "B",
       "status": "retired",
       "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "payroll-time-events.ts",
+      "publicApiPath": "/api/payroll-time-events",
+      "edgeTarget": "payroll-time-events",
+      "wave": "B",
+      "status": "migrating",
+      "owner": "Backend Platform"
     }
   ]
 }

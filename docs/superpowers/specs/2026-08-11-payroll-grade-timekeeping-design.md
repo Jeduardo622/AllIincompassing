@@ -103,7 +103,9 @@ Every mutation requires an idempotency key. The event, actor metadata, tenant sc
 
 Create a first-class employment profile independent of `therapists`. Session-delivery staff may link the employment profile to an existing therapist/BT identity. Other employees use payroll without gaining clinical permissions.
 
-Use canonical organization-scoped `user_roles` authority. Do not authorize payroll through `profiles.role`, `user_metadata`, client-supplied organization IDs, or UI visibility.
+V1 supports one active payroll organization per authenticated user. Require an active `profiles` row whose organization matches both `app.resolve_user_organization_id(auth.uid())` and the target payroll organization, then independently verify the actor's active, nonexpired canonical `user_roles` membership. Do not authorize payroll through `profiles.role`, `user_metadata`, client-supplied organization IDs, UI visibility, or the existing super-admin governance shortcut. Future multi-organization employment requires a separately reviewed organization-keyed membership model.
+
+Payroll-admin capabilities are fail-closed to canonical `admin` and `super_admin` memberships and still require a separate effective `payroll_capability_grants` row. `admin_schedule`, `bcba`, `midtier`, therapist/BT, and client roles are not eligible for payroll-admin grants; ordinary scheduling, clinical, or billing access must not imply compensation, lock, reopen, or export authority.
 
 Required capabilities are distinct:
 
@@ -336,6 +338,16 @@ Required specialist sequence:
 8. `performance-engineer`
 
 Each implementation PR requires a Linear issue, a verification card, review evidence, exact-head required checks, and human review before merge.
+
+## Tracking
+
+- Linear parent: `WIN-219`
+- PR 1 route card: `classification=high-risk human-reviewed`, `lane=critical`, `triggering paths=supabase/migrations/**, RLS, grants, RPC exposure, tenant isolation, compensation data`, `feature state=payroll_timekeeping_v1 default-disabled`
+- PR 1 implementation evidence on `codex/payroll-timekeeping-design`:
+  - created `20260811190901_payroll_timekeeping_foundation.sql` via `npm run migration:new -- payroll_timekeeping_foundation` and replaced the generated dependency placeholder with `20260810222545_bt_closeout_legacy_therapist_compat.sql`
+  - added payroll contract/access modules and focused migration/RLS/typegen tests
+  - focused payroll suite passed on August 11, 2026 via `npm test -- --run tests/payroll-timekeeping-foundation-migration.test.ts src/features/payroll/__tests__/contracts.test.ts src/features/payroll/__tests__/access.test.ts tests/payroll-typegen-command.test.ts tests/integration/payroll-timekeeping-tenant-rls.contract.test.ts`
+  - broader local verification on August 11, 2026: `npm run ci:check-focused`, `npm run validate:tenant`, `npm run build`, and `npm run typegen:local` passed; `node scripts/payroll-timekeeping-security-contract.mjs` was blocked pending `PAYROLL_LOCAL_DATABASE_URL`; `npm run test:ci` and `npm run verify:local` failed at repo scope when Vitest exhausted heap during unrelated `src/lib/ai-documentation.ts` coverage execution
 
 ## Likely Protected Surfaces
 

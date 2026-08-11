@@ -7,6 +7,31 @@ export type Json =
   | Json[]
 
 export type Database = {
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       admin_actions: {
@@ -204,24 +229,34 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "agent_execution_traces_attempt_id_fkey"
-            columns: ["attempt_id"]
+            columns: [
+              "attempt_id",
+              "step_id",
+              "work_item_id",
+              "organization_id",
+            ]
             isOneToOne: false
             referencedRelation: "agent_work_attempts"
-            referencedColumns: ["id"]
+            referencedColumns: [
+              "id",
+              "step_id",
+              "work_item_id",
+              "organization_id",
+            ]
           },
           {
             foreignKeyName: "agent_execution_traces_step_id_fkey"
-            columns: ["step_id"]
+            columns: ["step_id", "work_item_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "agent_work_steps"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "work_item_id", "organization_id"]
           },
           {
             foreignKeyName: "agent_execution_traces_work_item_id_fkey"
-            columns: ["work_item_id"]
+            columns: ["work_item_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "agent_work_items"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "organization_id"]
           },
         ]
       }
@@ -293,6 +328,8 @@ export type Database = {
       }
       agent_work_approvals: {
         Row: {
+          approval_hash: string | null
+          assigned_to: string | null
           client_id: string | null
           created_at: string
           decided_at: string | null
@@ -303,15 +340,22 @@ export type Database = {
           id: string
           input_hash: string
           organization_id: string
+          request_reason_code: string | null
           requested_at: string
           requested_by: string | null
           required_role: string
+          revoked_at: string | null
+          revoked_by: string | null
+          revoked_reason_code: string | null
           status: Database["public"]["Enums"]["agent_work_approval_status"]
           step_id: string | null
           updated_at: string
           work_item_id: string
+          workflow_version: number | null
         }
         Insert: {
+          approval_hash?: string | null
+          assigned_to?: string | null
           client_id?: string | null
           created_at?: string
           decided_at?: string | null
@@ -322,15 +366,22 @@ export type Database = {
           id?: string
           input_hash: string
           organization_id: string
+          request_reason_code?: string | null
           requested_at?: string
           requested_by?: string | null
           required_role: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          revoked_reason_code?: string | null
           status?: Database["public"]["Enums"]["agent_work_approval_status"]
           step_id?: string | null
           updated_at?: string
           work_item_id: string
+          workflow_version?: number | null
         }
         Update: {
+          approval_hash?: string | null
+          assigned_to?: string | null
           client_id?: string | null
           created_at?: string
           decided_at?: string | null
@@ -341,13 +392,18 @@ export type Database = {
           id?: string
           input_hash?: string
           organization_id?: string
+          request_reason_code?: string | null
           requested_at?: string
           requested_by?: string | null
           required_role?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          revoked_reason_code?: string | null
           status?: Database["public"]["Enums"]["agent_work_approval_status"]
           step_id?: string | null
           updated_at?: string
           work_item_id?: string
+          workflow_version?: number | null
         }
         Relationships: [
           {
@@ -457,6 +513,7 @@ export type Database = {
           lease_acquired_at: string
           lease_expires_at: string | null
           model: string | null
+          model_request_schema_version: string | null
           organization_id: string
           output_token_count: number | null
           pricing_version: string | null
@@ -465,6 +522,7 @@ export type Database = {
           request_id: string | null
           status: Database["public"]["Enums"]["agent_work_attempt_status"]
           step_id: string
+          temperature: number | null
           tool_version: string | null
           updated_at: string
           work_item_id: string
@@ -485,6 +543,7 @@ export type Database = {
           lease_acquired_at?: string
           lease_expires_at?: string | null
           model?: string | null
+          model_request_schema_version?: string | null
           organization_id: string
           output_token_count?: number | null
           pricing_version?: string | null
@@ -493,6 +552,7 @@ export type Database = {
           request_id?: string | null
           status?: Database["public"]["Enums"]["agent_work_attempt_status"]
           step_id: string
+          temperature?: number | null
           tool_version?: string | null
           updated_at?: string
           work_item_id: string
@@ -513,6 +573,7 @@ export type Database = {
           lease_acquired_at?: string
           lease_expires_at?: string | null
           model?: string | null
+          model_request_schema_version?: string | null
           organization_id?: string
           output_token_count?: number | null
           pricing_version?: string | null
@@ -521,6 +582,7 @@ export type Database = {
           request_id?: string | null
           status?: Database["public"]["Enums"]["agent_work_attempt_status"]
           step_id?: string
+          temperature?: number | null
           tool_version?: string | null
           updated_at?: string
           work_item_id?: string
@@ -551,6 +613,88 @@ export type Database = {
           },
           {
             foreignKeyName: "agent_work_attempts_work_item_fk"
+            columns: ["work_item_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_items"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      agent_work_caloptima_draft_packets: {
+        Row: {
+          assessment_document_id: string
+          client_id: string
+          created_at: string
+          id: string
+          model_attempt_id: string
+          model_step_id: string
+          organization_id: string
+          output_hash: string
+          packet: Json
+          work_item_id: string
+        }
+        Insert: {
+          assessment_document_id: string
+          client_id: string
+          created_at?: string
+          id?: string
+          model_attempt_id: string
+          model_step_id: string
+          organization_id: string
+          output_hash: string
+          packet: Json
+          work_item_id: string
+        }
+        Update: {
+          assessment_document_id?: string
+          client_id?: string
+          created_at?: string
+          id?: string
+          model_attempt_id?: string
+          model_step_id?: string
+          organization_id?: string
+          output_hash?: string
+          packet?: Json
+          work_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_work_caloptima_draft_packets_assessment_document_id_fkey"
+            columns: ["assessment_document_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_caloptima_draft_packets_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_caloptima_draft_packets_model_attempt_id_fkey"
+            columns: ["model_attempt_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_caloptima_draft_packets_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_caloptima_packets_model_step_fk"
+            columns: ["model_step_id", "work_item_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_steps"
+            referencedColumns: ["id", "work_item_id"]
+          },
+          {
+            foreignKeyName: "agent_work_caloptima_packets_work_item_fk"
             columns: ["work_item_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "agent_work_items"
@@ -963,6 +1107,232 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "agent_prompt_tool_versions"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_work_retention_holds: {
+        Row: {
+          approved_at: string
+          approved_by: string
+          category: string
+          created_at: string
+          id: string
+          organization_id: string
+          provenance_code: string
+          reason_code: string
+          release_reason_code: string | null
+          released_at: string | null
+          released_by: string | null
+          work_item_id: string
+        }
+        Insert: {
+          approved_at: string
+          approved_by: string
+          category: string
+          created_at?: string
+          id?: string
+          organization_id: string
+          provenance_code: string
+          reason_code: string
+          release_reason_code?: string | null
+          released_at?: string | null
+          released_by?: string | null
+          work_item_id: string
+        }
+        Update: {
+          approved_at?: string
+          approved_by?: string
+          category?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+          provenance_code?: string
+          reason_code?: string
+          release_reason_code?: string | null
+          released_at?: string | null
+          released_by?: string | null
+          work_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_work_retention_holds_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_retention_holds_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "agent_work_retention_holds_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_retention_holds_released_by_fkey"
+            columns: ["released_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_retention_holds_released_by_fkey"
+            columns: ["released_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "agent_work_retention_holds_work_item_org_fk"
+            columns: ["work_item_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_items"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      agent_work_retention_policies: {
+        Row: {
+          approved_at: string
+          approved_by: string
+          category: string
+          created_at: string
+          disabled_at: string | null
+          id: string
+          policy_code: string
+          policy_reference: string
+          policy_version: number
+          updated_at: string
+        }
+        Insert: {
+          approved_at: string
+          approved_by: string
+          category: string
+          created_at?: string
+          disabled_at?: string | null
+          id?: string
+          policy_code: string
+          policy_reference: string
+          policy_version: number
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string
+          approved_by?: string
+          category?: string
+          created_at?: string
+          disabled_at?: string | null
+          id?: string
+          policy_code?: string
+          policy_reference?: string
+          policy_version?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_work_retention_policies_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_retention_policies_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      agent_work_retention_policy_decisions: {
+        Row: {
+          attestation_kind: string
+          category: string
+          created_at: string
+          decision_recorded_at: string
+          decision_reference: string
+          decision_sha256: string
+          id: string
+          policy_version: number
+          retention_days: number
+        }
+        Insert: {
+          attestation_kind: string
+          category: string
+          created_at?: string
+          decision_recorded_at: string
+          decision_reference: string
+          decision_sha256: string
+          id?: string
+          policy_version: number
+          retention_days: number
+        }
+        Update: {
+          attestation_kind?: string
+          category?: string
+          created_at?: string
+          decision_recorded_at?: string
+          decision_reference?: string
+          decision_sha256?: string
+          id?: string
+          policy_version?: number
+          retention_days?: number
+        }
+        Relationships: []
+      }
+      agent_work_retention_receipts: {
+        Row: {
+          category: string
+          created_at: string
+          export_schema_version: string
+          exported_row_count: number
+          id: string
+          manifest_hash: string
+          organization_id: string
+          work_item_id: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          export_schema_version: string
+          exported_row_count: number
+          id?: string
+          manifest_hash: string
+          organization_id: string
+          work_item_id: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          export_schema_version?: string
+          exported_row_count?: number
+          id?: string
+          manifest_hash?: string
+          organization_id?: string
+          work_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_work_retention_receipts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_work_retention_receipts_work_item_org_fk"
+            columns: ["work_item_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "agent_work_items"
+            referencedColumns: ["id", "organization_id"]
           },
         ]
       }
@@ -7879,9 +8249,125 @@ export type Database = {
             }
             Returns: Json
           }
+      agent_work_advisory_projection_descriptor: {
+        Args: { p_step_id: string }
+        Returns: {
+          effect_key: string
+          output_hash: string
+        }[]
+      }
+      agent_work_caloptima_advisory_projection_descriptor: {
+        Args: { p_step_id: string }
+        Returns: {
+          effect_key: string
+          output_hash: string
+        }[]
+      }
+      agent_work_canonical_effect_key: {
+        Args: {
+          p_actor_user_id: string
+          p_organization_id: string
+          p_output_hash: string
+          p_step_key: string
+          p_target_id: string
+          p_target_kind: string
+          p_workflow_key: string
+          p_workflow_version: number
+        }
+        Returns: string
+      }
+      agent_work_compute_approval_hash: {
+        Args: {
+          p_assigned_to: string
+          p_evidence_hash: string
+          p_input_hash: string
+          p_request_reason_code: string
+          p_required_role: string
+          p_step_id: string
+          p_work_item_id: string
+          p_workflow_version: number
+        }
+        Returns: string
+      }
+      agent_work_compute_evidence_hash: {
+        Args: { p_work_item_id: string }
+        Returns: string
+      }
+      agent_work_compute_input_hash: {
+        Args: { p_step_id: string; p_work_item_id: string }
+        Returns: string
+      }
+      agent_work_iehp_advisory_projection_descriptor: {
+        Args: { p_step_id: string }
+        Returns: {
+          effect_key: string
+          output_hash: string
+        }[]
+      }
+      agent_work_lock_advisory_projection_context: {
+        Args: {
+          p_attempt_id: string
+          p_effect_key: string
+          p_expected_state_version: number
+          p_payload_hash: string
+          p_step_id: string
+          p_worker_id: string
+        }
+        Returns: {
+          attempt_id: string
+          attempt_number: number
+          client_id: string
+          effect_key: string
+          organization_id: string
+          payload_hash: string
+          step_id: string
+          step_state_version: number
+          work_item_id: string
+          worker_id: string
+        }[]
+      }
+      agent_work_log_queue_event: {
+        Args: {
+          p_actor_id: string
+          p_actor_kind: string
+          p_event_type: string
+          p_sanitized_metadata?: Json
+          p_step_id: string
+        }
+        Returns: undefined
+      }
       agent_work_recompute_item_status: {
         Args: { p_work_item_id: string }
         Returns: Database["public"]["Enums"]["agent_work_item_status"]
+      }
+      agent_work_user_has_client_access: {
+        Args: {
+          p_client_id: string
+          p_organization_id: string
+          p_reference_at?: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      agent_work_user_has_exact_role: {
+        Args: {
+          p_organization_id: string
+          p_reference_at?: string
+          p_required_role: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      agent_work_validate_queue_payload: {
+        Args: { p_payload: Json }
+        Returns: {
+          available_at: string
+          correlation_id: string
+          organization_id: string
+          step_id: string
+          work_item_id: string
+          workflow_version: number
+        }[]
       }
       analyze_therapist_workload: {
         Args: { p_analysis_period?: number; p_therapist_id?: string }
@@ -7907,6 +8393,14 @@ export type Database = {
         }
         Returns: Json
       }
+      archive_agent_work_message: {
+        Args: { p_msg_id: string }
+        Returns: boolean
+      }
+      archive_agent_work_poison_messages: {
+        Args: { p_max_items_per_pass: number; p_now: string }
+        Returns: Json
+      }
       assign_admin_role: {
         Args: { organization_id: string; reason?: string; user_email: string }
         Returns: undefined
@@ -7914,6 +8408,37 @@ export type Database = {
       assign_therapist_role:
         | { Args: { p_email: string; p_user_id: string }; Returns: undefined }
         | { Args: { p_therapist_id: string }; Returns: undefined }
+      begin_agent_work_caloptima_model_attempt: {
+        Args: {
+          p_actor_user_id: string
+          p_client_id: string
+          p_correlation_id: string
+          p_organization_id: string
+          p_request_id: string
+          p_work_item_id: string
+        }
+        Returns: {
+          allowed_tools: string[]
+          attempt_id: string
+          attempt_status: Database["public"]["Enums"]["agent_work_attempt_status"]
+          client_id: string
+          guarded_tools: string[]
+          model: string
+          model_request_schema_version: string
+          organization_id: string
+          output_hash: string
+          pricing_version: string
+          prompt_version: string
+          provider: string
+          step_id: string
+          step_key: string
+          temperature: number
+          tool_version: string
+          work_item_id: string
+          workflow_key: string
+          workflow_version: number
+        }[]
+      }
       cache_ai_response: {
         Args: {
           p_cache_key: string
@@ -8004,8 +8529,93 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      claim_queued_agent_work_step: {
+        Args: {
+          p_lease_seconds: number
+          p_step_id: string
+          p_work_item_id: string
+          p_worker_id: string
+        }
+        Returns: {
+          approval_hash: string
+          attempt_count: number
+          attempt_id: string
+          client_id: string
+          completed_at: string
+          completion_criteria: Json
+          created_at: string
+          execution_mode: Database["public"]["Enums"]["agent_work_execution_mode"]
+          id: string
+          input_hash: string
+          last_error_class: string
+          last_error_code: string
+          lease_expires_at: string
+          lease_owner: string
+          max_attempts: number
+          ordinal: number
+          organization_id: string
+          output_hash: string
+          required_role: string
+          risk: Database["public"]["Enums"]["agent_work_risk"]
+          state_version: string
+          status: Database["public"]["Enums"]["agent_work_step_status"]
+          step_key: string
+          updated_at: string
+          wake_at: string
+          work_item_id: string
+        }[]
+      }
       cleanup_ai_cache: { Args: never; Returns: number }
       client_email_exists: { Args: { p_email: string }; Returns: boolean }
+      complete_agent_work_caloptima_model_attempt: {
+        Args: {
+          p_actor_user_id: string
+          p_attempt_id: string
+          p_client_id: string
+          p_computed_cost: number
+          p_draft_packet: Json
+          p_error_class: string
+          p_error_code: string
+          p_input_token_count: number
+          p_organization_id: string
+          p_output_token_count: number
+          p_step_id: string
+          p_work_item_id: string
+        }
+        Returns: {
+          approval_hash: string | null
+          attempt_count: number
+          client_id: string | null
+          completed_at: string | null
+          completion_criteria: Json
+          created_at: string
+          execution_mode: Database["public"]["Enums"]["agent_work_execution_mode"]
+          id: string
+          input_hash: string | null
+          last_error_class: string | null
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          max_attempts: number
+          ordinal: number
+          organization_id: string
+          output_hash: string | null
+          required_role: string | null
+          risk: Database["public"]["Enums"]["agent_work_risk"]
+          state_version: number
+          status: Database["public"]["Enums"]["agent_work_step_status"]
+          step_key: string
+          updated_at: string
+          wake_at: string | null
+          work_item_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "agent_work_steps"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       complete_goal_target_mastery: {
         Args: {
           expected_version: number
@@ -8102,6 +8712,17 @@ export type Database = {
             }[]
           }
       create_agent_assessment_work_item: {
+        Args: {
+          p_actor_user_id: string
+          p_assessment_document_id: string
+          p_client_id: string
+          p_dedupe_key: string
+          p_organization_id: string
+          p_workflow_version: number
+        }
+        Returns: string
+      }
+      create_agent_caloptima_draft_review_work_item: {
         Args: {
           p_actor_user_id: string
           p_assessment_document_id: string
@@ -8251,6 +8872,10 @@ export type Database = {
         Args: { target_client_id: string; target_organization_id: string }
         Returns: boolean
       }
+      current_user_can_decide_agent_work_approval: {
+        Args: { p_approval_id: string }
+        Returns: boolean
+      }
       current_user_can_delete_goal_targets: {
         Args: { target_organization_id: string }
         Returns: boolean
@@ -8267,12 +8892,46 @@ export type Database = {
         Args: { target_organization_id: string }
         Returns: boolean
       }
+      current_user_can_read_agent_work_assessment_endpoint: {
+        Args: {
+          p_assessment_document_id: string
+          p_workflow_key: string
+          p_workflow_version: number
+        }
+        Returns: boolean
+      }
+      current_user_can_read_agent_work_item_endpoint: {
+        Args: { p_work_item_id: string }
+        Returns: boolean
+      }
       current_user_can_take_client_data: {
         Args: { target_client_id: string; target_organization_id: string }
         Returns: boolean
       }
+      current_user_decidable_agent_work_approval_ids: {
+        Args: { p_work_item_id: string }
+        Returns: {
+          approval_id: string
+        }[]
+      }
       current_user_is_super_admin: { Args: never; Returns: boolean }
       current_user_organization_id: { Args: never; Returns: string }
+      current_user_visible_agent_work_approval_ids: {
+        Args: { p_work_item_id: string }
+        Returns: {
+          approval_id: string
+        }[]
+      }
+      decide_agent_work_approval: {
+        Args: {
+          p_actor_user_id: string
+          p_approval_id: string
+          p_decision: string
+          p_reason_code: string
+          p_work_item_id: string
+        }
+        Returns: Json
+      }
       delete_admin_therapist_link: {
         Args: {
           p_organization_id: string
@@ -8296,6 +8955,35 @@ export type Database = {
           suggested_resolutions: Json
         }[]
       }
+      disable_hosted_agent_work_queue_scheduler: { Args: never; Returns: Json }
+      disable_local_agent_work_queue_scheduler: {
+        Args: never
+        Returns: boolean
+      }
+      enable_hosted_agent_work_queue_scheduler: {
+        Args: {
+          p_max_items_per_pass?: number
+          p_schedule: string
+          p_timeout_milliseconds?: number
+        }
+        Returns: Json
+      }
+      enable_local_agent_work_queue_scheduler: {
+        Args: {
+          p_max_items_per_pass?: number
+          p_schedule: string
+          p_timeout_milliseconds?: number
+        }
+        Returns: Json
+      }
+      enqueue_agent_work_message: {
+        Args: {
+          p_available_at?: string
+          p_correlation_id?: string
+          p_step_id: string
+        }
+        Returns: number
+      }
       enqueue_impersonation_revocation: {
         Args: { p_audit_id: string; p_token_jti: string }
         Returns: undefined
@@ -8304,6 +8992,101 @@ export type Database = {
       ensure_user_has_admin_role: {
         Args: { p_user_id: string }
         Returns: undefined
+      }
+      expire_agent_work_approvals: {
+        Args: { p_max_items_per_pass: number; p_now: string }
+        Returns: Json
+      }
+      export_agent_work_retention_manifest: {
+        Args: { p_organization_id: string; p_work_item_id: string }
+        Returns: Json
+      }
+      fail_agent_work_caloptima_model_attempt: {
+        Args: {
+          p_actor_user_id: string
+          p_attempt_id: string
+          p_client_id: string
+          p_error_code: string
+          p_organization_id: string
+          p_step_id: string
+          p_work_item_id: string
+        }
+        Returns: {
+          approval_hash: string | null
+          attempt_count: number
+          client_id: string | null
+          completed_at: string | null
+          completion_criteria: Json
+          created_at: string
+          execution_mode: Database["public"]["Enums"]["agent_work_execution_mode"]
+          id: string
+          input_hash: string | null
+          last_error_class: string | null
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          max_attempts: number
+          ordinal: number
+          organization_id: string
+          output_hash: string | null
+          required_role: string | null
+          risk: Database["public"]["Enums"]["agent_work_risk"]
+          state_version: number
+          status: Database["public"]["Enums"]["agent_work_step_status"]
+          step_key: string
+          updated_at: string
+          wake_at: string | null
+          work_item_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "agent_work_steps"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      finalize_agent_work_advisory_projection_effect: {
+        Args: {
+          p_attempt_id: string
+          p_effect_key: string
+          p_expected_state_version: number
+          p_payload_hash: string
+          p_step_id: string
+          p_worker_id: string
+        }
+        Returns: {
+          approval_hash: string | null
+          attempt_count: number
+          client_id: string | null
+          completed_at: string | null
+          completion_criteria: Json
+          created_at: string
+          execution_mode: Database["public"]["Enums"]["agent_work_execution_mode"]
+          id: string
+          input_hash: string | null
+          last_error_class: string | null
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          max_attempts: number
+          ordinal: number
+          organization_id: string
+          output_hash: string | null
+          required_role: string | null
+          risk: Database["public"]["Enums"]["agent_work_risk"]
+          state_version: number
+          status: Database["public"]["Enums"]["agent_work_step_status"]
+          step_key: string
+          updated_at: string
+          wake_at: string | null
+          work_item_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "agent_work_steps"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       finalize_bt_aba_session_note: {
         Args: {
@@ -8847,6 +9630,7 @@ export type Database = {
       }
       has_care_role: { Args: never; Returns: boolean }
       has_role: { Args: { target_role: string }; Returns: boolean }
+      hosted_agent_work_queue_scheduler_status: { Args: never; Returns: Json }
       insert_session_with_billing: {
         Args: {
           p_cpt_code: string
@@ -8874,6 +9658,15 @@ export type Database = {
         Returns: {
           full_name: string
           user_id: string
+        }[]
+      }
+      load_agent_work_runtime_policy: {
+        Args: { p_mode_input?: string }
+        Returns: {
+          actionsDisabled: boolean
+          authoritative: boolean
+          killSwitchEnabled: boolean
+          runtimeMode: string
         }[]
       }
       log_error_event: {
@@ -8967,6 +9760,14 @@ export type Database = {
         Returns: number
       }
       prune_admin_invite_tokens: { Args: never; Returns: number }
+      prune_agent_work_retention_category: {
+        Args: {
+          p_category: string
+          p_manifest_hash: string
+          p_organization_id: string
+        }
+        Returns: Json
+      }
       prune_session_transcripts: {
         Args: { retention_days?: number }
         Returns: {
@@ -8983,9 +9784,172 @@ export type Database = {
         }
         Returns: Json
       }
+      read_agent_work_advisory_projection_descriptor: {
+        Args: { p_step_id: string }
+        Returns: {
+          effect_key: string
+          output_hash: string
+        }[]
+      }
+      read_agent_work_advisory_projection_effect: {
+        Args: { p_effect_key: string; p_step_id: string }
+        Returns: {
+          attempt_id: string
+          client_id: string
+          created_at: string
+          effect_kind: string
+          id: string
+          organization_id: string
+          payload_hash: string
+          status: Database["public"]["Enums"]["agent_work_effect_status"]
+          step_id: string
+          step_state_version: number
+          step_status: Database["public"]["Enums"]["agent_work_step_status"]
+          target_id: string
+          target_kind: string
+          unique_effect_key: string
+          updated_at: string
+          verified_at: string
+          work_item_id: string
+        }[]
+      }
+      read_agent_work_caloptima_draft_packet: {
+        Args: {
+          p_actor_user_id: string
+          p_client_id: string
+          p_organization_id: string
+          p_work_item_id: string
+        }
+        Returns: {
+          output_hash: string
+          packet: Json
+          packet_hash: string
+        }[]
+      }
+      read_agent_work_messages: {
+        Args: { p_qty?: number; p_visibility_timeout_seconds?: number }
+        Returns: {
+          available_at: string
+          correlation_id: string
+          enqueued_at: string
+          message: Json
+          msg_id: string
+          organization_id: string
+          read_ct: number
+          step_id: string
+          vt: string
+          work_item_id: string
+          workflow_version: number
+        }[]
+      }
+      read_agent_work_runner_scope: {
+        Args: {
+          p_organization_id: string
+          p_step_id: string
+          p_work_item_id: string
+          p_workflow_version: number
+        }
+        Returns: {
+          attempt_count: number
+          client_id: string
+          effect_key: string
+          evidence_hashes: string[]
+          execution_mode: Database["public"]["Enums"]["agent_work_execution_mode"]
+          input_hash: string
+          item_status: Database["public"]["Enums"]["agent_work_item_status"]
+          max_attempts: number
+          organization_id: string
+          owner_user_id: string
+          step_id: string
+          step_key: string
+          step_status: Database["public"]["Enums"]["agent_work_step_status"]
+          work_item_id: string
+          workflow_key: string
+          workflow_version: number
+        }[]
+      }
       reconcile_supervision_session_note_requests: {
         Args: { p_since?: string }
         Returns: number
+      }
+      record_agent_work_advisory_projection_effect: {
+        Args: {
+          p_attempt_id: string
+          p_effect_key: string
+          p_expected_state_version: number
+          p_payload_hash: string
+          p_step_id: string
+          p_worker_id: string
+        }
+        Returns: {
+          attempt_id: string
+          client_id: string
+          created_at: string
+          effect_kind: string
+          id: string
+          organization_id: string
+          payload_hash: string
+          status: Database["public"]["Enums"]["agent_work_effect_status"]
+          step_id: string
+          step_state_version: number
+          target_id: string
+          target_kind: string
+          unique_effect_key: string
+          updated_at: string
+          verified_at: string
+          work_item_id: string
+        }[]
+      }
+      record_agent_work_model_attempt_result: {
+        Args: {
+          p_actor_user_id: string
+          p_attempt_id: string
+          p_client_id: string
+          p_computed_cost: number
+          p_error_class: string
+          p_error_code: string
+          p_input_token_count: number
+          p_organization_id: string
+          p_output_token_count: number
+          p_step_id: string
+          p_work_item_id: string
+        }
+        Returns: {
+          attempt_number: number
+          client_id: string | null
+          computed_cost: number | null
+          correlation_id: string | null
+          created_at: string
+          error_class: string | null
+          error_code: string | null
+          finished_at: string | null
+          id: string
+          input_token_count: number | null
+          lease_acquired_at: string
+          lease_expires_at: string | null
+          model: string | null
+          model_request_schema_version: string | null
+          organization_id: string
+          output_token_count: number | null
+          pricing_version: string | null
+          prompt_version: string | null
+          provider: string | null
+          request_id: string | null
+          status: Database["public"]["Enums"]["agent_work_attempt_status"]
+          step_id: string
+          temperature: number | null
+          tool_version: string | null
+          updated_at: string
+          work_item_id: string
+          worker_id: string
+          workflow_version: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "agent_work_attempts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       record_session_audit: {
         Args: {
@@ -8995,6 +9959,15 @@ export type Database = {
           p_session_id: string
         }
         Returns: undefined
+      }
+      refresh_agent_work_caloptima_evidence: {
+        Args: {
+          p_actor_user_id: string
+          p_client_id: string
+          p_organization_id: string
+          p_work_item_id: string
+        }
+        Returns: Json
       }
       reorder_goal_targets: {
         Args: {
@@ -9028,9 +10001,40 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      request_agent_work_approval_handoff: {
+        Args: {
+          p_actor_user_id: string
+          p_assigned_owner_user_id: string
+          p_expires_at: string
+          p_reason_code: string
+          p_step_id: string
+          p_work_item_id: string
+        }
+        Returns: Json
+      }
+      requeue_expired_agent_work_leases: {
+        Args: { p_max_items_per_pass: number; p_now: string }
+        Returns: {
+          reasonCode: string
+        }[]
+      }
       reset_user_password: {
         Args: { new_password: string; target_email: string }
         Returns: undefined
+      }
+      resolve_agent_work_assessment_scope: {
+        Args: {
+          p_actor_user_id: string
+          p_assessment_document_id: string
+          p_workflow_key: string
+          p_workflow_version: number
+        }
+        Returns: {
+          client_id: string
+          id: string
+          organization_id: string
+          template_type: string
+        }[]
       }
       resolve_assigned_bt_session_capture_billing: {
         Args: { p_session_id: string }
@@ -9055,12 +10059,25 @@ export type Database = {
         Args: { p_reason: string; p_request_id: string }
         Returns: string
       }
+      revoke_stale_agent_work_approvals: {
+        Args: { p_max_items_per_pass: number; p_now: string }
+        Returns: Json
+      }
       save_bt_aba_session_note_draft: {
         Args: {
           p_note_payload: Json
           p_responses: Json
           p_session_id: string
           p_template_id: string
+        }
+        Returns: Json
+      }
+      schedule_agent_work_step_retry: {
+        Args: {
+          p_delay_seconds: number
+          p_reason_code: string
+          p_sanitized_metadata?: Json
+          p_step_id: string
         }
         Returns: Json
       }
@@ -9080,6 +10097,81 @@ export type Database = {
           user_id: string
         }[]
       }
+      set_client_archive_state: {
+        Args: { p_client_id: string; p_restore?: boolean }
+        Returns: {
+          address_line1: string | null
+          address_line2: string | null
+          assessment_units: number | null
+          auth_end_date: string | null
+          auth_start_date: string | null
+          auth_units: number | null
+          authorized_hours_per_month: number | null
+          availability_hours: Json | null
+          avoid_rush_hour: boolean | null
+          cin_number: string | null
+          city: string | null
+          client_id: string | null
+          created_at: string | null
+          created_by: string | null
+          date_of_birth: string | null
+          daycare_after_school: boolean | null
+          deleted_at: string | null
+          deleted_by: string | null
+          diagnosis: string[] | null
+          documents: Json | null
+          email: string | null
+          first_name: string | null
+          full_name: string
+          gender: string | null
+          hours_provided_per_month: number | null
+          id: string
+          in_clinic: boolean | null
+          in_home: boolean | null
+          in_school: boolean | null
+          insurance_info: Json | null
+          last_name: string | null
+          latitude: number | null
+          longitude: number | null
+          max_travel_minutes: number | null
+          middle_name: string | null
+          notes: string | null
+          one_to_one_units: number | null
+          organization_id: string
+          parent_consult_units: number | null
+          parent1_email: string | null
+          parent1_first_name: string | null
+          parent1_last_name: string | null
+          parent1_phone: string | null
+          parent1_relationship: string | null
+          parent2_email: string | null
+          parent2_first_name: string | null
+          parent2_last_name: string | null
+          parent2_phone: string | null
+          parent2_relationship: string | null
+          phone: string | null
+          preferred_language: string | null
+          preferred_radius_km: number | null
+          preferred_session_time: string[] | null
+          referral_source: string | null
+          service_preference: string[] | null
+          state: string | null
+          status: string
+          supervision_units: number | null
+          therapist_assigned_at: string | null
+          therapist_id: string | null
+          unscheduled_hours: number | null
+          updated_at: string
+          updated_by: string | null
+          zip_code: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "clients"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       set_goal_target_phase_criterion: {
         Args: {
           expected_version: number
@@ -9094,6 +10186,88 @@ export type Database = {
         }
         Returns: Json
       }
+      snapshot_agent_work_caloptima_draft_packet: {
+        Args: {
+          p_actor_user_id: string
+          p_client_id: string
+          p_draft_packet: Json
+          p_model_attempt_id: string
+          p_model_step_id: string
+          p_organization_id: string
+          p_work_item_id: string
+        }
+        Returns: {
+          approval_hash: string | null
+          attempt_count: number
+          client_id: string | null
+          completed_at: string | null
+          completion_criteria: Json
+          created_at: string
+          execution_mode: Database["public"]["Enums"]["agent_work_execution_mode"]
+          id: string
+          input_hash: string | null
+          last_error_class: string | null
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          max_attempts: number
+          ordinal: number
+          organization_id: string
+          output_hash: string | null
+          required_role: string | null
+          risk: Database["public"]["Enums"]["agent_work_risk"]
+          state_version: number
+          status: Database["public"]["Enums"]["agent_work_step_status"]
+          step_key: string
+          updated_at: string
+          wake_at: string | null
+          work_item_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "agent_work_steps"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      snapshot_agent_work_model_attempt: {
+        Args: {
+          p_actor_user_id: string
+          p_attempt_id: string
+          p_client_id: string
+          p_correlation_id: string
+          p_model: string
+          p_model_request_schema_version: string
+          p_organization_id: string
+          p_pricing_version: string
+          p_prompt_version: string
+          p_provider: string
+          p_request_id: string
+          p_step_id: string
+          p_temperature: number
+          p_tool_version: string
+          p_work_item_id: string
+          p_workflow_version: number
+        }
+        Returns: {
+          allowed_tools: string[]
+          attempt_id: string
+          attempt_status: Database["public"]["Enums"]["agent_work_attempt_status"]
+          blocker_codes: string[]
+          client_id: string
+          evidence_source_ids: string[]
+          guarded_tools: string[]
+          organization_id: string
+          prompt_version: string
+          step_id: string
+          step_key: string
+          suggested_action_codes: string[]
+          tool_version: string
+          work_item_id: string
+          workflow_key: string
+          workflow_version: number
+        }[]
+      }
       start_session_with_goals: {
         Args: {
           p_actor_id?: string
@@ -9103,6 +10277,10 @@ export type Database = {
           p_session_id: string
           p_started_at?: string
         }
+        Returns: Json
+      }
+      sync_agent_work_caloptima_projection_evidence: {
+        Args: { p_step_id: string; p_work_item_id: string }
         Returns: Json
       }
       temp_validate_time: { Args: never; Returns: undefined }
@@ -9252,6 +10430,12 @@ export type Database = {
       }
       validate_time_interval: { Args: { time_value: string }; Returns: boolean }
       validate_time_interval_new: { Args: { t: string }; Returns: boolean }
+      wake_due_agent_work_steps: {
+        Args: { p_max_items_per_pass: number; p_now: string }
+        Returns: {
+          reasonCode: string
+        }[]
+      }
     }
     Enums: {
       agent_work_approval_status:
@@ -9275,6 +10459,8 @@ export type Database = {
         | "work_item"
         | "work_step"
         | "approval"
+        | "assessment_draft_program"
+        | "assessment_draft_goal"
       agent_work_execution_mode: "deterministic" | "model_suggested" | "human"
       agent_work_item_status:
         | "queued"
@@ -9431,6 +10617,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       agent_work_approval_status: [
@@ -9456,6 +10645,8 @@ export const Constants = {
         "work_item",
         "work_step",
         "approval",
+        "assessment_draft_program",
+        "assessment_draft_goal",
       ],
       agent_work_execution_mode: ["deterministic", "model_suggested", "human"],
       agent_work_item_status: [

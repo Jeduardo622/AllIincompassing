@@ -5,7 +5,7 @@
   "successorKey": "clinical-domain-terminology",
   "repository": "Jeduardo622/AllIincompassing",
   "createdAt": "2026-08-11T11:35:27.4621824-07:00",
-  "status": "PENDING_REVIEW_EVIDENCE",
+  "status": "BLOCKED_RESPONSIVE_EVIDENCE",
   "authorization": {
     "uiOnlyEvidence": true,
     "hostedAction": false,
@@ -45,7 +45,54 @@
     "software-architect": {
       "agentId": "019ff213-6b0e-7cb3-a895-c2cab62ed4d9",
       "status": "RECORDED_NO_PASS_CLAIM"
+    },
+    "code-review-engineer": {
+      "agentId": "019ff21d-d034-79f1-891e-d4608b3fb8de",
+      "status": "PASS"
+    },
+    "security-engineer": {
+      "agentId": "019ff21d-de29-7f90-a756-66995efe8dd5",
+      "status": "PASS"
+    },
+    "supabase-reviewer": {
+      "agentId": "019ff21d-e767-78e2-a484-ed6eb1113651",
+      "status": "PASS_NO_SUPABASE_DRIFT"
+    },
+    "documentation-engineer": {
+      "agentId": "019ff21d-efca-7e01-97d2-5b3d18c540de",
+      "status": "PASS"
+    },
+    "test-engineer": {
+      "agentId": "019ff21d-d56a-7c83-9b27-d5e74932a972",
+      "status": "BLOCKED_RESPONSIVE_EVIDENCE"
+    },
+    "responsive-ui-observer": {
+      "agentId": "019ff224-ef29-74a3-b100-91d6a090b22a",
+      "status": "FAIL_AUTH_RUNTIME_SHELL"
+    },
+    "devops-engineer": {
+      "agentId": "019ff21d-fb10-7b02-a8cc-9b707c47d5d7",
+      "status": "BLOCKED_NO_PR_OR_EXACT_HEAD_CI"
     }
+  },
+  "verification": {
+    "result": "fail",
+    "passed": [
+      "npm run lint",
+      "npm run typecheck",
+      "seven focused Vitest files: 360 tests",
+      "npm run build",
+      "npm run ci:check-focused"
+    ],
+    "failed": [
+      "npm run test:ci: 4137 passed, 1 stale rolling-manifest hash failure",
+      "responsive observer: authenticated content unreachable; auth/runtime shell failed on both viewports"
+    ],
+    "blocked": [
+      "npm run verify:local depends on the stale rolling-manifest test",
+      "rolling manifest refresh requires a passing test-engineer verdict",
+      "exact-head CI requires a pushed PR"
+    ]
   },
   "predecessorReferences": [
     {

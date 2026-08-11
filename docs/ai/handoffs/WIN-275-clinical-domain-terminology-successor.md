@@ -63,9 +63,25 @@ Until those facts exist, editing the rolling manifest here would overstate revie
 
 ## Verification
 
-- route-task output for the combined successor branch: `critical` / `high-risk human-reviewed`
-- JSON validation: parse `docs/ai/reviews/WIN-275-clinical-domain-terminology-successor-attestation.json`
-- manual path verification: predecessor references, branch/base/head, and drifted protected-surface path checked locally
+- Classification: `high-risk human-reviewed`
+- Lane: `critical`
+- Change type: UI/component/page plus hash-bound approval evidence
+- Required checks: lint, typecheck, focused tests, build, policy checks, `test:ci`, `verify:local`, responsive observer, critical specialist review, exact-head CI, and `pr-hygiene`
+- Executed checks: `npm run lint` pass; `npm run typecheck` pass; seven focused Vitest files pass, 360/360; `npm run build` pass; `npm run ci:check-focused` pass
+- Failed checks: high-memory `npm run test:ci` passes 4,137 tests and fails only the intentionally stale rolling-manifest hash; responsive observer reaches only the auth/runtime shell and fails all four route/viewport results
+- Blocked checks: `npm run verify:local` inherits the stale-manifest failure; exact-head CI requires a pushed PR; rolling-manifest refresh requires a passing test review
+- Result: `fail`
+- Residual risk: authenticated client/session/schedule content was not observed at the required viewports, so layout evidence for the changed UI is incomplete
+
+Specialist results:
+
+- code review: `PASS` after the empty-domain/goal guidance fixes
+- security review: `PASS`; no authority, tenant, or secret handling expansion
+- Supabase review: `PASS`; no Supabase, RLS, RPC, grant, or tenant drift
+- documentation review: `PASS`
+- test review: `BLOCKED_RESPONSIVE_EVIDENCE`
+- responsive observer: `FAIL_AUTH_RUNTIME_SHELL`
+- DevOps review: `BLOCKED_NO_PR_OR_EXACT_HEAD_CI`
 
 ## Files Changed
 

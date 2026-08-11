@@ -153,13 +153,14 @@ const buildSyntheticRuntimeConfig = (baseOrigin: string) => ({
   defaultOrganizationId: 'observer-local-org',
 });
 
+export const getSyntheticScheduleNow = (): Date => new Date(2026, 7, 10, 9, 0, 0, 0);
+
 const buildSyntheticScheduleEntities = (): {
   sessions: Array<Record<string, string>>;
   therapists: Array<Record<string, string>>;
   clients: Array<Record<string, string>>;
 } => {
-  const dayStart = new Date();
-  dayStart.setHours(9, 0, 0, 0);
+  const dayStart = getSyntheticScheduleNow();
   const dayEnd = new Date(dayStart);
   dayEnd.setHours(10, 0, 0, 0);
 
@@ -210,6 +211,7 @@ const maybeEnableScenarioContext = async (
     return;
   }
 
+  await context.clock.install({ time: getSyntheticScheduleNow() });
   await context.addInitScript(([storageKey, storageValue]) => {
     window.localStorage.setItem(storageKey, storageValue);
   }, [

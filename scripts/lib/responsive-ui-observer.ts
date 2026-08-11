@@ -11,7 +11,10 @@ export type ObserverViewport = {
 export type ObserverArgs = {
   baseUrl: string;
   routes: string[];
+  scenario?: ObserverScenario;
 };
+
+export type ObserverScenario = 'schedule-overlap';
 
 export type LayoutTouchTarget = {
   width: number;
@@ -38,6 +41,7 @@ export type EvidenceCardInput = {
   metrics: LayoutMetrics;
   screenshotHash: string;
   evidenceHash: string;
+  scenario?: ObserverScenario;
 };
 
 export const OBSERVER_VIEWPORTS: ObserverViewport[] = [
@@ -52,6 +56,8 @@ export const OBSERVER_POLICY: ObserverPolicy = {
   allowMutations: false,
   allowExternalRequests: false,
 };
+
+const SCHEDULE_OVERLAP_SCENARIO: ObserverScenario = 'schedule-overlap';
 
 const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
@@ -158,6 +164,7 @@ export const assertObserverRoute = (value: string): string => {
 export const parseObserverArgs = (argv: string[]): ObserverArgs => {
   let baseUrl: string | undefined;
   const routes: string[] = [];
+  let scenario: ObserverScenario | undefined;
 
   for (const arg of argv.slice(2)) {
     if (arg.startsWith('--base-url=')) {
@@ -171,6 +178,17 @@ export const parseObserverArgs = (argv: string[]): ObserverArgs => {
       routes.push(assertObserverRoute(arg.slice('--route='.length)));
       continue;
     }
+    if (arg.startsWith('--scenario=')) {
+      if (scenario) {
+        throw new Error('Scenario may be provided only once.');
+      }
+      const candidate = arg.slice('--scenario='.length);
+      if (candidate !== SCHEDULE_OVERLAP_SCENARIO) {
+        throw new Error(`Unknown observer scenario: ${candidate}`);
+      }
+      scenario = SCHEDULE_OVERLAP_SCENARIO;
+      continue;
+    }
     throw new Error(`Unknown observer argument: ${arg}`);
   }
 
@@ -180,8 +198,13 @@ export const parseObserverArgs = (argv: string[]): ObserverArgs => {
   if (routes.length === 0) {
     throw new Error('At least one --route=/relative/path argument is required.');
   }
+  if (scenario === SCHEDULE_OVERLAP_SCENARIO) {
+    if (routes.length !== 1 || routes[0] !== '/schedule') {
+      throw new Error('The schedule-overlap scenario requires exactly one --route=/schedule.');
+    }
+  }
 
-  return { baseUrl, routes };
+  return { baseUrl, routes, scenario };
 };
 
 export const classifyLayout = (
@@ -210,6 +233,9 @@ export const sanitizeObserverFailures = (messages: string[]): string[] => {
     'horizontal-overflow',
     'clipped-fixed-control',
     'undersized-mobile-touch-target',
+    'scenario-trigger-missing',
+    'scenario-dialog-missing',
+    'unexpected-scenario-request',
   ]);
 
   for (const message of messages) {
@@ -311,6 +337,7 @@ export const buildEvidenceCard = (input: EvidenceCardInput) => {
       width: viewport.width,
       height: viewport.height,
     },
+    scenarioId: input.scenario ?? 'none',
     screenshotPath: `${OBSERVER_ARTIFACT_DIR}/${baseName}.png`,
     evidencePath: `${OBSERVER_ARTIFACT_DIR}/${baseName}.json`,
     policy: OBSERVER_POLICY,

@@ -577,12 +577,15 @@ describe("ScheduleWeekView drag and drop", () => {
       );
 
       const trigger = screen.getByRole("button", { name: /3 appointments/i });
+      const cluster = trigger.closest('[data-layout-kind="cluster"]');
       expect(within(trigger).getByTestId("schedule-overlap-count")).toHaveTextContent("3");
       fireEvent.click(trigger);
       expect(onCreateSession).not.toHaveBeenCalled();
       expect(onEditSession).not.toHaveBeenCalled();
 
       const dialog = screen.getByRole("dialog", { name: /3 overlapping appointments/i });
+      expect(cluster).toBeTruthy();
+      expect(cluster?.contains(dialog)).toBe(false);
       const rows = within(dialog).getAllByRole("button");
       expect(rows[0]).toHaveFocus();
       expect(rows[0]).toHaveTextContent("Alpha Client");
@@ -832,6 +835,8 @@ describe("ScheduleWeekView drag and drop", () => {
         name: "2 overlapping appointments, 10:00 AM to 10:45 AM",
       });
       const row = within(dialog).getByRole("button", { name: /beta client/i });
+      const clusterTrigger = screen.getByRole("button", { name: /2 appointments/i });
+      const cluster = clusterTrigger.closest('[data-layout-kind="cluster"]');
       const targetSlot = getSlotByDayAndTime(container, sourceDay, "10:15");
       expect(targetSlot).toBeTruthy();
       expect(row).toHaveAttribute("title", expect.stringContaining("Press and hold"));
@@ -847,7 +852,8 @@ describe("ScheduleWeekView drag and drop", () => {
           "true",
         );
       });
-      expect(row.closest('[data-layout-kind="cluster"]')).toHaveClass("pointer-events-none");
+      expect(cluster).toBeTruthy();
+      expect(cluster).toHaveClass("pointer-events-none");
       expect(row).toHaveClass("pointer-events-auto");
       fireEvent.click(targetSlot!);
 

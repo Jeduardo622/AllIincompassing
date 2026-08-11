@@ -61,6 +61,34 @@ describe('responsive-ui-observer contract', () => {
       });
     });
 
+    it('accepts only the fixed synthetic schedule-overlap scenario on /schedule', () => {
+      expect(parseObserverArgs([
+        'node',
+        'scripts/playwright-responsive-ui-observer.ts',
+        `--base-url=${baseUrl}`,
+        '--route=/schedule',
+        '--scenario=schedule-overlap',
+      ])).toEqual({
+        baseUrl,
+        routes: ['/schedule'],
+        scenario: 'schedule-overlap',
+      });
+
+      for (const invalidArgs of [
+        ['--route=/schedule', '--scenario=unknown'],
+        ['--route=/desk', '--scenario=schedule-overlap'],
+        ['--route=/schedule', '--route=/desk', '--scenario=schedule-overlap'],
+        ['--route=/schedule', '--scenario=schedule-overlap', '--scenario=schedule-overlap'],
+      ]) {
+        expect(() => parseObserverArgs([
+          'node',
+          'scripts/playwright-responsive-ui-observer.ts',
+          `--base-url=${baseUrl}`,
+          ...invalidArgs,
+        ])).toThrow();
+      }
+    });
+
     it('rejects a missing route flag', () => {
       expect(() =>
         parseObserverArgs([
@@ -231,6 +259,27 @@ describe('responsive-ui-observer contract', () => {
   });
 
   describe('buildEvidenceCard', () => {
+    it('records fixed synthetic scenario provenance without exposing fixture data', () => {
+      const evidenceCard = buildEvidenceCard({
+        route: '/schedule',
+        viewportName: 'desktop',
+        result: 'pass',
+        failures: [],
+        metrics: {
+          horizontalOverflow: false,
+          clippedFixedControls: [],
+          visibleTouchTargets: [{ width: 48, height: 48 }],
+        },
+        screenshotHash: `sha256:${'1'.repeat(64)}`,
+        evidenceHash: `sha256:${'2'.repeat(64)}`,
+        scenario: 'schedule-overlap',
+      } as any);
+
+      expect(evidenceCard).toMatchObject({ scenarioId: 'schedule-overlap' });
+      expect(JSON.stringify(evidenceCard)).not.toContain('observer-admin');
+      expect(JSON.stringify(evidenceCard)).not.toContain('stub-observer');
+    });
+
     it('derives deterministic route slugs and paths while excluding raw payloads', () => {
       const evidenceCard = buildEvidenceCard({
         route: '/desk/responsive-check',

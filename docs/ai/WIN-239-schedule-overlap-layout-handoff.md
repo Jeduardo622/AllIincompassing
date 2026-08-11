@@ -310,3 +310,34 @@ Critical-lane verification card:
 - specialist review: specification, architecture, implementation, test, security, code, and documentation agents completed; final security, code, and documentation re-reviews reported no findings and approved the bounded diff
 - result: pass; merge remains human-reviewed because the lane is `critical`
 - residual risk: the scenario intentionally fails when `/schedule` adds an unenumerated application request, so fixture maintenance may be required as the shared shell evolves; this is the desired fail-closed behavior
+
+## PR #921 Codex review follow-up
+
+Fresh routing for the two review findings is `low-risk autonomous` / `standard`, bounded to the shared overlap dialog, the fixed synthetic observer fixture, focused tests, and this handoff. The overall PR remains `critical` and human-reviewed because it changes the mandatory observer safety boundary.
+
+The portaled dialog now yields hit testing while a fine-pointer drag or touch-only long-press move is active. The selected row retains `pointer-events-auto`, preserving the existing cancellation and completion path while inactive dialog content no longer blocks schedule slots beneath the portal.
+
+The responsive scenario now pins both the browser clock and synthetic schedule data to Monday, August 10, 2026 at 9:00 AM local time. This keeps the overlap in a stable desktop week column and keeps the mobile day view aligned with the same cluster, without adding scenario inputs or widening request authority.
+
+TDD and verification evidence:
+
+- fine-pointer and touch regressions failed before the dialog class change because the portal lacked `pointer-events-none`, then passed after the fix;
+- the fixed-clock regression failed before `getSyntheticScheduleNow` existed, then passed after the browser and fixture clocks shared it;
+- focused day/week and observer contract/runtime coverage passed: 73 tests;
+- sanitized `/schedule` observation passed at desktop `1440x900` and mobile `390x844` with no failure codes;
+- desktop screenshot hash: `sha256:524848f8ea227519f5a0cd2791838b97f016ca94792a561777724a79b9c3fbea`;
+- mobile screenshot hash: `sha256:b899ddc54eca3c112bd5e225ea2518914f38208e579b242ecb3d6022212a105a`;
+- `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, and `npm run build` passed;
+- the first `NODE_OPTIONS=--max-old-space-size=6144 npm run verify:local` attempt reached 4,166 passing tests but hit two unrelated aggregate failures and one Vitest worker RPC timeout; both unchanged files then passed in isolation (`2/2` and `116/116`);
+- one bounded unchanged `verify:local` retry passed end to end in 8m09s, including full tests, coverage verification, build, and 220 Tier-0 Cypress tests;
+- specification, implementation, code-review, and test specialists completed; code review reported no findings.
+
+Review-fix verification card:
+
+- classification: low-risk autonomous
+- lane: `standard`
+- change type: visible UI/page plus fixed synthetic observer fixture and focused tests
+- required checks: focused schedule/observer tests; sanitized `/schedule` responsive observation; `ci:check-focused`; lint; typecheck; `test:ci`; build; `verify:local`
+- blocked checks: none; database-backed policy checks reported their normal local skips because no database URL was configured
+- result: pass
+- residual risk: jsdom proves the CSS hit-test contract and reschedule callbacks rather than browser hit testing itself; sanitized browser evidence proves containment and touch-target geometry, while the PR remains human-reviewed

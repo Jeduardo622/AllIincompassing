@@ -737,6 +737,8 @@ describe("ScheduleWeekView drag and drop", () => {
       const clusterTarget = getSlotByDayAndTime(container, targetDay, "10:15");
       dragData.getData.mockReturnValueOnce("week-cluster-beta");
       fireEvent.dragStart(clusterRow, { dataTransfer: dragData });
+      expect(clusterDialog).toHaveClass("pointer-events-none");
+      expect(clusterRow).toHaveClass("pointer-events-auto");
       fireEvent.dragOver(clusterTarget!, { dataTransfer: dragData });
       fireEvent.drop(clusterTarget!, { dataTransfer: dragData });
 
@@ -854,6 +856,7 @@ describe("ScheduleWeekView drag and drop", () => {
       });
       expect(cluster).toBeTruthy();
       expect(cluster).toHaveClass("pointer-events-none");
+      expect(dialog).toHaveClass("pointer-events-none");
       expect(row).toHaveClass("pointer-events-auto");
       fireEvent.click(targetSlot!);
 

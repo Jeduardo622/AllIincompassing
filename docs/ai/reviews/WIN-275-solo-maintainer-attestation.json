@@ -64,9 +64,9 @@
   },
   "terminologySuccessorAttestation": {
     "path": "docs/ai/reviews/WIN-275-clinical-domain-terminology-successor-attestation.json",
-    "sha256": "fda3785abf69c05a14488f3251fdb6b13d56ca51ef4fb737a78c3588597919a9",
-    "implementationHeadCommit": "ba7605e4d29faf83009821fade02946914008f00",
-    "mergedVerificationHeadCommit": "ba7605e4d29faf83009821fade02946914008f00",
+    "sha256": "9e7976f2e2858d4c90acb6c13970584155fa60325993b2fb9cc62c0968d7394e",
+    "implementationHeadCommit": "e5f9e0843149df6260838d75df66feebb11a979c",
+    "mergedVerificationHeadCommit": "e5f9e0843149df6260838d75df66feebb11a979c",
     "hostedActionAuthorized": false
   },
   "terminologySuccessorReviews": {

@@ -6,8 +6,8 @@
 - lane: `critical`
 - branch: `codex/win-275-terminology-successor`
 - base: `37e7cbfa888ebb3b33cf895cb9638f6b6590bd5f`
-- implementation head: `ba7605e4d29faf83009821fade02946914008f00`
-- merged verification head before evidence refresh: `ba7605e4d29faf83009821fade02946914008f00`
+- implementation head: `e5f9e0843149df6260838d75df66feebb11a979c`
+- merged verification head before evidence refresh: `e5f9e0843149df6260838d75df66feebb11a979c`
 - non-goals: production auth, runtime config, Supabase policy/schema, deployment behavior, hosted action, workflow dispatch, runtime activation, provider/model calls, or PHI-bearing fixtures
 
 ## Why This Exists
@@ -74,6 +74,7 @@ The current terminology branch changes `src/components/ClientDetails/ProgramsGoa
 - Coverage: `92.81%` line coverage, above the required `86%`
 - Repository hard gate: `NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local` passed in `389s`
 - Responsive closure: both Dashboard correction-modal render paths now provide 44px choice-row and Close-button hit areas, and the observer measures the associated native checkbox/radio label area
+- CI regression closure: the two domain empty-state tests now wait through authentication hydration before asserting the settled React Query result; `npm run test:ci` passed with `4178` tests across `484` files
 - Blocked checks: local `npm run ci:playwright` requires unavailable PW admin credentials; exact-head CI requires this evidence refresh to be pushed
 - Result: `pass-with-blocked-checks`
 - Residual risk: local credential-backed `ci:playwright` remains unavailable; exact-head CI and critical-lane human review remain required

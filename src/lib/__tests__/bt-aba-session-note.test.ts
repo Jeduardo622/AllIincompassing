@@ -6,6 +6,7 @@ import {
   BT_ABA_PURPOSE_OPTIONS,
   BT_ABA_SKILL_STRATEGY_OPTIONS,
   BT_ABA_SUPERVISOR_SUPPORT_OPTIONS,
+  getBtAbaOptionDisplayLabel,
   normalizeExclusiveSelections,
   validateBtAbaSessionNoteResponses,
   type BtAbaSessionNoteResponses,
@@ -74,6 +75,14 @@ describe('BT ABA session note contract', () => {
       client_response_to_treatment: "Client's Response to Treatment",
       bt_signature: 'Behavior Technician Signature',
     });
+  });
+
+  it('maps the persisted supervisor-support program wording for display only', () => {
+    const persistedOption = 'Discussed programs/progress/data collection';
+
+    expect(getBtAbaOptionDisplayLabel(persistedOption)).toBe('Discussed domains/progress/data collection');
+    expect(BT_ABA_SUPERVISOR_SUPPORT_OPTIONS).toContain(persistedOption);
+    expect(getBtAbaOptionDisplayLabel('Problem-solved concerns')).toBe('Problem-solved concerns');
   });
 
   it('requires every clinical closeout section and BT signature', () => {

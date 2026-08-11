@@ -407,7 +407,14 @@ export const collectLayoutMetrics = async (
     const visibleTouchTargets = visibleControls
       .filter((element) => interactiveRoot?.contains(element) ?? false)
       .map((element) => {
-        const rect = element.getBoundingClientRect();
+        const associatedLabel = element instanceof HTMLInputElement
+          && (element.type === 'checkbox' || element.type === 'radio')
+          ? element.labels?.[0] ?? null
+          : null;
+        const touchTarget = associatedLabel && (interactiveRoot?.contains(associatedLabel) ?? false)
+          ? associatedLabel
+          : element;
+        const rect = touchTarget.getBoundingClientRect();
         return {
           width: Math.round(rect.width),
           height: Math.round(rect.height),

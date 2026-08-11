@@ -161,6 +161,10 @@ export function AddSessionNoteModal({
     () => goals.filter((goal) => goal.status !== 'archived'),
     [goals],
   );
+  const hasActiveDomains = useMemo(
+    () => programs.some((program) => program.status === 'active'),
+    [programs],
+  );
 
   // Goals grouped by program_id, ordered by the programs array.
   const goalsByProgram = useMemo(() => {
@@ -552,7 +556,7 @@ export function AddSessionNoteModal({
     }
 
     if (availableGoals.length === 0 && !isLoadingGoals && !isLoadingPrograms) {
-      showError('Add goals to a program before logging this note.');
+      showError('Add goals to a domain before logging this note.');
       return;
     }
 
@@ -1199,12 +1203,17 @@ export function AddSessionNoteModal({
           </div>
 
           <div>
-            <p className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Goals Addressed</p>
+            <p className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Domains &amp; Goals</p>
             {isLoadingGoals || isLoadingPrograms ? (
               <div className="text-sm text-gray-500 dark:text-gray-400">Loading goals…</div>
             ) : availableGoals.length === 0 ? (
-              <div className="text-sm text-gray-500 dark:text-gray-400">
-                No goals available for this client. Add goals in Programs &amp; Goals before logging.
+              <div className="space-y-1 text-sm text-gray-500 dark:text-gray-400">
+                <p>
+                  {hasActiveDomains
+                    ? 'No active goals found for this client.'
+                    : 'No active domains found for this client.'}
+                </p>
+                <p>Add goals in Domains &amp; Goals before logging.</p>
               </div>
             ) : isMinWidthSm ? (
               <div>{renderGoalsBankBody()}</div>

@@ -23,6 +23,7 @@ import {
   BT_ABA_PURPOSE_OPTIONS,
   BT_ABA_SKILL_STRATEGY_OPTIONS,
   BT_ABA_SUPERVISOR_SUPPORT_OPTIONS,
+  getBtAbaOptionDisplayLabel,
   type BtAbaSessionNoteResponses,
   validateBtAbaSessionNoteResponses,
 } from '../lib/bt-aba-session-note';
@@ -348,6 +349,7 @@ type BtCorrectionErrors = Partial<Record<BtCorrectionResponseKey, string>>;
 
 const btCorrectionInputClassName = 'w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-dark dark:text-white';
 const btCorrectionSectionClassName = 'space-y-4 rounded-lg border border-gray-200 p-4 dark:border-gray-700';
+const btCorrectionChoiceLabelClassName = 'flex min-h-11 items-center gap-2 text-sm text-gray-700 dark:text-gray-200';
 
 const normalizeBtCorrectionText = (value: unknown) => {
   if (typeof value !== 'string') {
@@ -932,7 +934,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <button
                       type="button"
                       onClick={resetBtCorrectionModalState}
-                      className="rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                      className="min-h-11 rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                     >
                       Close
                     </button>
@@ -976,7 +978,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.purpose_of_session}</legend>
                         <div className="grid gap-2 sm:grid-cols-2">
                           {BT_ABA_PURPOSE_OPTIONS.map((option, index) => (
-                            <label key={option} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+                            <label key={option} className={btCorrectionChoiceLabelClassName}>
                               <input
                                 data-field={index === 0 ? 'purpose_of_session' : undefined}
                                 type="checkbox"
@@ -1029,7 +1031,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.skill_strategies}</legend>
                         <div className="grid gap-2 sm:grid-cols-2">
                           {BT_ABA_SKILL_STRATEGY_OPTIONS.map((option, index) => (
-                            <label key={option} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+                            <label key={option} className={btCorrectionChoiceLabelClassName}>
                               <input
                                 data-field={index === 0 ? 'skill_strategies' : undefined}
                                 type="checkbox"
@@ -1064,7 +1066,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.behavior_strategies}</legend>
                         <div className="grid gap-2 sm:grid-cols-2">
                           {BT_ABA_BEHAVIOR_STRATEGY_OPTIONS.map((option, index) => (
-                            <label key={option} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+                            <label key={option} className={btCorrectionChoiceLabelClassName}>
                               <input
                                 data-field={index === 0 ? 'behavior_strategies' : undefined}
                                 type="checkbox"
@@ -1102,7 +1104,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.supervisor_support}</legend>
                         <div className="grid gap-2 sm:grid-cols-2">
                           {BT_ABA_SUPERVISOR_SUPPORT_OPTIONS.map((option, index) => (
-                            <label key={option} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+                            <label key={option} className={btCorrectionChoiceLabelClassName}>
                               <input
                                 data-field={index === 0 ? 'supervisor_support' : undefined}
                                 type="checkbox"
@@ -1111,7 +1113,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                                 onChange={(event) => toggleBtCorrectionSelection('supervisor_support', option, event.target.checked)}
                                 className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                               />
-                              <span>{option}</span>
+                              <span>{getBtAbaOptionDisplayLabel(option)}</span>
                             </label>
                           ))}
                         </div>
@@ -1168,7 +1170,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <h3 id="bt-daily-summary-heading" className="text-base font-semibold text-gray-900 dark:text-gray-100">Daily Summary Sheet</h3>
                       <fieldset className="space-y-2">
                         <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.data_point_scope}</legend>
-                        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                        <label className={btCorrectionChoiceLabelClassName}>
                           <input
                             data-field="data_point_scope"
                             type="radio"
@@ -1179,7 +1181,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           />
                           Include only linked data points
                         </label>
-                        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                        <label className={btCorrectionChoiceLabelClassName}>
                           <input
                             type="radio"
                             name="bt-correction-data-point-scope"
@@ -1190,7 +1192,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           Include all data points
                         </label>
                       </fieldset>
-                      <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+                      <label className={btCorrectionChoiceLabelClassName}>
                         <input type="checkbox" checked={false} disabled className="mt-0.5" />
                         Link unlinked data for this service date
                       </label>
@@ -1875,7 +1877,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <button
                     type="button"
                     onClick={resetBtCorrectionModalState}
-                    className="rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                    className="min-h-11 rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                   >
                     Close
                   </button>
@@ -1919,7 +1921,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.purpose_of_session}</legend>
                       <div className="grid gap-2 sm:grid-cols-2">
                         {BT_ABA_PURPOSE_OPTIONS.map((option, index) => (
-                          <label key={option} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+                          <label key={option} className={btCorrectionChoiceLabelClassName}>
                             <input
                               data-field={index === 0 ? 'purpose_of_session' : undefined}
                               type="checkbox"
@@ -1972,7 +1974,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.skill_strategies}</legend>
                       <div className="grid gap-2 sm:grid-cols-2">
                         {BT_ABA_SKILL_STRATEGY_OPTIONS.map((option, index) => (
-                          <label key={option} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+                          <label key={option} className={btCorrectionChoiceLabelClassName}>
                             <input
                               data-field={index === 0 ? 'skill_strategies' : undefined}
                               type="checkbox"
@@ -2007,7 +2009,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.behavior_strategies}</legend>
                       <div className="grid gap-2 sm:grid-cols-2">
                         {BT_ABA_BEHAVIOR_STRATEGY_OPTIONS.map((option, index) => (
-                          <label key={option} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+                          <label key={option} className={btCorrectionChoiceLabelClassName}>
                             <input
                               data-field={index === 0 ? 'behavior_strategies' : undefined}
                               type="checkbox"
@@ -2045,7 +2047,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.supervisor_support}</legend>
                       <div className="grid gap-2 sm:grid-cols-2">
                         {BT_ABA_SUPERVISOR_SUPPORT_OPTIONS.map((option, index) => (
-                          <label key={option} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+                          <label key={option} className={btCorrectionChoiceLabelClassName}>
                             <input
                               data-field={index === 0 ? 'supervisor_support' : undefined}
                               type="checkbox"
@@ -2054,7 +2056,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                               onChange={(event) => toggleBtCorrectionSelection('supervisor_support', option, event.target.checked)}
                               className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
-                            <span>{option}</span>
+                            <span>{getBtAbaOptionDisplayLabel(option)}</span>
                           </label>
                         ))}
                       </div>
@@ -2111,7 +2113,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <h3 id="bt-daily-summary-heading" className="text-base font-semibold text-gray-900 dark:text-gray-100">Daily Summary Sheet</h3>
                     <fieldset className="space-y-2">
                       <legend className="text-sm font-semibold text-gray-900 dark:text-gray-100">{BT_ABA_FIELD_LABELS.data_point_scope}</legend>
-                      <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                      <label className={btCorrectionChoiceLabelClassName}>
                         <input
                           data-field="data_point_scope"
                           type="radio"
@@ -2122,7 +2124,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         />
                         Include only linked data points
                       </label>
-                      <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                      <label className={btCorrectionChoiceLabelClassName}>
                         <input
                           type="radio"
                           name="bt-correction-data-point-scope"
@@ -2133,7 +2135,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         Include all data points
                       </label>
                     </fieldset>
-                    <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+                    <label className={btCorrectionChoiceLabelClassName}>
                       <input type="checkbox" checked={false} disabled className="mt-0.5" />
                       Link unlinked data for this service date
                     </label>

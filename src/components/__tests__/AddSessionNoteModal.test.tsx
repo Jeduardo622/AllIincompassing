@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react';
 import { renderWithProviders } from '../../test/utils';
 import { AddSessionNoteModal } from '../AddSessionNoteModal';
 import { supabase } from '../../lib/supabase';
@@ -355,10 +355,60 @@ describe('AddSessionNoteModal — per-goal note textareas', () => {
   it('goals are grouped under a program header', async () => {
     renderWithProviders(<AddSessionNoteModal {...defaultProps} />);
 
+    expect(await screen.findByText('Domains & Goals')).toBeInTheDocument();
     // Program header text appears above the goal list.
     await screen.findByText(/default program/i);
     // Goal checkbox still reachable.
     expect(screen.getByRole('checkbox', { name: /default goal/i })).toBeInTheDocument();
+  });
+
+  it('uses domain guidance when no active goals are available', async () => {
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') return buildChain([]) as any;
+      if (table === 'goals') return buildChain([]) as any;
+      if (table === 'sessions') return buildChainWithLimit([mockSession]) as any;
+      if (table === 'session_goals') return buildChain([]) as any;
+      return buildChain([]) as any;
+    });
+
+    renderWithProviders(<AddSessionNoteModal {...defaultProps} />);
+
+    await waitForElementToBeRemoved(screen.getByText('No active domains found for this client.'));
+    expect(await screen.findByText('No active domains found for this client.')).toBeInTheDocument();
+    expect(screen.getByText('Add goals in Domains & Goals before logging.')).toBeInTheDocument();
+  });
+
+  it('distinguishes an active domain with no goals from having no domains', async () => {
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') return buildChain([mockProgram]) as any;
+      if (table === 'goals') return buildChain([]) as any;
+      if (table === 'sessions') return buildChainWithLimit([mockSession]) as any;
+      if (table === 'session_goals') return buildChain([]) as any;
+      return buildChain([]) as any;
+    });
+
+    renderWithProviders(<AddSessionNoteModal {...defaultProps} />);
+
+    expect(await screen.findByText('No active goals found for this client.')).toBeInTheDocument();
+    expect(screen.queryByText('No active domains found for this client.')).not.toBeInTheDocument();
+  });
+
+  it('does not treat an inactive domain as active', async () => {
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') return buildChain([{ ...mockProgram, status: 'inactive' }]) as any;
+      if (table === 'goals') return buildChain([]) as any;
+      if (table === 'sessions') return buildChainWithLimit([mockSession]) as any;
+      if (table === 'session_goals') return buildChain([]) as any;
+      return buildChain([]) as any;
+    });
+
+    renderWithProviders(
+      <AddSessionNoteModal {...defaultProps} clientId="client-inactive-domain" />,
+    );
+
+    await waitForElementToBeRemoved(screen.getByText('No active domains found for this client.'));
+    expect(await screen.findByText('No active domains found for this client.')).toBeInTheDocument();
+    expect(screen.queryByText('No active goals found for this client.')).not.toBeInTheDocument();
   });
 
   it('shows measurement snapshot controls when a goal is checked', async () => {

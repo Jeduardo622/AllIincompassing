@@ -954,8 +954,8 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     });
 
-    expect(await screen.findByText("Could not load programs yet: Failed to load programs")).toBeInTheDocument();
-    expect(screen.getByText("No programs yet. Create a program to unlock goals and notes for this client.")).toBeInTheDocument();
+    expect(await screen.findByText("Could not load domains yet: Failed to load domains")).toBeInTheDocument();
+    expect(screen.getByText("No domains yet. Create a domain to unlock goals and notes for this client.")).toBeInTheDocument();
   });
 
   it("renders a non-blocking shell while programs are loading", async () => {
@@ -982,9 +982,9 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     });
 
-    expect(await screen.findByRole("heading", { name: /Add Program/i })).toBeInTheDocument();
-    expect(screen.getByText("Loading existing programs. You can still add a new program below.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Create Program" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Add Domain/i })).toBeInTheDocument();
+    expect(screen.getByText("Loading existing domains. You can still add a new domain below.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create Domain" })).toBeInTheDocument();
   });
 
   it("unlocks goal and note creation after creating a program while the programs query is still loading", async () => {
@@ -1028,13 +1028,13 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     });
 
-    fireEvent.change(await screen.findByPlaceholderText("Program name"), {
+    fireEvent.change(await screen.findByPlaceholderText("Domain name"), {
       target: { value: "Communication Program" },
     });
-    await user.click(screen.getByRole("button", { name: "Create Program" }));
+    await user.click(screen.getAllByRole("button", { name: "Create Domain" })[0]);
 
     await waitFor(() => {
-      expect(showSuccess).toHaveBeenCalledWith("Program created");
+      expect(showSuccess).toHaveBeenCalledWith("Domain created");
     });
 
     fireEvent.change(screen.getByLabelText(/Goal title/i), { target: { value: "Goal A" } });
@@ -1045,7 +1045,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       expect(screen.getByRole("button", { name: "Create Goal" })).toBeEnabled();
     });
 
-    fireEvent.change(screen.getByPlaceholderText("Add a program note"), {
+    fireEvent.change(screen.getByPlaceholderText("Add a domain note"), {
       target: { value: "Progress note" },
     });
 
@@ -1140,10 +1140,10 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     expect(await screen.findByText("Manual Communication Program")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Edit program Manual Communication Program" }));
-    fireEvent.change(screen.getByLabelText("Program name"), { target: { value: "  Updated Manual Program  " } });
-    fireEvent.change(screen.getByLabelText("Program description"), { target: { value: "Updated manual description" } });
-    await user.click(screen.getByRole("button", { name: "Save program changes" }));
+    await user.click(screen.getByRole("button", { name: "Edit domain Manual Communication Program" }));
+    fireEvent.change(screen.getByLabelText("Domain name"), { target: { value: "  Updated Manual Program  " } });
+    fireEvent.change(screen.getByLabelText("Domain description"), { target: { value: "Updated manual description" } });
+    await user.click(screen.getByRole("button", { name: "Save domain changes" }));
 
     await waitFor(() => {
       expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
@@ -1160,10 +1160,10 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(await screen.findByText("Updated Manual Program")).toBeInTheDocument();
     expect(screen.getByText("Updated manual description")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Edit program Promoted Behavior Program" }));
-    fireEvent.change(screen.getByLabelText("Program name"), { target: { value: "Updated Promoted Program" } });
-    fireEvent.change(screen.getByLabelText("Program description"), { target: { value: "   " } });
-    await user.click(screen.getByRole("button", { name: "Save program changes" }));
+    await user.click(screen.getByRole("button", { name: "Edit domain Promoted Behavior Program" }));
+    fireEvent.change(screen.getByLabelText("Domain name"), { target: { value: "Updated Promoted Program" } });
+    fireEvent.change(screen.getByLabelText("Domain description"), { target: { value: "   " } });
+    await user.click(screen.getByRole("button", { name: "Save domain changes" }));
 
     await waitFor(() => {
       expect(callEdgeFunctionHttp).toHaveBeenCalledWith(
@@ -1588,7 +1588,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       });
 
       expect(await screen.findByText("Communication Program")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Edit program Communication Program" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Edit domain Communication Program" })).toBeInTheDocument();
     },
   );
 
@@ -1683,12 +1683,12 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
       expect(await screen.findByText("Communication Program")).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: /Checklist Review/i })).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "Edit program Communication Program" })).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /Create Program/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Edit domain Communication Program" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Create Domain/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Create Goal/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Create Target/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Add Note/i })).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /Save Program Draft/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Save Domain Draft/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Save Goal Draft/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Publish Reviewed Assessment/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Review and publish drafts/i })).not.toBeInTheDocument();
@@ -1802,12 +1802,12 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     });
 
-    const programNameInput = await screen.findByPlaceholderText("Program name");
+    const programNameInput = await screen.findByPlaceholderText("Domain name");
     fireEvent.change(programNameInput, { target: { value: "Communication Program" } });
-    await user.click(screen.getByRole("button", { name: "Create Program" }));
+    await user.click(screen.getAllByRole("button", { name: "Create Domain" })[0]);
 
     await waitFor(() => {
-      expect(showSuccess).toHaveBeenCalledWith("Program created");
+      expect(showSuccess).toHaveBeenCalledWith("Domain created");
     });
 
     fireEvent.change(await screen.findByPlaceholderText("Goal title"), { target: { value: "Goal A" } });
@@ -1818,7 +1818,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
     await user.selectOptions(screen.getByLabelText("Domain"), "__create_new_domain__");
     await user.type(screen.getByLabelText("New domain name *"), "Social Communication");
-    await user.click(screen.getByRole("button", { name: "Create Domain" }));
+    await user.click(screen.getAllByRole("button", { name: "Create Domain" })[1]);
 
     await waitFor(() => {
       expect(goalDomainInsert).toHaveBeenCalledWith([
@@ -3047,13 +3047,13 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     });
 
-    fireEvent.change(await screen.findByPlaceholderText("Program name"), {
+    fireEvent.change(await screen.findByPlaceholderText("Domain name"), {
       target: { value: "Communication Program" },
     });
-    await user.click(screen.getByRole("button", { name: "Create Program" }));
+    await user.click(screen.getAllByRole("button", { name: "Create Domain" })[0]);
 
     await waitFor(() => {
-      expect(showSuccess).toHaveBeenCalledWith("Program created");
+      expect(showSuccess).toHaveBeenCalledWith("Domain created");
     });
 
     fireEvent.change(screen.getByPlaceholderText("Goal title"), { target: { value: "Goal A" } });
@@ -3172,13 +3172,13 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
           (init?.method ?? "GET").toUpperCase() === "GET",
       ).length;
 
-    fireEvent.change(await screen.findByPlaceholderText("Add a program note"), {
+    fireEvent.change(await screen.findByPlaceholderText("Add a domain note"), {
       target: { value: "Progress note" },
     });
     await user.click(screen.getByRole("button", { name: "Add Note" }));
 
     await waitFor(() => {
-      expect(showSuccess).toHaveBeenCalledWith("Program note added");
+      expect(showSuccess).toHaveBeenCalledWith("Domain note added");
     });
 
     expect(
@@ -3624,12 +3624,12 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     });
 
-    const programNameInput = await screen.findByPlaceholderText("Program name");
+    const programNameInput = await screen.findByPlaceholderText("Domain name");
     await user.type(programNameInput, "Fallback Program");
-    await user.click(screen.getByRole("button", { name: "Create Program" }));
+    await user.click(screen.getAllByRole("button", { name: "Create Domain" })[0]);
 
     await waitFor(() => {
-      expect(showSuccess).toHaveBeenCalledWith("Program created");
+      expect(showSuccess).toHaveBeenCalledWith("Domain created");
     });
     expect(await screen.findByText("Fallback Program")).toBeInTheDocument();
     expect(supabase.from).toHaveBeenCalledWith("programs");
@@ -5810,9 +5810,9 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     await screen.findByText("fba.pdf");
-    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Publish to Live Domains \+ Goals/i })).not.toBeInTheDocument();
     expect(showSuccess).not.toHaveBeenCalledWith(
-      "Published to live records. Created 2 production programs and 26 goals.",
+      "Published to live records. Created 2 production domains and 26 goals.",
     );
     invalidateQueriesSpy.mockRestore();
     confirmSpy.mockRestore();
@@ -5871,9 +5871,9 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     await screen.findByText("fba.pdf");
-    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Publish to Live Domains \+ Goals/i })).not.toBeInTheDocument();
     expect(showSuccess).not.toHaveBeenCalledWith(
-      "Published to live records. Created 1 production program and 26 goals.",
+      "Published to live records. Created 1 production domain and 26 goals.",
     );
     confirmSpy.mockRestore();
   });
@@ -5939,9 +5939,9 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     await screen.findByText("fba.pdf");
-    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Publish to Live Domains \+ Goals/i })).not.toBeInTheDocument();
     expect(showSuccess).not.toHaveBeenCalledWith(
-      "Published to live records. Created 1 production program and 26 goals.",
+      "Published to live records. Created 1 production domain and 26 goals.",
     );
     confirmSpy.mockRestore();
   });
@@ -6082,7 +6082,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     );
 
     expect(screen.queryByText("Draft changes pending publication.")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Save Program Draft/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Save Domain Draft/i })).not.toBeInTheDocument();
   });
 
   it("hydrates legacy target criteria into the short-term goal field and saves all three goals back into target_criteria", async () => {
@@ -6179,7 +6179,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     );
 
     expect(screen.queryByText("Select a valid assessment first.")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Publish to Live Domains \+ Goals/i })).not.toBeInTheDocument();
   });
 
   it("blocks publish with explicit checklist guidance when required rows are unresolved", async () => {
@@ -6732,7 +6732,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       );
     });
     expect(showSuccess).toHaveBeenCalledWith(
-      "Published to live records. Created 1 production program and 2 goals.",
+      "Published to live records. Created 1 production domain and 2 goals.",
     );
     expect(invalidateQueriesSpy).toHaveBeenCalled();
     invalidateQueriesSpy.mockRestore();
@@ -7013,7 +7013,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     expect(await screen.findByText("synthetic-published-iehp.docx")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Save Program Draft/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Save Domain Draft/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Save Goal Draft/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
     expect(screen.queryByText("Draft Review (Approve / Reject / Edit)")).not.toBeInTheDocument();
@@ -7031,7 +7031,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     );
 
-    const helperMessages = await screen.findAllByText("Create a program or select an existing one before adding goals or notes.");
+    const helperMessages = await screen.findAllByText("Create a domain or select an existing one before adding goals or notes.");
     expect(helperMessages).toHaveLength(4);
     expect(screen.getByRole("button", { name: /Create Goal/i })).toBeDisabled();
     expect(screen.getByLabelText(/Goal title/i)).toBeInTheDocument();
@@ -7054,10 +7054,10 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       },
     );
 
-    const helperMessages = await screen.findAllByText("Create a program or select an existing one before adding goals or notes.");
+    const helperMessages = await screen.findAllByText("Create a domain or select an existing one before adding goals or notes.");
     expect(helperMessages).toHaveLength(4);
     expect(screen.getByRole("button", { name: /Add Note/i })).toBeDisabled();
-    expect(screen.getByPlaceholderText("Add a program note")).toBeDisabled();
+    expect(screen.getByPlaceholderText("Add a domain note")).toBeDisabled();
   });
 
   it("deletes an uploaded assessment document from the queue", async () => {

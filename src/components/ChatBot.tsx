@@ -376,7 +376,7 @@ export function ChatBot({ isOpen, onOpenChange }: ChatBotProps = {}) {
               } = response.action.data;
 
               if (!sessionId || !programId || !goalId) {
-                throw new Error("Session start requires session_id, program_id, and goal_id");
+                throw new Error("Session start requires a session, domain, and goal");
               }
 
               setMessages((prev) => [

@@ -91,6 +91,7 @@ vi.mock('../session-notes/BtAbaSessionNoteForm', () => ({
       <p>Place: {context.placeOfService}</p>
       <p>Billing: {context.billingCode}</p>
       <p>Modifiers: {context.modifiers.join(', ') || 'Not recorded'}</p>
+      <p>Program labels: {context.programs.map((program) => program.name).join(', ') || 'None'}</p>
       <p>Goals: {context.programs.flatMap((program) => program.goals).join(', ') || 'None'}</p>
       <p>Linked count: {context.linkedDataPoints.length}</p>
       <p>All count: {context.allDataPoints.length}</p>
@@ -4901,7 +4902,49 @@ describe('SessionModal', () => {
     const disclosure = screen.getByRole('button', { name: /plan & goals/i });
 
     expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+    expect(disclosure).toHaveTextContent('Domain needed');
     expect(screen.getByText('Domains in this session')).toBeVisible();
+  });
+
+  it('passes the domain fallback label into BT closeout note context when the stored program is unavailable', async () => {
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        return buildChain(mockPrograms);
+      }
+      if (table === 'goals') {
+        return buildChain([{
+          ...mockGoals[0],
+          program_id: 'missing-program-id',
+        }]);
+      }
+      if (table === 'sessions') {
+        return buildChain([], {
+          program_id: 'missing-program-id',
+          goal_id: 'goal-1',
+          started_at: btInProgressSession.started_at,
+          location_type: null,
+        });
+      }
+      return buildChain([]);
+    });
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        dataCollectionOnly
+        session={{
+          ...btInProgressSession,
+          id: 'session-missing-program-fallback',
+          program_id: 'missing-program-id',
+          goal_id: 'goal-1',
+        }}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Close Session$/i }));
+
+    expect(await screen.findByRole('heading', { name: 'ABA Session Note' })).toBeInTheDocument();
+    expect(screen.getByText('Program labels: Domain')).toBeInTheDocument();
   });
 
   it('defaults a valid edited plan to a compact summary and preserves values across expansion', async () => {

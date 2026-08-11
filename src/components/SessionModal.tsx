@@ -1314,7 +1314,7 @@ export function SessionModal({
     () => selectedGoalsForSession.map((goal) => goal.title).join(', '),
     [selectedGoalsForSession],
   );
-  const planSummaryProgramName = programsById.get(programId ?? '')?.name ?? 'Program needed';
+  const planSummaryProgramName = programsById.get(programId ?? '')?.name ?? 'Domain needed';
   const planSummaryGoalName = selectedPrimaryGoal?.title ?? 'Goal needed';
   const canonicalStartGoalIds = useMemo(
     () => resolveSessionCloseRequiredGoalIds({
@@ -3634,7 +3634,7 @@ export function SessionModal({
                           .filter(Boolean),
                       }]
                     : selectedProgramIds.map((selectedProgramId) => ({
-                        name: programsById.get(selectedProgramId)?.name ?? 'Program',
+                        name: programsById.get(selectedProgramId)?.name ?? 'Domain',
                         goals: sessionNoteGoalIds
                           .map((selectedGoalId) => goalsById.get(selectedGoalId))
                           .filter((selectedGoal): selectedGoal is Goal => Boolean(selectedGoal?.program_id === selectedProgramId))

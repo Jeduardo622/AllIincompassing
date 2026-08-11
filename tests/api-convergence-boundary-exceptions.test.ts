@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,7 +12,8 @@ const writeJson = (filePath: string, value: unknown) => {
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 };
 
-const writeFixtureRepo = (root: string) => {
+const writeFixtureRepo = (root: string, options: { includeBoundaryMetadata?: boolean } = {}) => {
+  const { includeBoundaryMetadata = true } = options;
   mkdirSync(path.join(root, "src"), { recursive: true });
   mkdirSync(path.join(root, "netlify", "functions"), { recursive: true });
 
@@ -50,14 +51,18 @@ const writeFixtureRepo = (root: string) => {
         status: "migrating",
         owner: "Backend Platform",
       },
-      {
-        functionFile: "payroll-time-events.ts",
-        publicApiPath: "/api/payroll-time-events",
-        edgeTarget: "payroll-time-events",
-        wave: "B",
-        status: "migrating",
-        owner: "Backend Platform",
-      },
+      ...(includeBoundaryMetadata
+        ? [
+            {
+              functionFile: "payroll-time-events.ts",
+              publicApiPath: "/api/payroll-time-events",
+              edgeTarget: "payroll-time-events",
+              wave: "B",
+              status: "migrating",
+              owner: "Backend Platform",
+            },
+          ]
+        : []),
     ],
   });
 
@@ -73,14 +78,18 @@ const writeFixtureRepo = (root: string) => {
         wave: "A",
         authoritativeTarget: "get-dashboard-data",
       },
-      {
-        publicApiPath: "/api/payroll-time-events",
-        functionFile: "payroll-time-events.ts",
-        status: "migrating",
-        owner: "Backend Platform",
-        wave: "B",
-        authoritativeTarget: "payroll-time-events",
-      },
+      ...(includeBoundaryMetadata
+        ? [
+            {
+              publicApiPath: "/api/payroll-time-events",
+              functionFile: "payroll-time-events.ts",
+              status: "migrating",
+              owner: "Backend Platform",
+              wave: "B",
+              authoritativeTarget: "payroll-time-events",
+            },
+          ]
+        : []),
     ],
   });
 
@@ -94,13 +103,18 @@ const writeFixtureRepo = (root: string) => {
         owner: "Backend Platform",
         expiresAt: "2026-09-01T23:59:59.999Z",
       },
-      {
-        functionFile: "payroll-time-events.ts",
-        publicApiPath: "/api/payroll-time-events",
-        reason: "The public API adapter remains for contract stability while direct Edge convergence is reviewed.",
-        owner: "Backend Platform",
-        expiresAt: "2026-09-01T23:59:59.999Z",
-      },
+      ...(includeBoundaryMetadata
+        ? [
+            {
+              functionFile: "payroll-time-events.ts",
+              publicApiPath: "/api/payroll-time-events",
+              reason:
+                "The public API adapter remains for contract stability while direct Edge convergence is reviewed.",
+              owner: "Backend Platform",
+              expiresAt: "2026-09-01T23:59:59.999Z",
+            },
+          ]
+        : []),
     ],
   });
 };
@@ -117,6 +131,26 @@ describe("API convergence boundary exceptions", () => {
           encoding: "utf8",
           stdio: "pipe",
         })).not.toThrow();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it("rejects a boundary exception omitted from convergence tracking", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "api-convergence-boundary-missing-"));
+    try {
+      writeFixtureRepo(root, { includeBoundaryMetadata: false });
+
+      const result = spawnSync(process.execPath, [scriptPath], {
+        cwd: root,
+        encoding: "utf8",
+        stdio: "pipe",
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "Missing convergence tracker entry for boundary exception payroll-time-events.ts.",
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

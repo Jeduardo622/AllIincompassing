@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-02",
+  "updatedAt": "2026-08-11",
   "ownerGroup": "Platform Engineering",
   "criticalEndpoints": [
     {
@@ -33,6 +33,46 @@
       "owner": "Backend Platform",
       "wave": "B",
       "authoritativeTarget": "sessions-start"
+    },
+    {
+      "publicApiPath": "/.netlify/functions/admin-invite-email",
+      "functionFile": "admin-invite-email.ts",
+      "status": "migrating",
+      "owner": "Backend Platform",
+      "wave": "B",
+      "authoritativeTarget": "admin-invite"
+    },
+    {
+      "publicApiPath": "/.netlify/functions/assessment-documents-extract-background",
+      "functionFile": "assessment-documents-extract-background.ts",
+      "status": "migrating",
+      "owner": "Backend Platform",
+      "wave": "B",
+      "authoritativeTarget": "extract-assessment-fields"
+    },
+    {
+      "publicApiPath": "/api/sessions-complete",
+      "functionFile": "sessions-complete.ts",
+      "status": "migrating",
+      "owner": "Backend Platform",
+      "wave": "B",
+      "authoritativeTarget": "sessions-complete"
+    },
+    {
+      "publicApiPath": "/api/sessions-week-forward",
+      "functionFile": "sessions-week-forward.ts",
+      "status": "migrating",
+      "owner": "Backend Platform",
+      "wave": "B",
+      "authoritativeTarget": "legacy-server-sessions-week-forward-handler"
+    },
+    {
+      "publicApiPath": "/api/session-notes/upsert",
+      "functionFile": "session-notes-upsert.ts",
+      "status": "migrating",
+      "owner": "Backend Platform",
+      "wave": "B",
+      "authoritativeTarget": "legacy-server-session-notes-upsert-handler"
     },
     {
       "publicApiPath": "/api/assessment-checklist",

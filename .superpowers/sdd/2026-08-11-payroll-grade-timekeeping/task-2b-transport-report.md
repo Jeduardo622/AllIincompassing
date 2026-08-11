@@ -40,6 +40,9 @@
 3. `npm test -- --run tests/api-convergence-boundary-exceptions.test.ts`
    - failed before the policy continuation:
      - `check-api-convergence.mjs` rejected an active `boundaryExceptions` adapter because it was not in `legacyCompatibilityFunctions`
+4. `npm test -- --run tests/api-convergence-boundary-exceptions.test.ts`
+   - failed after adding the round 2 negative fixture:
+     - a boundary exception omitted from convergence, authority, and runtime metadata exited `0` instead of the required `1`
 
 ### GREEN
 
@@ -48,19 +51,33 @@
 2. `npm test -- --run src/server/__tests__/payrollTimeEventsHandler.test.ts`
    - passed: `11 passed`
 3. `npm test -- --run tests/api-convergence-boundary-exceptions.test.ts`
-   - passed: `1 passed`
+   - passed: `2 passed`
 4. `node scripts/ci/check-api-convergence.mjs`
-   - passed: `14 tracked entries, 4 retired, 9 legacy compatibility shims, 6 boundary exceptions`
+   - passed: `19 tracked entries, 4 retired, 9 legacy compatibility shims, 6 boundary exceptions`
 
 ## Implementation Summary
 
 - Rejected forbidden authority fields from the raw top-level action object in both the Edge handler and the local caller-JWT server fallback before Zod strips unknown keys.
 - Mapped SQLSTATE `23514` payroll lock/sequencing/state failures to HTTP `409` with safe code `state_conflict` while preserving distinct `23505` idempotency-conflict handling.
 - Added `/api/payroll-time-events` authority metadata to the runtime exception, critical endpoint authority, and convergence inventory files using owner `Backend Platform`, wave `B`, status `migrating`, authoritative target `payroll-time-events`, and the established `2026-09-01T23:59:59.999Z` review target.
-- Narrowed `scripts/ci/check-api-convergence.mjs` so non-retired tracked `boundaryExceptions` are validated as first-class active adapters with convergence, authority, and runtime-exception metadata, without requiring legacy classification.
-- Added a focused static contract test that executes the convergence script against a temporary fixture repo and proves an active `boundaryExceptions` transport adapter passes without appearing in `legacyCompatibilityFunctions`.
+- Narrowed `scripts/ci/check-api-convergence.mjs` so every `boundaryExceptions` file must have a convergence entry, after which the existing authority and runtime-exception checks apply without requiring legacy classification.
+- Added a focused static contract test that executes the convergence script against temporary fixture repos and proves both the complete happy path and rejection when a boundary exception is absent from convergence tracking.
+- Backfilled convergence, authority, and expiring runtime-exception metadata for the five pre-existing boundary exceptions so all six active boundary adapters satisfy the new completeness rule without changing legacy or retired classifications.
 
 ## Verification Run
+
+### Fix Round 2 Passed
+
+- `npm test -- --run tests/api-convergence-boundary-exceptions.test.ts`
+  - passed: `2 passed`
+- `node scripts/ci/check-api-convergence.mjs`
+  - passed: `19 tracked entries, 4 retired, 9 legacy compatibility shims, 6 boundary exceptions`
+- `node scripts/ci/check-api-boundary.mjs`
+  - passed: `17 Netlify functions accounted for by explicit policy`
+- `npm run ci:check-focused`
+  - passed: all locally available policy checks
+- `npm run lint`
+- `npm run typecheck`
 
 ### Passed
 
@@ -86,8 +103,10 @@
 
 ## Scope Notes
 
-- `deno.lock` and `reports/test-reliability-latest.json` were restored to `HEAD` after verification because their diffs were generated unrelated drift outside the approved commit scope.
+- `deno.lock` was already modified when fix round 2 began. It was left untouched and excluded from the scoped commit.
+- `reports/test-reliability-latest.json` remains at `HEAD`.
 
 ## Residual Risk
 
 - The normal-environment `npm run test:ci` still exceeds the default Node heap in this repository and requires the documented process-only `NODE_OPTIONS=--max-old-space-size=8192` rerun to complete successfully.
+- All boundary exception runtime metadata uses the established `2026-09-01T23:59:59.999Z` review expiry and must be renewed or retired before that date.

@@ -139,6 +139,9 @@ const run = async () => {
   }
 
   for (const fileName of boundaryExceptions) {
+    if (!byFile.has(fileName)) {
+      errors.push(`Missing convergence tracker entry for boundary exception ${fileName}.`);
+    }
     if (legacy.has(fileName)) {
       errors.push(`${fileName} cannot be classified as both a boundary exception and a legacy compatibility function.`);
     }

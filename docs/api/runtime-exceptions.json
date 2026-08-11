@@ -64,6 +64,41 @@
       "expiresAt": "2026-09-01T23:59:59.999Z"
     },
     {
+      "functionFile": "admin-invite-email.ts",
+      "publicApiPath": "/.netlify/functions/admin-invite-email",
+      "reason": "The signed Netlify SMTP delivery adapter remains active because the `admin-invite` Edge authority delegates outbound email delivery to this boundary; re-review for replacement or retirement in the next policy pass.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-09-01T23:59:59.999Z"
+    },
+    {
+      "functionFile": "assessment-documents-extract-background.ts",
+      "publicApiPath": "/.netlify/functions/assessment-documents-extract-background",
+      "reason": "The Netlify background adapter still claims and coordinates assessment extraction work before invoking edge `extract-assessment-fields`; re-review for direct Edge convergence or retirement in the next policy pass.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-09-01T23:59:59.999Z"
+    },
+    {
+      "functionFile": "sessions-complete.ts",
+      "publicApiPath": "/api/sessions-complete",
+      "reason": "The public API adapter remains for same-origin contract stability while completion authority is forwarded to edge `sessions-complete`; re-review for direct Edge convergence or retirement in the next policy pass.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-09-01T23:59:59.999Z"
+    },
+    {
+      "functionFile": "sessions-week-forward.ts",
+      "publicApiPath": "/api/sessions-week-forward",
+      "reason": "Week-forward scheduling still executes in the legacy server authority handler behind the public API adapter; re-review for Edge convergence or retirement in the next policy pass.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-09-01T23:59:59.999Z"
+    },
+    {
+      "functionFile": "session-notes-upsert.ts",
+      "publicApiPath": "/api/session-notes/upsert",
+      "reason": "Session-note upsert authority still executes in the legacy server handler behind the public API adapter; re-review for Edge convergence or retirement in the next policy pass.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-09-01T23:59:59.999Z"
+    },
+    {
       "functionFile": "payroll-time-events.ts",
       "publicApiPath": "/api/payroll-time-events",
       "reason": "The public API adapter remains for contract stability while direct Edge convergence is reviewed.",

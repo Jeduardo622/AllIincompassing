@@ -45,6 +45,8 @@ The current terminology branch changes `src/components/ClientDetails/ProgramsGoa
 - rolling manifest path: `docs/ai/reviews/WIN-275-solo-maintainer-attestation.json`
 - manifest hash recorded there for `src/components/ClientDetails/ProgramsGoalsTab.tsx`: `fbc032c2dddca32dd846ce1a89e80fdd0cb45500bb31f21c773cc2c33dd74fa4`
 - current canonical terminology-branch hash for that file: `c985272569a74c67c676c31e2f2a6490af2bfcce139e7852364209b3c8a64dc8`
+- canonicalization: UTF-8 text with CRLF normalized to LF, matching `tests/agentWorkLedgerHostedShadowProof.test.ts`
+- raw Windows workspace-byte SHA-256 from `Get-FileHash`: `88ac7775906c914364b54b4b70223ee39df9f76949c3a134485628ed1cfcb76f`
 
 ## Rolling Manifest Decision
 

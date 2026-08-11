@@ -99,11 +99,12 @@
       "src/components/__tests__/SchedulingFlow.test.tsx",
       "src/components/session-notes/__tests__/BtAbaSessionNoteForm.test.tsx"
     ],
-    "currentUiHashes": {
-      "src/components/ClientDetails/ProgramsGoalsTab.tsx": "c985272569a74c67c676c31e2f2a6490af2bfcce139e7852364209b3c8a64dc8",
-      "src/pages/ClientDetails.tsx": "29cf207ff1305ed4dcf426cb307f628b6bc044423855373f7806bf5452ecd094",
-      "src/components/SessionModal.tsx": "0b4faa809e99c3cc2842f36b818cefce0517f0a7f2f787858e8ed3fe8c9947b9",
-      "src/components/AddSessionNoteModal.tsx": "6478ebf0bdd044f59a57799d95a78e5f4c499e94305f98753a0f50aff49691c1"
+    "protectedSurfaceHash": {
+      "path": "src/components/ClientDetails/ProgramsGoalsTab.tsx",
+      "algorithm": "sha256",
+      "canonicalization": "UTF-8 text with CRLF normalized to LF, matching tests/agentWorkLedgerHostedShadowProof.test.ts",
+      "canonicalSha256": "c985272569a74c67c676c31e2f2a6490af2bfcce139e7852364209b3c8a64dc8",
+      "rawWindowsWorkspaceSha256": "88ac7775906c914364b54b4b70223ee39df9f76949c3a134485628ed1cfcb76f"
     }
   },
   "expectedHashDrift": {
@@ -113,7 +114,8 @@
       {
         "path": "src/components/ClientDetails/ProgramsGoalsTab.tsx",
         "manifestSha256": "fbc032c2dddca32dd846ce1a89e80fdd0cb45500bb31f21c773cc2c33dd74fa4",
-        "currentBranchSha256": "c985272569a74c67c676c31e2f2a6490af2bfcce139e7852364209b3c8a64dc8"
+        "currentBranchCanonicalSha256": "c985272569a74c67c676c31e2f2a6490af2bfcce139e7852364209b3c8a64dc8",
+        "rawWindowsWorkspaceSha256": "88ac7775906c914364b54b4b70223ee39df9f76949c3a134485628ed1cfcb76f"
       }
     ],
     "noManifestUpdatePerformed": true

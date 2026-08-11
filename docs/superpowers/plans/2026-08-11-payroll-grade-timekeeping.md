@@ -11,8 +11,9 @@
 ## Global Constraints
 
 - Classification is `high-risk human-reviewed`; lane is `critical` for every implementation PR.
-- Create and link a Linear issue before implementation begins. Use a parent issue with one child issue per PR below.
+- Link a Linear issue before implementation begins. Reuse and update an existing relevant issue when workspace plan limits prevent issue creation; existing issue linkage plus status/comment updates satisfies the critical-lane tracking requirement.
 - Create every migration with the exact `npm run migration:new -- payroll_timekeeping_foundation`, `payroll_timesheet_snapshots`, `payroll_approval_workflow`, or `payroll_export_ledger` command listed in its task so the repository generator supplies the UTC prefix and governance headers; never hand-invent a migration timestamp.
+- Replace the generator's placeholder `@migration-dependencies: none` with the exact latest prerequisite migration before implementation; for PR 1 at this baseline that prerequisite is `20260810222545_bt_closeout_legacy_therapist_compat.sql`.
 - Required specialist sequence per PR: `specification-engineer` -> `software-architect` -> `implementation-engineer` -> `code-review-engineer` -> `test-engineer` -> `security-engineer` -> `supabase-reviewer`; add `devops-engineer` for Netlify/API routing and `performance-engineer` for calculation, period, and export query paths.
 - Independent-human review is required before merge. Codex must not merge or dispatch through the solo-maintainer exception.
 - Keep the feature flag `payroll_timekeeping_v1` default-disabled and deny all payroll mutation/export operations when it is disabled.
@@ -24,7 +25,7 @@
 - Never auto-deduct meals. Paid rest breaks remain inside a shift.
 - Raw events, snapshots, approvals, export runs, and export rows are append-only through application roles.
 - Every mutation requires an idempotency key and commits its audit/result atomically.
-- Authorize organization membership from canonical `user_roles`; never from `profiles.role`, auth metadata, UI visibility, or a client-supplied organization ID.
+- V1 supports one active payroll organization per authenticated user. Derive the actor organization from `app.resolve_user_organization_id(auth.uid())`, require it to match the payroll target, and independently require an active canonical `user_roles` membership; never authorize from `profiles.role`, auth metadata, UI visibility, a client-supplied organization ID, or the existing super-admin shortcut.
 - Do not reuse scheduling tenant fallback or static `AppRole`/`RoleGuard` capabilities as payroll authority. Payroll route manifests and navigation are presentation hints only; protected bootstrap/API responses are authoritative.
 - Never include session IDs, client IDs, names, diagnoses, goals, notes, authorization data, or other PHI in payroll CSV output or telemetry.
 - Never log raw payroll rows, hourly rates, gross amounts, correction narratives, attendance/session references, or CSV bytes. Log only safe machine codes, record counts, opaque IDs, and checksums.
@@ -56,6 +57,7 @@ export type PayrollCapability =
   | "time.request_correction_self"
   | "time.review_assigned"
   | "time.approve_assigned"
+  | "session_attendance.record_assigned"
   | "payroll.configure_employment"
   | "payroll.resolve_exceptions"
   | "payroll.lock_period"
@@ -74,14 +76,15 @@ export type SessionAttendanceEventType = "session_started" | "session_ended";
 export type WorkCategory = "direct_service" | "administration" | "travel" | "training";
 export type WorkLocation = "client_site" | "office" | "home" | "community" | "other";
 
-export type PayrollMutationEnvelope<T> = {
+export type PayrollMutationEnvelope<T extends { idempotencyKey?: string }> = {
   data: T;
-  idempotencyKey: string;
   occurredAt: string;
   timezone: string;
   workLocation: WorkLocation;
 };
 ```
+
+Subunit A clarification: the SQL RPC argument `idempotency_key` is authoritative. `PayrollMutationEnvelope.data.idempotencyKey` is optional; when present it must match the SQL argument exactly.
 
 Authoritative mutation functions:
 
@@ -98,6 +101,7 @@ public.create_payroll_export(target_pay_period_id uuid, adapter_version text, id
 ```
 
 The public functions derive actor and organization from `auth.uid()` and canonical membership. They do not accept actor or organization IDs in request payloads.
+`session_attendance.record_assigned` is the only delegated attendance-write capability in PR 1. It is scoped to active, nonexpired canonical `admin`, `super_admin`, and `admin_schedule` memberships, and it never grants payroll time mutation authority or payroll-admin compensation/lock/export authority.
 
 ### Task 1: Protected Payroll Foundation (PR 1)
 
@@ -118,11 +122,11 @@ The public functions derive actor and organization from `auth.uid()` and canonic
 
 **Interfaces:**
 - Consumes: canonical `user_roles`, `roles`, `public.feature_flags`, `public.organization_feature_flags`, `auth.uid()`, organization and profile foreign keys.
-- Produces: the stable types and SQL functions listed above; PR 1 implements feature/capability checks and the three event/correction mutation functions. Snapshot, approval, and export functions remain absent until their owning PRs.
+- Produces: the stable types and SQL functions listed above; PR 1 implements feature/capability checks and all four event/correction mutation functions. Snapshot, approval, and export functions remain absent until their owning PRs.
 
 - [ ] **Step 1: Create the Linear execution hierarchy and route the exact PR 1 slice**
 
-Create one parent issue named `Payroll-grade timekeeping v1` and child issue `Payroll PR 1: protected foundation`. Record this route card in the child issue and design tracking section:
+Reuse `WIN-219` as the existing tracking parent and maintain status/comment updates because the workspace issue limit prevents a dedicated parent/child hierarchy. Record this route card in the issue comment and design tracking section:
 
 ```text
 classification: high-risk human-reviewed
@@ -189,7 +193,7 @@ The migration must create enums/check constraints for California-only v1 and use
 ```sql
 create table public.employment_profiles (
   id uuid primary key default gen_random_uuid(),
-  organization_id uuid not null references public.organizations(id),
+  organization_id uuid not null references public.organizations(id) on delete restrict,
   user_id uuid not null references auth.users(id),
   employee_number text not null,
   payroll_employee_id text not null,
@@ -198,36 +202,44 @@ create table public.employment_profiles (
   timezone text not null,
   active_from date not null,
   active_through date,
-  therapist_id uuid references public.therapists(id),
+  therapist_id uuid,
   created_at timestamptz not null default now(),
   unique (organization_id, employee_number),
   unique (organization_id, payroll_employee_id),
   unique (organization_id, user_id, active_from),
+  unique (id, organization_id),
+  foreign key (therapist_id, organization_id)
+    references public.therapists(id, organization_id) on delete restrict,
   check (active_through is null or active_through >= active_from)
 );
 
 create table public.employee_rate_versions (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id),
-  employment_profile_id uuid not null references public.employment_profiles(id),
+  employment_profile_id uuid not null,
   hourly_rate_cents integer not null check (hourly_rate_cents > 0),
   effective_from timestamptz not null,
   effective_through timestamptz,
   created_by uuid not null references auth.users(id),
   created_at timestamptz not null default now(),
+  unique (id, organization_id),
+  foreign key (employment_profile_id, organization_id)
+    references public.employment_profiles(id, organization_id) on delete restrict,
   check (effective_through is null or effective_through > effective_from)
 );
 ```
 
 `payroll_organization_settings` stores the opaque external organization payroll identifier and default workday/workweek configuration. Employment profiles store an opaque external employee payroll identifier. Use exclusion constraints to prevent overlapping active rate, manager, and pay-group assignment ranges. `pay_groups.cadence` permits `weekly`, `biweekly`, and `monthly`; an assignment trigger rejects monthly for active CA/TX/AZ nonexempt employees unless a future validated policy version explicitly supports it. Seed `payroll_timekeeping_v1` with `default_enabled=false` and a California ordinary-nonexempt policy version with `activation_status='inactive'`.
 
-Repeat `organization_id` on every tenant-bound child table, add unique `(id, organization_id)` keys, and use composite foreign keys with `ON DELETE RESTRICT` so a child cannot reference a parent from another organization.
+V1 permits an authenticated user to have only one active payroll organization at a time. Add a cross-organization exclusion constraint on `employment_profiles.user_id` using a half-open `daterange(active_from, active_through + 1, '[)')`; a future multi-organization model requires an organization-keyed actor-membership design and is out of scope.
+
+Add a unique `(id, organization_id)` constraint to `public.therapists` before creating the optional composite therapist link; `therapists.organization_id` is already non-null and `id` is already primary, so this only supplies the composite reference target. Repeat `organization_id` on every tenant-bound child table, add unique `(id, organization_id)` keys, and use composite foreign keys with `ON DELETE RESTRICT` so a child cannot reference a parent from another organization.
 
 Seed a minimum payroll retention of four years. `payroll_retention_policies` may extend but not shorten that period. `payroll_legal_holds` can suspend future disposal by organization, employee, pay period, or record category. V1 implements retention metadata and hold enforcement only; it does not implement destructive pruning.
 
 - [ ] **Step 5: Implement capability derivation and least-privilege RLS**
 
-`app.payroll_actor_has_capability` must first prove active canonical org membership through `user_roles`. Self capabilities require an active matching `employment_profiles.user_id`. Manager capabilities require an effective `employee_manager_assignments` row. Compensation/configure/lock/export capabilities require an explicit effective `payroll_capability_grants` row and an eligible canonical admin role.
+`app.payroll_actor_has_capability` must require an active `profiles` row whose `organization_id` equals both `app.resolve_user_organization_id(auth.uid())` and `target_organization_id`, then directly verify an active, nonexpired canonical `user_roles` row; it must not call `app.user_has_role_for_org` or inherit its super-admin bypass. Self capabilities require an active matching `employment_profiles.user_id`. Manager capabilities require an effective `employee_manager_assignments` row. Compensation/configure/lock/export capabilities require an explicit effective `payroll_capability_grants` row and a canonical `admin` or `super_admin` membership. `admin_schedule`, `bcba`, `midtier`, therapist/BT, and client roles are ineligible for payroll-admin grants.
 
 Policies must enforce:
 
@@ -259,6 +271,7 @@ it("allows an employee to read only their own source events");
 it("allows an assigned manager to read assigned time without rates");
 it("requires explicit payroll grant for compensation and export access");
 it("rejects metadata-only and profiles.role-only authority");
+it("rejects overlapping active payroll employment across organizations");
 it("prevents retention below four years and blocks disposal under legal hold");
 ```
 

@@ -4028,6 +4028,285 @@ export type Database = {
         }
         Relationships: []
       }
+      employee_manager_assignments: {
+        Row: {
+          created_at: string
+          effective_from: string
+          effective_through: string | null
+          employment_profile_id: string
+          id: string
+          manager_user_id: string
+          organization_id: string
+        }
+        Insert: {
+          created_at?: string
+          effective_from: string
+          effective_through?: string | null
+          employment_profile_id: string
+          id?: string
+          manager_user_id: string
+          organization_id: string
+        }
+        Update: {
+          created_at?: string
+          effective_from?: string
+          effective_through?: string | null
+          employment_profile_id?: string
+          id?: string
+          manager_user_id?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_manager_assignments_employment_profile_id_organiz_fkey"
+            columns: ["employment_profile_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employment_profiles"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "employee_manager_assignments_manager_user_id_fkey"
+            columns: ["manager_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_manager_assignments_manager_user_id_fkey"
+            columns: ["manager_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "employee_manager_assignments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_rate_versions: {
+        Row: {
+          created_at: string
+          created_by: string
+          effective_from: string
+          effective_through: string | null
+          employment_profile_id: string
+          hourly_rate_cents: number
+          id: string
+          organization_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          effective_from: string
+          effective_through?: string | null
+          employment_profile_id: string
+          hourly_rate_cents: number
+          id?: string
+          organization_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          effective_from?: string
+          effective_through?: string | null
+          employment_profile_id?: string
+          hourly_rate_cents?: number
+          id?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_rate_versions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_rate_versions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "employee_rate_versions_employment_profile_id_organization__fkey"
+            columns: ["employment_profile_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employment_profiles"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "employee_rate_versions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_time_events: {
+        Row: {
+          actor_user_id: string
+          created_at: string
+          employment_profile_id: string
+          event_at: string
+          event_type: Database["public"]["Enums"]["payroll_event_type"]
+          id: string
+          metadata: Json
+          organization_id: string
+          replacement_for_event_id: string | null
+          source_note: string | null
+          source_timezone: string
+          work_category: Database["public"]["Enums"]["work_category"] | null
+          work_location: Database["public"]["Enums"]["work_location"]
+        }
+        Insert: {
+          actor_user_id: string
+          created_at?: string
+          employment_profile_id: string
+          event_at: string
+          event_type: Database["public"]["Enums"]["payroll_event_type"]
+          id?: string
+          metadata?: Json
+          organization_id: string
+          replacement_for_event_id?: string | null
+          source_note?: string | null
+          source_timezone: string
+          work_category?: Database["public"]["Enums"]["work_category"] | null
+          work_location: Database["public"]["Enums"]["work_location"]
+        }
+        Update: {
+          actor_user_id?: string
+          created_at?: string
+          employment_profile_id?: string
+          event_at?: string
+          event_type?: Database["public"]["Enums"]["payroll_event_type"]
+          id?: string
+          metadata?: Json
+          organization_id?: string
+          replacement_for_event_id?: string | null
+          source_note?: string | null
+          source_timezone?: string
+          work_category?: Database["public"]["Enums"]["work_category"] | null
+          work_location?: Database["public"]["Enums"]["work_location"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_time_events_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_time_events_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "employee_time_events_employment_profile_id_organization_id_fkey"
+            columns: ["employment_profile_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employment_profiles"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "employee_time_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_time_events_replacement_for_event_id_organization_fkey"
+            columns: ["replacement_for_event_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employee_time_events"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      employment_profiles: {
+        Row: {
+          active_from: string
+          active_through: string | null
+          classification: string
+          created_at: string
+          employee_number: string
+          home_jurisdiction: string
+          id: string
+          organization_id: string
+          payroll_employee_id: string
+          therapist_id: string | null
+          timezone: string
+          user_id: string
+        }
+        Insert: {
+          active_from: string
+          active_through?: string | null
+          classification: string
+          created_at?: string
+          employee_number: string
+          home_jurisdiction: string
+          id?: string
+          organization_id: string
+          payroll_employee_id: string
+          therapist_id?: string | null
+          timezone: string
+          user_id: string
+        }
+        Update: {
+          active_from?: string
+          active_through?: string | null
+          classification?: string
+          created_at?: string
+          employee_number?: string
+          home_jurisdiction?: string
+          id?: string
+          organization_id?: string
+          payroll_employee_id?: string
+          therapist_id?: string | null
+          timezone?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employment_profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employment_profiles_therapist_id_organization_id_fkey"
+            columns: ["therapist_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "employment_profiles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employment_profiles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       error_taxonomy: {
         Row: {
           category: string
@@ -5831,6 +6110,529 @@ export type Database = {
           },
         ]
       }
+      pay_group_assignments: {
+        Row: {
+          created_at: string
+          effective_from: string
+          effective_through: string | null
+          employment_profile_id: string
+          id: string
+          organization_id: string
+          pay_group_id: string
+        }
+        Insert: {
+          created_at?: string
+          effective_from: string
+          effective_through?: string | null
+          employment_profile_id: string
+          id?: string
+          organization_id: string
+          pay_group_id: string
+        }
+        Update: {
+          created_at?: string
+          effective_from?: string
+          effective_through?: string | null
+          employment_profile_id?: string
+          id?: string
+          organization_id?: string
+          pay_group_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pay_group_assignments_employment_profile_id_organization_i_fkey"
+            columns: ["employment_profile_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employment_profiles"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "pay_group_assignments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pay_group_assignments_pay_group_id_organization_id_fkey"
+            columns: ["pay_group_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "pay_groups"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      pay_groups: {
+        Row: {
+          cadence: Database["public"]["Enums"]["pay_group_cadence"]
+          created_at: string
+          id: string
+          name: string
+          organization_id: string
+          timezone: string
+        }
+        Insert: {
+          cadence: Database["public"]["Enums"]["pay_group_cadence"]
+          created_at?: string
+          id?: string
+          name: string
+          organization_id: string
+          timezone: string
+        }
+        Update: {
+          cadence?: Database["public"]["Enums"]["pay_group_cadence"]
+          created_at?: string
+          id?: string
+          name?: string
+          organization_id?: string
+          timezone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pay_groups_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pay_periods: {
+        Row: {
+          created_at: string
+          ends_on: string
+          exported_at: string | null
+          id: string
+          locked_at: string | null
+          organization_id: string
+          pay_group_id: string
+          starts_on: string
+        }
+        Insert: {
+          created_at?: string
+          ends_on: string
+          exported_at?: string | null
+          id?: string
+          locked_at?: string | null
+          organization_id: string
+          pay_group_id: string
+          starts_on: string
+        }
+        Update: {
+          created_at?: string
+          ends_on?: string
+          exported_at?: string | null
+          id?: string
+          locked_at?: string | null
+          organization_id?: string
+          pay_group_id?: string
+          starts_on?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pay_periods_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pay_periods_pay_group_id_organization_id_fkey"
+            columns: ["pay_group_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "pay_groups"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      payroll_audit_events: {
+        Row: {
+          actor_user_id: string
+          created_at: string
+          id: string
+          operation: string
+          organization_id: string
+          payload: Json
+          target_row_id: string
+          target_table: string
+        }
+        Insert: {
+          actor_user_id: string
+          created_at?: string
+          id?: string
+          operation: string
+          organization_id: string
+          payload?: Json
+          target_row_id: string
+          target_table: string
+        }
+        Update: {
+          actor_user_id?: string
+          created_at?: string
+          id?: string
+          operation?: string
+          organization_id?: string
+          payload?: Json
+          target_row_id?: string
+          target_table?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_audit_events_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_audit_events_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "payroll_audit_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payroll_capability_grants: {
+        Row: {
+          capability: Database["public"]["Enums"]["payroll_capability"]
+          created_at: string
+          effective_from: string
+          effective_through: string | null
+          granted_by: string
+          id: string
+          organization_id: string
+          user_id: string
+        }
+        Insert: {
+          capability: Database["public"]["Enums"]["payroll_capability"]
+          created_at?: string
+          effective_from?: string
+          effective_through?: string | null
+          granted_by: string
+          id?: string
+          organization_id: string
+          user_id: string
+        }
+        Update: {
+          capability?: Database["public"]["Enums"]["payroll_capability"]
+          created_at?: string
+          effective_from?: string
+          effective_through?: string | null
+          granted_by?: string
+          id?: string
+          organization_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_capability_grants_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_capability_grants_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "payroll_capability_grants_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_capability_grants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_capability_grants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      payroll_legal_holds: {
+        Row: {
+          active: boolean
+          created_at: string
+          created_by: string
+          employment_profile_id: string | null
+          hold_reason_code: string
+          id: string
+          organization_id: string
+          pay_period_id: string | null
+          record_category: string | null
+          released_at: string | null
+          released_by: string | null
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          created_by: string
+          employment_profile_id?: string | null
+          hold_reason_code: string
+          id?: string
+          organization_id: string
+          pay_period_id?: string | null
+          record_category?: string | null
+          released_at?: string | null
+          released_by?: string | null
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          created_by?: string
+          employment_profile_id?: string | null
+          hold_reason_code?: string
+          id?: string
+          organization_id?: string
+          pay_period_id?: string | null
+          record_category?: string | null
+          released_at?: string | null
+          released_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_legal_holds_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_legal_holds_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "payroll_legal_holds_employment_profile_id_organization_id_fkey"
+            columns: ["employment_profile_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employment_profiles"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "payroll_legal_holds_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_legal_holds_pay_period_id_organization_id_fkey"
+            columns: ["pay_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "pay_periods"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "payroll_legal_holds_released_by_fkey"
+            columns: ["released_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_legal_holds_released_by_fkey"
+            columns: ["released_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      payroll_mutation_receipts: {
+        Row: {
+          actor_user_id: string
+          created_at: string
+          id: string
+          idempotency_key: string
+          operation: string
+          organization_id: string
+          payload_hash: string
+          result_payload: Json
+        }
+        Insert: {
+          actor_user_id: string
+          created_at?: string
+          id?: string
+          idempotency_key: string
+          operation: string
+          organization_id: string
+          payload_hash: string
+          result_payload: Json
+        }
+        Update: {
+          actor_user_id?: string
+          created_at?: string
+          id?: string
+          idempotency_key?: string
+          operation?: string
+          organization_id?: string
+          payload_hash?: string
+          result_payload?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_mutation_receipts_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_mutation_receipts_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "payroll_mutation_receipts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payroll_organization_settings: {
+        Row: {
+          created_at: string
+          external_payroll_organization_id: string
+          id: string
+          organization_id: string
+          timezone: string
+          updated_at: string
+          workday_starts_at: string
+          workweek_starts_on: number
+        }
+        Insert: {
+          created_at?: string
+          external_payroll_organization_id: string
+          id?: string
+          organization_id: string
+          timezone: string
+          updated_at?: string
+          workday_starts_at?: string
+          workweek_starts_on?: number
+        }
+        Update: {
+          created_at?: string
+          external_payroll_organization_id?: string
+          id?: string
+          organization_id?: string
+          timezone?: string
+          updated_at?: string
+          workday_starts_at?: string
+          workweek_starts_on?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_organization_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payroll_policy_versions: {
+        Row: {
+          activation_status: Database["public"]["Enums"]["payroll_policy_activation_status"]
+          created_at: string
+          effective_from: string
+          effective_through: string | null
+          id: string
+          jurisdiction: string
+          organization_id: string | null
+          policy_name: string
+          supports_monthly_nonexempt: boolean
+        }
+        Insert: {
+          activation_status?: Database["public"]["Enums"]["payroll_policy_activation_status"]
+          created_at?: string
+          effective_from?: string
+          effective_through?: string | null
+          id?: string
+          jurisdiction: string
+          organization_id?: string | null
+          policy_name: string
+          supports_monthly_nonexempt?: boolean
+        }
+        Update: {
+          activation_status?: Database["public"]["Enums"]["payroll_policy_activation_status"]
+          created_at?: string
+          effective_from?: string
+          effective_through?: string | null
+          id?: string
+          jurisdiction?: string
+          organization_id?: string | null
+          policy_name?: string
+          supports_monthly_nonexempt?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_policy_versions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payroll_retention_policies: {
+        Row: {
+          created_at: string
+          effective_from: string
+          id: string
+          organization_id: string
+          retention_years: number
+        }
+        Insert: {
+          created_at?: string
+          effective_from?: string
+          id?: string
+          organization_id: string
+          retention_years: number
+        }
+        Update: {
+          created_at?: string
+          effective_from?: string
+          id?: string
+          organization_id?: string
+          retention_years?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_retention_policies_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       plans: {
         Row: {
           code: string
@@ -6568,6 +7370,176 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      session_attendance_correction_requests: {
+        Row: {
+          created_at: string
+          employment_profile_id: string
+          id: string
+          organization_id: string
+          reason_code: string
+          replacement_payload: Json
+          requested_by: string
+          session_attendance_event_id: string
+        }
+        Insert: {
+          created_at?: string
+          employment_profile_id: string
+          id?: string
+          organization_id: string
+          reason_code: string
+          replacement_payload?: Json
+          requested_by: string
+          session_attendance_event_id: string
+        }
+        Update: {
+          created_at?: string
+          employment_profile_id?: string
+          id?: string
+          organization_id?: string
+          reason_code?: string
+          replacement_payload?: Json
+          requested_by?: string
+          session_attendance_event_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_attendance_correction_employment_profile_id_organi_fkey"
+            columns: ["employment_profile_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employment_profiles"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "session_attendance_correction_requests_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_attendance_correction_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_attendance_correction_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "session_attendance_correction_session_attendance_event_id__fkey"
+            columns: ["session_attendance_event_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "session_attendance_events"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      session_attendance_events: {
+        Row: {
+          actor_user_id: string
+          created_at: string
+          employee_time_event_id: string | null
+          employment_profile_id: string
+          event_at: string
+          event_type: Database["public"]["Enums"]["session_attendance_event_type"]
+          id: string
+          metadata: Json
+          organization_id: string
+          replacement_for_event_id: string | null
+          session_id: string
+          source_note: string | null
+          source_timezone: string
+          work_location: Database["public"]["Enums"]["work_location"]
+        }
+        Insert: {
+          actor_user_id: string
+          created_at?: string
+          employee_time_event_id?: string | null
+          employment_profile_id: string
+          event_at: string
+          event_type: Database["public"]["Enums"]["session_attendance_event_type"]
+          id?: string
+          metadata?: Json
+          organization_id: string
+          replacement_for_event_id?: string | null
+          session_id: string
+          source_note?: string | null
+          source_timezone: string
+          work_location: Database["public"]["Enums"]["work_location"]
+        }
+        Update: {
+          actor_user_id?: string
+          created_at?: string
+          employee_time_event_id?: string | null
+          employment_profile_id?: string
+          event_at?: string
+          event_type?: Database["public"]["Enums"]["session_attendance_event_type"]
+          id?: string
+          metadata?: Json
+          organization_id?: string
+          replacement_for_event_id?: string | null
+          session_id?: string
+          source_note?: string | null
+          source_timezone?: string
+          work_location?: Database["public"]["Enums"]["work_location"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_attendance_events_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_attendance_events_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "session_attendance_events_employee_time_event_id_organizat_fkey"
+            columns: ["employee_time_event_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employee_time_events"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "session_attendance_events_employment_profile_id_organizati_fkey"
+            columns: ["employment_profile_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employment_profiles"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "session_attendance_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_attendance_events_replacement_for_event_id_organiz_fkey"
+            columns: ["replacement_for_event_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "session_attendance_events"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "session_attendance_events_session_id_organization_id_fkey"
+            columns: ["session_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
       }
       session_audit_logs: {
         Row: {
@@ -7894,6 +8866,117 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "admin_users"
             referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      time_correction_requests: {
+        Row: {
+          created_at: string
+          employment_profile_id: string
+          id: string
+          organization_id: string
+          original_event_id: string
+          reason_code: string
+          replacement_payload: Json
+          requested_by: string
+        }
+        Insert: {
+          created_at?: string
+          employment_profile_id: string
+          id?: string
+          organization_id: string
+          original_event_id: string
+          reason_code: string
+          replacement_payload?: Json
+          requested_by: string
+        }
+        Update: {
+          created_at?: string
+          employment_profile_id?: string
+          id?: string
+          organization_id?: string
+          original_event_id?: string
+          reason_code?: string
+          replacement_payload?: Json
+          requested_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "time_correction_requests_employment_profile_id_organizatio_fkey"
+            columns: ["employment_profile_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employment_profiles"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "time_correction_requests_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_correction_requests_original_event_id_organization_id_fkey"
+            columns: ["original_event_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employee_time_events"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "time_correction_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_correction_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      timekeeping_exceptions: {
+        Row: {
+          created_at: string
+          details: Json
+          employment_profile_id: string
+          exception_code: string
+          id: string
+          organization_id: string
+        }
+        Insert: {
+          created_at?: string
+          details?: Json
+          employment_profile_id: string
+          exception_code: string
+          id?: string
+          organization_id: string
+        }
+        Update: {
+          created_at?: string
+          details?: Json
+          employment_profile_id?: string
+          exception_code?: string
+          id?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "timekeeping_exceptions_employment_profile_id_organization__fkey"
+            columns: ["employment_profile_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employment_profiles"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "timekeeping_exceptions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -9951,6 +11034,14 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      record_employee_time_event: {
+        Args: { event_payload: Json; idempotency_key: string }
+        Returns: Json
+      }
+      record_session_attendance_event: {
+        Args: { event_payload: Json; idempotency_key: string }
+        Returns: Json
+      }
       record_session_audit: {
         Args: {
           p_actor_id?: string
@@ -10010,6 +11101,14 @@ export type Database = {
           p_step_id: string
           p_work_item_id: string
         }
+        Returns: Json
+      }
+      request_session_attendance_correction: {
+        Args: { correction_payload: Json; idempotency_key: string }
+        Returns: Json
+      }
+      request_time_correction: {
+        Args: { correction_payload: Json; idempotency_key: string }
         Returns: Json
       }
       requeue_expired_agent_work_leases: {
@@ -10483,6 +11582,27 @@ export type Database = {
         | "skipped"
         | "cancelled"
       goal_target_phase: "baseline" | "teaching" | "generalization" | "mastery"
+      pay_group_cadence: "weekly" | "biweekly" | "monthly"
+      payroll_capability:
+        | "time.clock_self"
+        | "time.view_self"
+        | "time.request_correction_self"
+        | "time.review_assigned"
+        | "time.approve_assigned"
+        | "session_attendance.record_assigned"
+        | "payroll.configure_employment"
+        | "payroll.resolve_exceptions"
+        | "payroll.lock_period"
+        | "payroll.reopen_period"
+        | "payroll.export_period"
+        | "payroll.view_compensation"
+      payroll_event_type:
+        | "shift_started"
+        | "shift_ended"
+        | "meal_started"
+        | "meal_ended"
+        | "work_category_changed"
+      payroll_policy_activation_status: "inactive" | "active"
       role_type:
         | "client"
         | "therapist"
@@ -10492,6 +11612,9 @@ export type Database = {
         | "midtier"
         | "admin_schedule"
         | "bcba"
+      session_attendance_event_type: "session_started" | "session_ended"
+      work_category: "direct_service" | "administration" | "travel" | "training"
+      work_location: "client_site" | "office" | "home" | "community" | "other"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -10672,6 +11795,29 @@ export const Constants = {
         "cancelled",
       ],
       goal_target_phase: ["baseline", "teaching", "generalization", "mastery"],
+      pay_group_cadence: ["weekly", "biweekly", "monthly"],
+      payroll_capability: [
+        "time.clock_self",
+        "time.view_self",
+        "time.request_correction_self",
+        "time.review_assigned",
+        "time.approve_assigned",
+        "session_attendance.record_assigned",
+        "payroll.configure_employment",
+        "payroll.resolve_exceptions",
+        "payroll.lock_period",
+        "payroll.reopen_period",
+        "payroll.export_period",
+        "payroll.view_compensation",
+      ],
+      payroll_event_type: [
+        "shift_started",
+        "shift_ended",
+        "meal_started",
+        "meal_ended",
+        "work_category_changed",
+      ],
+      payroll_policy_activation_status: ["inactive", "active"],
       role_type: [
         "client",
         "therapist",
@@ -10682,6 +11828,9 @@ export const Constants = {
         "admin_schedule",
         "bcba",
       ],
+      session_attendance_event_type: ["session_started", "session_ended"],
+      work_category: ["direct_service", "administration", "travel", "training"],
+      work_location: ["client_site", "office", "home", "community", "other"],
     },
   },
 } as const

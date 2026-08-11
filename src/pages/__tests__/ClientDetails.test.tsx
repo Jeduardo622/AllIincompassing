@@ -126,7 +126,8 @@ describe('ClientDetails page', () => {
     await userEvent.click(screen.getByRole('button', { name: /Session Notes \/ Physical Auth/i }));
     expect(screen.getByText('SessionNotesTabContent')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: /Programs & Goals/i }));
+    expect(screen.queryByRole('button', { name: /Programs & Goals/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Domains & Goals/i }));
     expect(screen.getByText('ProgramsGoalsTabContent')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: /Session Trends/i }));
@@ -148,7 +149,7 @@ describe('ClientDetails page', () => {
     expect(screen.queryByText('ProfileTabContent')).not.toBeInTheDocument();
   });
 
-  it('selects Programs & Goals tab from tab query param', async () => {
+  it('selects Domains & Goals tab from tab query param', async () => {
     mockLocationSearch = '?tab=programs-goals';
 
     renderWithProviders(<ClientDetails />);
@@ -180,7 +181,7 @@ describe('ClientDetails page', () => {
     expect(screen.queryByText('ClientSessionTrendsTabContent')).not.toBeInTheDocument();
   });
 
-  it('does not render Programs & Goals or summary queries for an unassigned therapist deeplink', async () => {
+  it('does not render Domains & Goals or summary queries for an unassigned therapist deeplink', async () => {
     mockLocationSearch = '?tab=programs-goals';
     vi.mocked(fetchClientByIdForViewer).mockResolvedValue(null);
 
@@ -329,7 +330,7 @@ describe('ClientDetails page', () => {
     expect(supabase.from).toHaveBeenCalledWith('sessions');
   });
 
-  it('does not render Programs & Goals or summary queries for a client viewing another record', async () => {
+  it('does not render Domains & Goals or summary queries for a client viewing another record', async () => {
     mockLocationSearch = '?tab=programs-goals';
 
     renderWithProviders(<ClientDetails />, {

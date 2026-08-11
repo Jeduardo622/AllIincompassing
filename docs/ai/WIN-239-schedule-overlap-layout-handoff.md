@@ -301,10 +301,11 @@ Critical-lane verification card:
 - lane: `critical`
 - change type: UI/page plus responsive-observer policy/tooling
 - required checks: focused schedule/observer tests, sanitized `/schedule` responsive observation at both fixed viewports, schedule Cypress proof, `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run ci:verify-coverage`, `npm run build`, `npm run test:routes:tier0`, and `npm run verify:local`
-- focused tests: 68 passed across the observer contract/runtime and day/week schedule suites
+- focused tests: 70 passed across the observer contract/runtime and day/week schedule suites, including canonical missing-trigger and missing-dialog failures
 - responsive observer: passed at desktop `1440x900` and mobile `390x844` with no failure codes
 - `npm run test:routes:tier0 -- --spec cypress/e2e/schedule.cy.ts`: 2 passed
-- `NODE_OPTIONS=--max-old-space-size=6144 npm run verify:local`: passed end to end in 5m47s, including policy, lint, typecheck, full tests, coverage verification, build, and 220 Tier-0 Cypress tests
+- `NODE_OPTIONS=--max-old-space-size=6144 npm run verify:local`: final exact-head run passed end to end in 8m02s, including policy, lint, typecheck, full tests, coverage verification, build, and 220 Tier-0 Cypress tests
+- aggregate stability note: the preceding exact-head attempt timed out once in an unrelated Agent Work Ledger static test with Vitest worker RPC timeouts after 4,166 tests passed; the exact file then passed 5/5 in 3.08s, test-isolation review found no direct coupling, and the single bounded unchanged retry passed the complete gate
 - blocked checks: none for this UI/tooling slice; database-backed policy checks were not applicable and reported their normal local skips because no database URL was configured
 - specialist review: specification, architecture, implementation, test, security, code, and documentation agents completed; final security, code, and documentation re-reviews reported no findings and approved the bounded diff
 - result: pass; merge remains human-reviewed because the lane is `critical`

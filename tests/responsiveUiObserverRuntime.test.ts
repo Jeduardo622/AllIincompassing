@@ -35,7 +35,12 @@ const undersizedHtml = `<!doctype html>
 <style>body{margin:0}button{width:16px;height:16px;padding:0}</style></head>
 <body><button>OK</button></body></html>`;
 
-type ScheduleFixtureMode = 'pass' | 'clipped-control' | 'unexpected-read';
+type ScheduleFixtureMode =
+  | 'pass'
+  | 'clipped-control'
+  | 'missing-dialog'
+  | 'missing-trigger'
+  | 'unexpected-read';
 
 let scheduleFixtureMode: ScheduleFixtureMode = 'pass';
 
@@ -75,11 +80,13 @@ Promise.all([
     throw new Error('synthetic schedule bootstrap failed');
   }
   setTimeout(() => {
+    ${mode === 'missing-trigger' ? 'return;' : ''}
     const root = document.getElementById('root');
     root.innerHTML = '<div data-layout-kind="cluster"><button aria-haspopup="dialog" aria-expanded="false">12 appointments</button></div>';
     root.querySelector('button').addEventListener('click', (event) => {
       event.currentTarget.setAttribute('aria-expanded', 'true');
       event.currentTarget.setAttribute('aria-controls', 'schedule-cluster-synthetic');
+      ${mode === 'missing-dialog' ? 'return;' : ''}
       const dialog = document.createElement('div');
       dialog.id = 'schedule-cluster-synthetic';
       dialog.setAttribute('role', 'dialog');
@@ -279,6 +286,27 @@ describe('responsive UI observer browser runtime', () => {
       artifactPaths.add(result.screenshotPath);
       artifactPaths.add(result.evidencePath);
       expect(result.failureCodes).toContain('unexpected-scenario-request');
+    }
+  }, 60_000);
+
+  it.each([
+    ['missing-trigger', 'scenario-trigger-missing'],
+    ['missing-dialog', 'scenario-dialog-missing'],
+  ] as const)('reports the canonical %s scenario failure', async (mode, expectedFailure) => {
+    scheduleFixtureMode = mode;
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/schedule',
+      '--scenario=schedule-overlap',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain(expectedFailure);
     }
   }, 60_000);
 

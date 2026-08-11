@@ -53,6 +53,7 @@
   - `git diff --check`: pass; line-ending notices only
   - `npm run test:ci`: fail outside the payroll slice during AI transcription tests and aggregate coverage execution
   - `npm run verify:local`: fail because its `test:ci` phase hits the same unrelated failures
+  - post-rebase focused payroll Vitest set, exact-loopback security contract, `npm run ci:check-focused`, `npm run validate:tenant`, and `npm run build`: pass on rebased head
 - blocked checks:
   - `npm run test:ci`: unrelated AI documentation transcription attempts receive `ECONNREFUSED`; a coverage worker then exhausts a 4 GB heap and closes its IPC channel
   - `npm run verify:local`: blocked by the same `test:ci` failure before later umbrella steps run
@@ -65,14 +66,14 @@
 
 ## PR Hygiene
 
-- branch-ready: no; remediation commit and `origin/main` sync are pending
+- branch-ready: yes; four focused commits are rebased onto current `origin/main`
 - linear-ready: yes; `WIN-219` is In Progress with current scope, review, and verification comments
 - protected-path drift: expected migration/RLS/RPC changes only
 - unrelated changes: none identified
 - generated artifact drift: none; database types were regenerated from the clean local schema
 - verification summary: present
-- pr-ready: no
-- required follow-up: commit the reviewed remediation, sync the schedule-only upstream commit, rerun focused/critical checks, then push and open a human-reviewed PR
+- pr-ready: yes, with the repository-wide `test:ci` / `verify:local` failure disclosed as a blocked unrelated check
+- required follow-up: push and open a critical-lane PR, require human review and CI, and do not merge while required checks or approval are outstanding
 
 ## Handoff Summary
 

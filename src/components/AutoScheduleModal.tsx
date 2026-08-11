@@ -190,7 +190,7 @@ export function AutoScheduleModal({
       describedById={dialogDescriptionId}
       initialFocusRef={closeButtonRef}
       overlayClassName="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-      panelClassName="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
+      panelClassName="bg-white dark:bg-dark-lighter rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col [&_button]:min-h-11 [&_button]:min-w-11 [&_input]:min-h-11 sm:[&_button]:min-h-0 sm:[&_button]:min-w-0 sm:[&_input]:min-h-0"
     >
       <p id={dialogDescriptionId} className="sr-only">
         Generate and review an automatically proposed schedule before creating sessions.

@@ -3404,7 +3404,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 [&_button]:min-h-11 [&_button]:min-w-11 [&_input]:min-h-11 [&_select]:min-h-11 [&_textarea]:min-h-11 sm:[&_button]:min-h-0 sm:[&_button]:min-w-0 sm:[&_input]:min-h-0 sm:[&_select]:min-h-0 sm:[&_textarea]:min-h-0">
       <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-4 py-3 text-sm text-sky-900 dark:border-sky-700/60 dark:bg-sky-900/20 dark:text-sky-100">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p>

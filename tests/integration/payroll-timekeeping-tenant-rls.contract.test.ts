@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -12,8 +12,18 @@ const sql = readFileSync(
   ),
   "utf8",
 );
+const captureMigrationName =
+  readdirSync(path.join(process.cwd(), "supabase", "migrations")).find((name) =>
+    name.endsWith("payroll_timekeeping_capture_read_model.sql"),
+  ) ?? "";
+const captureSql = captureMigrationName
+  ? readFileSync(
+      path.join(process.cwd(), "supabase", "migrations", captureMigrationName),
+      "utf8",
+    )
+  : "";
 const functionDefinition = (qualifiedName: string): string =>
-  sql.match(
+  `${sql}\n${captureSql}`.match(
     new RegExp(
       `create or replace function ${qualifiedName.replace(".", "\\.")}\\([\\s\\S]*?\\n\\$\\$;`,
       "i",
@@ -25,6 +35,22 @@ const policyDefinition = (policyName: string): string =>
   )?.[0] ?? "";
 
 describe("payroll timekeeping tenant and RLS contract", () => {
+  it("adds the bounded Task 2 capture migration without widening raw exception reads", () => {
+    expect(captureSql).toMatch(
+      /@migration-dependencies:\s*20260811190901_payroll_timekeeping_foundation\.sql/i,
+    );
+    expect(captureSql).toMatch(
+      /create or replace function public\.get_payroll_day\(local_date date\)/i,
+    );
+    expect(captureSql).toMatch(
+      /grant execute on function public\.get_payroll_day\(date\) to authenticated, service_role/i,
+    );
+    expect(captureSql).not.toMatch(/grant select on public\.timekeeping_exceptions to service_role/i);
+    expect(captureSql).not.toMatch(
+      /create policy .*timekeeping_exceptions.*for select.*to authenticated.*using\s*\(\s*true\s*\)/i,
+    );
+  });
+
   it("denies cross-organization event reads", () => {
     expect(sql).toMatch(
       /create policy employee_time_events_authenticated_select[\s\S]*app\.current_user_can_read_payroll_employee/i,
@@ -83,6 +109,28 @@ describe("payroll timekeeping tenant and RLS contract", () => {
     expect(definition).toMatch(/time\.request_correction_self/i);
     expect(definition).toMatch(/time\.approve_assigned/i);
     expect(definition).toMatch(/payroll\.resolve_exceptions/i);
+  });
+
+  it("keeps payroll-day reads self-scoped and sanitized through the read RPC instead of raw table grants", () => {
+    const definition = functionDefinition("public.get_payroll_day");
+    expect(definition).toMatch(/time\.view_self/i);
+    expect(definition).toMatch(/employment\.user_id = v_actor/i);
+    expect(definition).toMatch(/employee_time_events/i);
+    expect(definition).toMatch(/session_attendance_events/i);
+    expect(definition).toMatch(/time_correction_requests/i);
+    expect(definition).toMatch(/session_attendance_correction_requests/i);
+    expect(definition).toMatch(/timekeeping_exceptions/i);
+    expect(definition).not.toMatch(/employee_rate_versions/i);
+    expect(definition).not.toMatch(/hourly_rate_cents/i);
+  });
+
+  it("keeps outside-shift exception uniqueness scoped to one attendance source row per org and code", () => {
+    expect(captureSql).toMatch(
+      /create unique index[\s\S]*on public\.timekeeping_exceptions[\s\S]*\(organization_id,\s*source_session_attendance_event_id\)[\s\S]*exception_code = 'session_outside_shift'/i,
+    );
+    expect(captureSql).not.toMatch(
+      /create unique index[\s\S]*on public\.timekeeping_exceptions[\s\S]*\(organization_id,\s*source_session_attendance_event_id\)[\s\S]*where source_session_attendance_event_id is not null\s*;$/i,
+    );
   });
 
   it("requires canonical actor-org proof on policy self and global-access branches", () => {

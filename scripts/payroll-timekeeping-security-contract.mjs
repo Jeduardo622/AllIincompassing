@@ -115,6 +115,7 @@ const cleanup = async (client) => {
       IDS.payrollAdminA,
     ];
     for (const table of [
+      "timekeeping_exceptions",
       "session_attendance_correction_requests",
       "time_correction_requests",
       "session_attendance_events",
@@ -128,6 +129,7 @@ const cleanup = async (client) => {
       "employee_manager_assignments",
       "payroll_capability_grants",
       "payroll_policy_versions",
+      "payroll_organization_settings",
       "organization_feature_flags",
       "employment_profiles",
       "sessions",
@@ -213,6 +215,21 @@ const recordAttendance = (client, userId, payload, key, commit = true) =>
     commit,
   );
 
+const getPayrollDay = (client, userId, localDate, commit = false) =>
+  withRole(
+    client,
+    "authenticated",
+    userId,
+    async () =>
+      (
+        await client.query(
+          "select public.get_payroll_day($1::date) as result",
+          [localDate],
+        )
+      ).rows[0].result,
+    commit,
+  );
+
 const main = async () => {
   const admin = await connect();
   try {
@@ -225,6 +242,7 @@ const main = async () => {
       join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public'
         and p.proname = any(array[
+          'get_payroll_day',
           'record_employee_time_event',
           'record_session_attendance_event',
           'request_time_correction',
@@ -232,13 +250,21 @@ const main = async () => {
         ])
       order by p.proname
     `);
-    assert(signatures.rowCount === 4, "Expected exactly four payroll mutation RPCs.");
+    assert(signatures.rowCount === 5, "Expected exactly five payroll RPCs including get_payroll_day.");
     assert(
-      signatures.rows.every((row) => row.args === "event_payload jsonb, idempotency_key text" || row.args === "correction_payload jsonb, idempotency_key text"),
-      "Payroll RPC signatures drifted from the stable jsonb/text contract.",
+      signatures.rows.every(
+        (row) =>
+          row.args === "local_date date" ||
+          row.args === "event_payload jsonb, idempotency_key text" ||
+          row.args === "correction_payload jsonb, idempotency_key text",
+      ),
+      "Payroll RPC signatures drifted from the stable read/jsonb/text contract.",
     );
     for (const row of signatures.rows) {
-      const signature = `public.${row.proname}(jsonb,text)`;
+      const signature =
+        row.proname === "get_payroll_day"
+          ? "public.get_payroll_day(date)"
+          : `public.${row.proname}(jsonb,text)`;
       const privileges = await admin.query(
         `select
            has_function_privilege('anon', $1, 'execute') as anon,
@@ -251,6 +277,16 @@ const main = async () => {
       assert(privileges.rows[0].service_role, `${signature} is not executable by service_role.`);
     }
 
+    const disabledDay = await getPayrollDay(admin, IDS.userA, "2026-08-11");
+    assert(
+      disabledDay.state === "feature_disabled",
+      "Disabled payroll day read did not return feature_disabled.",
+    );
+    assert(
+      disabledDay.bootstrap?.organizationId === IDS.orgA,
+      "Disabled payroll day read did not preserve the canonical organization.",
+    );
+
     await expectReject(
       () => recordTime(admin, IDS.userA, timePayload("shift_started", "2026-08-11T16:00:00Z"), "disabled-start"),
       /42501|feature is disabled/i,
@@ -262,6 +298,26 @@ const main = async () => {
       "feature-disabled attendance event",
     );
     await setFeature(admin, true);
+
+    await admin.query(
+      "update public.employment_profiles set home_jurisdiction = 'TX' where id = $1",
+      [IDS.employmentA],
+    );
+    const unsupportedDay = await getPayrollDay(admin, IDS.userA, "2026-08-11");
+    assert(
+      unsupportedDay.state === "unsupported_jurisdiction",
+      "Unsupported payroll day read did not return unsupported_jurisdiction.",
+    );
+    await admin.query(
+      "update public.employment_profiles set home_jurisdiction = 'CA' where id = $1",
+      [IDS.employmentA],
+    );
+
+    const noEmploymentDay = await getPayrollDay(admin, IDS.userB, "2026-08-11");
+    assert(
+      noEmploymentDay.state === "no_employment_profile",
+      "Payroll day read did not return no_employment_profile for inactive employment.",
+    );
 
     await admin.query(
       `insert into public.pay_groups (id, organization_id, name, cadence, timezone)
@@ -386,6 +442,85 @@ const main = async () => {
       IDS.userA,
       attendancePayload("session_started", "2026-08-11T16:10:00Z"),
       "attendance-start",
+    );
+    assert(
+      attendanceStart.exception_id,
+      "Outside-shift attendance start did not return the linked exception id.",
+    );
+    const attendanceReplay = await recordAttendance(
+      admin,
+      IDS.userA,
+      attendancePayload("session_started", "2026-08-11T16:10:00Z"),
+      "attendance-start",
+    );
+    assert(
+      attendanceReplay.event_id === attendanceStart.event_id,
+      "Attendance same-key replay did not return the same event id.",
+    );
+    assert(
+      attendanceReplay.exception_id === attendanceStart.exception_id,
+      "Attendance same-key replay did not return the same exception id.",
+    );
+    await expectReject(
+      () =>
+        recordAttendance(
+          admin,
+          IDS.userA,
+          attendancePayload("session_started", "2026-08-11T16:11:00Z"),
+          "attendance-start",
+        ),
+      /23505|IDEMPOTENCY_CONFLICT/i,
+      "attendance different-payload idempotency collision",
+    );
+    const linkedExceptionCount = await admin.query(
+      `select count(*)::int as count
+       from public.timekeeping_exceptions
+       where organization_id = $1
+         and source_session_attendance_event_id = $2
+         and exception_code = 'session_outside_shift'`,
+      [IDS.orgA, attendanceStart.event_id],
+    );
+    assert(
+      linkedExceptionCount.rows[0].count === 1,
+      "Outside-shift exception was not created exactly once for the attendance event.",
+    );
+
+    const okDay = await getPayrollDay(admin, IDS.userA, "2026-08-11");
+    assert(okDay.state === "ok", "Enabled payroll day read did not return ok.");
+    assert(
+      okDay.bootstrap?.employmentProfileId === IDS.employmentA,
+      "Payroll day bootstrap did not resolve the actor employment profile.",
+    );
+    assert(
+      okDay.bootstrap?.workdayStartsAt === "05:00:00",
+      "Payroll day bootstrap did not return the configured workday start.",
+    );
+    assert(
+      okDay.bootstrap?.capabilities?.canViewSelf === true &&
+        okDay.bootstrap?.capabilities?.canClockSelf === true &&
+        okDay.bootstrap?.capabilities?.canRequestCorrectionSelf === true,
+      "Payroll day bootstrap did not expose the expected self capabilities.",
+    );
+    assert(
+      okDay.totals?.label === "Calculation pending",
+      "Payroll day totals label drifted from the placeholder contract.",
+    );
+    assert(
+      Array.isArray(okDay.day?.employeeTimeEvents) &&
+        okDay.day.employeeTimeEvents.every(
+          (event) => event.employmentProfileId === IDS.employmentA,
+        ),
+      "Payroll day read widened employee time events beyond the actor's own employment profile.",
+    );
+    assert(
+      Array.isArray(okDay.day?.exceptions) &&
+        okDay.day.exceptions.some(
+          (exception) =>
+            exception.id === attendanceStart.exception_id &&
+            exception.sourceSessionAttendanceEventId === attendanceStart.event_id &&
+            exception.exceptionCode === "session_outside_shift",
+        ),
+      "Payroll day read did not return the linked outside-shift exception.",
     );
     await expectReject(
       () => recordAttendance(admin, IDS.userA, attendancePayload("session_started", "2026-08-11T16:11:00Z"), "attendance-duplicate"),
@@ -588,6 +723,14 @@ const main = async () => {
       ), true),
       /42501|permission denied|row-level security/i,
       "authenticated direct source insert",
+    );
+    await expectReject(
+      () => withRole(admin, "service_role", IDS.userA, () => admin.query(
+        "update public.timekeeping_exceptions set details = details || '{\"tamper\":true}'::jsonb where id = $1",
+        [attendanceStart.exception_id],
+      ), true),
+      /42501|permission denied|append-only/i,
+      "service-role exception mutation",
     );
     await expectReject(
       () => withRole(admin, "service_role", IDS.userA, () => admin.query(

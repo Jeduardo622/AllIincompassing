@@ -129,4 +129,11 @@ values
   ('10000000-0000-4000-8000-000000000001', 'CA', 'Synthetic payroll contract', 'active', false, '2026-01-01'),
   ('10000000-0000-4000-8000-000000000002', 'CA', 'Synthetic payroll contract', 'active', false, '2026-01-01');
 
+insert into public.payroll_organization_settings (
+  organization_id, external_payroll_organization_id, timezone, workday_starts_at, workweek_starts_on
+)
+values
+  ('10000000-0000-4000-8000-000000000001', 'payroll-contract-org-a', 'America/Los_Angeles', '05:00', 0),
+  ('10000000-0000-4000-8000-000000000002', 'payroll-contract-org-b', 'America/Los_Angeles', '05:00', 0);
+
 commit;

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react';
 import { renderWithProviders } from '../../test/utils';
 import { AddSessionNoteModal } from '../AddSessionNoteModal';
 import { supabase } from '../../lib/supabase';
@@ -373,10 +373,8 @@ describe('AddSessionNoteModal — per-goal note textareas', () => {
 
     renderWithProviders(<AddSessionNoteModal {...defaultProps} />);
 
-    await waitFor(() => {
-      expect(screen.queryByText(/loading goals/i)).not.toBeInTheDocument();
-    });
-    expect(screen.getByText('No active domains found for this client.')).toBeInTheDocument();
+    await waitForElementToBeRemoved(screen.getByText('No active domains found for this client.'));
+    expect(await screen.findByText('No active domains found for this client.')).toBeInTheDocument();
     expect(screen.getByText('Add goals in Domains & Goals before logging.')).toBeInTheDocument();
   });
 
@@ -408,10 +406,8 @@ describe('AddSessionNoteModal — per-goal note textareas', () => {
       <AddSessionNoteModal {...defaultProps} clientId="client-inactive-domain" />,
     );
 
-    await waitFor(() => {
-      expect(screen.queryByText(/loading goals/i)).not.toBeInTheDocument();
-    });
-    expect(screen.getByText('No active domains found for this client.')).toBeInTheDocument();
+    await waitForElementToBeRemoved(screen.getByText('No active domains found for this client.'));
+    expect(await screen.findByText('No active domains found for this client.')).toBeInTheDocument();
     expect(screen.queryByText('No active goals found for this client.')).not.toBeInTheDocument();
   });
 

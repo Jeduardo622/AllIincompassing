@@ -327,4 +327,70 @@ describe("payroll api client", () => {
       },
     });
   });
+
+  it("keeps every mutation idempotency key out of the JSON body", async () => {
+    mockedCallApi.mockImplementation(async (_path, init) => {
+      const key = (init?.headers as Headers).get("Idempotency-Key") ?? "";
+      return jsonResponse({ id: `result-${key}`, idempotencyKey: key }, 200, {
+        "Idempotency-Key": key,
+      });
+    });
+
+    await recordTimeEvent({
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-11",
+      idempotencyKey: "time-body-key",
+      event: {
+        occurredAt: "2026-08-11T16:00:00.000Z",
+        timezone: "America/Los_Angeles",
+        workLocation: "office",
+        data: { eventType: "shift_started" },
+      },
+    });
+    await recordSessionAttendance({
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-11",
+      idempotencyKey: "attendance-body-key",
+      event: {
+        occurredAt: "2026-08-11T16:05:00.000Z",
+        timezone: "America/Los_Angeles",
+        workLocation: "client_site",
+        data: {
+          eventType: "session_started",
+          sessionId: "11111111-1111-1111-1111-111111111111",
+        },
+      },
+    });
+    await requestTimeCorrection({
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-11",
+      idempotencyKey: "correction-body-key",
+      correction: {
+        data: {
+          originalEventId: "22222222-2222-2222-2222-222222222222",
+          reasonCode: "missed_punch",
+        },
+      },
+    });
+    await requestSessionAttendanceCorrection({
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-11",
+      idempotencyKey: "attendance-correction-body-key",
+      correction: {
+        data: {
+          sessionAttendanceEventId: "33333333-3333-3333-3333-333333333333",
+          reasonCode: "outside_shift",
+        },
+      },
+    });
+
+    expect(mockedCallApi).toHaveBeenCalledTimes(4);
+    for (const [, init] of mockedCallApi.mock.calls) {
+      expect(JSON.parse(String(init?.body))).not.toHaveProperty("idempotencyKey");
+    }
+  });
 });

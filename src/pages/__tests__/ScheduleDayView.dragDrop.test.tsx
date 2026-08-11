@@ -512,6 +512,7 @@ describe("ScheduleDayView drag and drop", () => {
       );
 
       const trigger = screen.getByRole("button", { name: /3 appointments/i });
+      const cluster = trigger.closest('[data-layout-kind="cluster"]');
       expect(within(trigger).getByTestId("schedule-overlap-count")).toHaveTextContent("3");
       expect(trigger.getAttribute("aria-haspopup")).toBe("dialog");
       expect(trigger.getAttribute("aria-expanded")).toBe("false");
@@ -522,6 +523,8 @@ describe("ScheduleDayView drag and drop", () => {
 
       expect(trigger.getAttribute("aria-expanded")).toBe("true");
       const dialog = screen.getByRole("dialog", { name: /3 overlapping appointments/i });
+      expect(cluster).toBeTruthy();
+      expect(cluster?.contains(dialog)).toBe(false);
       const rows = within(dialog).getAllByRole("button");
       expect(rows).toHaveLength(3);
       expect(rows[0]).toHaveFocus();

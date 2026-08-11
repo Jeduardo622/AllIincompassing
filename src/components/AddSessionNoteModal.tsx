@@ -162,7 +162,7 @@ export function AddSessionNoteModal({
     [goals],
   );
   const hasActiveDomains = useMemo(
-    () => programs.some((program) => program.status !== 'archived'),
+    () => programs.some((program) => program.status === 'active'),
     [programs],
   );
 

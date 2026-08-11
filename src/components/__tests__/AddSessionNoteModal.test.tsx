@@ -395,6 +395,26 @@ describe('AddSessionNoteModal — per-goal note textareas', () => {
     expect(screen.queryByText('No active domains found for this client.')).not.toBeInTheDocument();
   });
 
+  it('does not treat an inactive domain as active', async () => {
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') return buildChain([{ ...mockProgram, status: 'inactive' }]) as any;
+      if (table === 'goals') return buildChain([]) as any;
+      if (table === 'sessions') return buildChainWithLimit([mockSession]) as any;
+      if (table === 'session_goals') return buildChain([]) as any;
+      return buildChain([]) as any;
+    });
+
+    renderWithProviders(
+      <AddSessionNoteModal {...defaultProps} clientId="client-inactive-domain" />,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText(/loading goals/i)).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('No active domains found for this client.')).toBeInTheDocument();
+    expect(screen.queryByText('No active goals found for this client.')).not.toBeInTheDocument();
+  });
+
   it('shows measurement snapshot controls when a goal is checked', async () => {
     renderWithProviders(<AddSessionNoteModal {...defaultProps} />);
 

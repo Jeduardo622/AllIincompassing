@@ -310,6 +310,10 @@ git commit -m "feat(payroll): add protected timekeeping foundation"
 ### Task 2: Employee Capture and Session Attendance (PR 2)
 
 **Files:**
+- Create: one governed `supabase/migrations/*_payroll_timekeeping_capture_read_model.sql` migration on top of the PR 1 foundation
+- Create: `tests/payroll-timekeeping-capture-migration.test.ts`
+- Modify: `tests/integration/payroll-timekeeping-tenant-rls.contract.test.ts`
+- Modify: `scripts/payroll-timekeeping-security-contract.mjs`
 - Create: `supabase/functions/payroll-time-events/index.ts`
 - Create: `supabase/functions/payroll-time-events/index.test.ts`
 - Create: `src/server/api/payroll-time-events.ts`
@@ -325,7 +329,7 @@ git commit -m "feat(payroll): add protected timekeeping foundation"
 - Create: `src/pages/__tests__/Time.test.tsx`
 - Create: `scripts/playwright-payroll-time-capture.ts`
 - Create: `tests/scripts/playwright-payroll-time-capture.test.ts`
-- Modify: `src/App.tsx` add lazy `/time` route behind authenticated capability and feature query
+- Modify: `src/App.tsx` add lazy `/time` route behind the authenticated shell; the protected payroll bootstrap is authoritative
 - Modify: `src/components/Sidebar.tsx` add capability-gated Time navigation
 - Modify: `src/lib/routeModulePrefetch.ts` add `/time` lazy preload
 - Modify: `src/lib/__tests__/routeModulePrefetch.test.ts`
@@ -375,7 +379,11 @@ const payrollActionSchema = z.discriminatedUnion("action", [
 ]);
 ```
 
-Require bearer auth and `Idempotency-Key` for every mutation. The Edge Function invokes only PR 1 RPCs. `src/server/api/payroll-time-events.ts` follows `sessions-start.ts`: CORS/rate-limit/auth checks, production proxy through `proxyToEdgeAuthority`, and no service-role fallback that broadens authority. The Netlify wrapper follows `netlify/functions/sessions-start.ts`, and `netlify.toml` must map `/api/payroll-time-events` before `/*`.
+Require bearer auth and `Idempotency-Key` for every mutation. Mutations invoke the protected event/correction RPCs; `get_day` invokes the Task 2 `public.get_payroll_day(local_date date)` read RPC. Mutation responses echo the effective key in both the `Idempotency-Key` header and JSON body. `src/server/api/payroll-time-events.ts` follows `sessions-start.ts`: CORS/rate-limit/auth checks, production proxy through `proxyToEdgeAuthority`, and no service-role fallback that broadens authority. The Netlify wrapper follows `netlify/functions/sessions-start.ts`, and `netlify.toml` must map `/api/payroll-time-events` before `/*`.
+
+The Task 2 migration must remain additive on top of PR 1. It adds a `SECURITY DEFINER`, `search_path = ''` self-read RPC that derives actor, organization, and active employment and returns explicit `ok`, `feature_disabled`, `unsupported_jurisdiction`, or `no_employment_profile` states. It must not widen raw table RLS. Interpret `local_date` in `employment_profiles.timezone`, apply `payroll_organization_settings.workday_starts_at` in that timezone, and filter confirmed rows by `[day_start, next_day_start)`. Return the resolved timezone and workday start.
+
+The same migration adds nullable same-organization `source_session_attendance_event_id` linkage to `timekeeping_exceptions`, a partial unique index limited to `exception_code = 'session_outside_shift'`, append-only enforcement, and a replacement attendance RPC that inserts the linked outside-shift exception atomically for `session_started` without an employee-time-event link.
 
 - [ ] **Step 3: Implement the native IndexedDB outbox**
 
@@ -398,7 +406,7 @@ export type PendingPayrollEvent = {
 };
 ```
 
-Queue only after validating the payload locally. Replay serially per employee, preserve original order, stop on a state conflict, and never relabel an event confirmed until the server returns the matching idempotency key.
+Queue only after validating the payload locally. Replay serially per employee, preserve original order, stop on a state conflict, and never relabel an event confirmed until the server returns the matching idempotency key. Lifecycle mutation keys must survive retryable clinical failures and client reload.
 
 - [ ] **Step 4: Build the employee `/time` route**
 
@@ -415,9 +423,9 @@ Do not render rate or earnings fields in PR 2. Feature-disabled, unsupported-jur
 
 - [ ] **Step 5: Integrate independent session attendance**
 
-On `Start Session`, check whether the authenticated actor is the assigned employee and has an active shift. If yes, start the clinical session and append `session_started`. If no active shift, show `Clock in and start` and `Continue session without clocking in`; the latter appends attendance and a `session_outside_shift` exception. An admin/scheduler acting for someone else can append attendance for the assigned employee but cannot clock that employee in.
+On `Start Session`, check whether the authenticated actor is the assigned employee and has an active shift. If yes, append `session_started` and then start the clinical session. If no active shift, show `Clock in and start` and `Continue session without clocking in`; the latter appends attendance and a `session_outside_shift` exception before clinical start. `Clock in and start` uses separate stable keys for `shift_started` and `session_started`, links attendance to the confirmed time event, then starts the clinical session. An admin/scheduler acting for someone else can append attendance for the assigned employee but cannot clock that employee in.
 
-On `Close Session`, append `session_ended` from the click before clinical note finalization. If clinical completion later fails, attendance stays ended. Retrying close reuses the attendance idempotency key. Never call `shift_ended` from either session action.
+On `Close Session`, append `session_ended` from the click before clinical note finalization. If clinical completion later fails, attendance stays ended. Retrying close reuses the attendance idempotency key and replays attendance before clinical completion. Clear the retained key only after compatible clinical success. `ALREADY_TERMINAL` is success only after revalidation proves a compatible terminal session state. Never call `shift_ended` from either session action.
 
 - [ ] **Step 6: Run focused and browser verification**
 

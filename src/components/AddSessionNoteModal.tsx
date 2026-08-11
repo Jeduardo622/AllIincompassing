@@ -161,6 +161,10 @@ export function AddSessionNoteModal({
     () => goals.filter((goal) => goal.status !== 'archived'),
     [goals],
   );
+  const hasActiveDomains = useMemo(
+    () => programs.some((program) => program.status !== 'archived'),
+    [programs],
+  );
 
   // Goals grouped by program_id, ordered by the programs array.
   const goalsByProgram = useMemo(() => {
@@ -1204,7 +1208,11 @@ export function AddSessionNoteModal({
               <div className="text-sm text-gray-500 dark:text-gray-400">Loading goals…</div>
             ) : availableGoals.length === 0 ? (
               <div className="space-y-1 text-sm text-gray-500 dark:text-gray-400">
-                <p>No active domains found for this client.</p>
+                <p>
+                  {hasActiveDomains
+                    ? 'No active goals found for this client.'
+                    : 'No active domains found for this client.'}
+                </p>
                 <p>Add goals in Domains &amp; Goals before logging.</p>
               </div>
             ) : isMinWidthSm ? (

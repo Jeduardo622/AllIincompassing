@@ -380,6 +380,21 @@ describe('AddSessionNoteModal — per-goal note textareas', () => {
     expect(screen.getByText('Add goals in Domains & Goals before logging.')).toBeInTheDocument();
   });
 
+  it('distinguishes an active domain with no goals from having no domains', async () => {
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') return buildChain([mockProgram]) as any;
+      if (table === 'goals') return buildChain([]) as any;
+      if (table === 'sessions') return buildChainWithLimit([mockSession]) as any;
+      if (table === 'session_goals') return buildChain([]) as any;
+      return buildChain([]) as any;
+    });
+
+    renderWithProviders(<AddSessionNoteModal {...defaultProps} />);
+
+    expect(await screen.findByText('No active goals found for this client.')).toBeInTheDocument();
+    expect(screen.queryByText('No active domains found for this client.')).not.toBeInTheDocument();
+  });
+
   it('shows measurement snapshot controls when a goal is checked', async () => {
     renderWithProviders(<AddSessionNoteModal {...defaultProps} />);
 

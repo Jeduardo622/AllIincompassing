@@ -23,6 +23,7 @@ import {
   BT_ABA_PURPOSE_OPTIONS,
   BT_ABA_SKILL_STRATEGY_OPTIONS,
   BT_ABA_SUPERVISOR_SUPPORT_OPTIONS,
+  getBtAbaOptionDisplayLabel,
   type BtAbaSessionNoteResponses,
   validateBtAbaSessionNoteResponses,
 } from '../lib/bt-aba-session-note';
@@ -1111,7 +1112,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                                 onChange={(event) => toggleBtCorrectionSelection('supervisor_support', option, event.target.checked)}
                                 className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                               />
-                              <span>{option}</span>
+                              <span>{getBtAbaOptionDisplayLabel(option)}</span>
                             </label>
                           ))}
                         </div>
@@ -2054,7 +2055,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                               onChange={(event) => toggleBtCorrectionSelection('supervisor_support', option, event.target.checked)}
                               className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
-                            <span>{option}</span>
+                            <span>{getBtAbaOptionDisplayLabel(option)}</span>
                           </label>
                         ))}
                       </div>

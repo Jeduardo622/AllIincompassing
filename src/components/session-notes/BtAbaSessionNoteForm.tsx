@@ -6,6 +6,7 @@ import {
   BT_ABA_PURPOSE_OPTIONS,
   BT_ABA_SKILL_STRATEGY_OPTIONS,
   BT_ABA_SUPERVISOR_SUPPORT_OPTIONS,
+  getBtAbaOptionDisplayLabel,
   validateBtAbaSessionNoteResponses,
   type BtAbaSessionNoteResponses,
 } from '../../lib/bt-aba-session-note';
@@ -67,7 +68,7 @@ function CheckboxGroup({ field, label, options, values, disabled, error, onToggl
               onChange={(event) => onToggle(option, event.target.checked)}
               className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            <span>{option}</span>
+            <span>{getBtAbaOptionDisplayLabel(option)}</span>
           </label>
         ))}
       </div>

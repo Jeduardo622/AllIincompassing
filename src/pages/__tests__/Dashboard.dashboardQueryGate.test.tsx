@@ -733,7 +733,10 @@ describe("Dashboard staff dashboard query gate", () => {
         noteId: "note-1",
         source: "original",
         correctionRound: null,
-        responses: validBtResponses,
+        responses: {
+          ...validBtResponses,
+          supervisor_support: [BT_ABA_SUPERVISOR_SUPPORT_OPTIONS[4]],
+        },
         templateSnapshot: { sections: [] },
         signatureMethod: "typed",
         signatureValue: "Jordan BT",
@@ -744,7 +747,10 @@ describe("Dashboard staff dashboard query gate", () => {
         noteId: "note-1",
         source: "original",
         correctionRound: null,
-        responses: validBtResponses,
+        responses: {
+          ...validBtResponses,
+          supervisor_support: [BT_ABA_SUPERVISOR_SUPPORT_OPTIONS[4]],
+        },
         templateSnapshot: { sections: [] },
         signatureMethod: "typed",
         signatureValue: "Jordan BT",
@@ -786,6 +792,8 @@ describe("Dashboard staff dashboard query gate", () => {
     const invalidateSpy = vi.spyOn(client, "invalidateQueries");
 
     await userEvent.click(await screen.findByRole("button", { name: /amend bt note for taylor client/i }));
+    expect(screen.getByLabelText("Discussed domains/progress/data collection")).toBeVisible();
+    expect(screen.queryByLabelText("Discussed programs/progress/data collection")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("radio", { name: /type signature/i }));
     await userEvent.type(screen.getByLabelText(/type behavior technician signature/i), "Jordan BT");
     await userEvent.click(screen.getByRole("button", { name: /re-attest and resubmit/i }));
@@ -793,6 +801,11 @@ describe("Dashboard staff dashboard query gate", () => {
     await waitFor(() => {
       expect(mockShowError).toHaveBeenCalledWith("Correction resubmission failed.");
     });
+    expect(mockResubmitBtSupervisionCorrection).toHaveBeenCalledWith(expect.objectContaining({
+      responses: expect.objectContaining({
+        supervisor_support: ['Discussed programs/progress/data collection'],
+      }),
+    }));
     expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ["dashboard"] });
   });
 

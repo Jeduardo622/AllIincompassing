@@ -1,10 +1,12 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { AutoScheduleModal } from "../../../../src/components/AutoScheduleModal";
 import { ProgramsGoalsTab } from "../../../../src/components/ClientDetails/ProgramsGoalsTab";
+import { DashboardView } from "../../../../src/pages/Dashboard";
+import type { BtCorrectionTask } from "../../../../src/lib/supervision-session-notes";
 
 import {
   harnessClient,
@@ -100,6 +102,84 @@ const ScheduleHarnessRoute = () => (
   </ShellFrame>
 );
 
+const dashboardCorrectionResponses = {
+  purpose_of_session: ["RBT/BT worked on goals as stated in the treatment plan"],
+  client_status: "Synthetic client participated in the session.",
+  skill_strategies: ["Natural environment teaching"],
+  behavior_strategies: ["Differential Reinforcement"],
+  supervisor_support: ["Discussed programs/progress/data collection"],
+  progress_toward_goals: "Synthetic progress summary.",
+  client_response_to_treatment: "Synthetic treatment response.",
+  data_point_scope: "linked",
+  link_unlinked_data: false,
+  bt_signature: { method: "typed", value: "Synthetic BT" },
+};
+
+const dashboardCorrectionVersion = {
+  versionNumber: 1,
+  noteId: "responsive-note",
+  source: "original" as const,
+  correctionRound: null,
+  responses: dashboardCorrectionResponses,
+  templateSnapshot: { sections: [] },
+  signatureMethod: "typed" as const,
+  signatureValue: "Synthetic BT",
+  signedAt: "2026-08-11T16:00:00.000Z",
+};
+
+const dashboardCorrectionTask: BtCorrectionTask = {
+  id: "responsive-correction-request",
+  organizationId: "responsive-harness-org",
+  sessionId: "responsive-session",
+  clientId: harnessClient.id,
+  btTherapistId: "responsive-bt",
+  assignedAdminUserId: "responsive-reviewer",
+  status: "correction_required",
+  statusLabel: "Correction Required",
+  createdAt: "2026-08-11T16:00:00.000Z",
+  clientName: harnessClient.full_name,
+  btTherapistName: "Synthetic BT",
+  btTherapistTitle: "BT",
+  correction: {
+    id: "responsive-correction",
+    round: 1,
+    reason: "Synthetic terminology review.",
+    requestedAt: "2026-08-11T17:00:00.000Z",
+    reviewerUserId: "responsive-reviewer",
+  },
+  originalVersion: dashboardCorrectionVersion,
+  latestVersion: dashboardCorrectionVersion,
+  versions: [],
+};
+
+const DashboardHarnessRoute = () => {
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      document.querySelector<HTMLButtonElement>("button[aria-label^='Amend BT Note for']")?.click();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  return (
+    <ShellFrame
+      title="Dashboard"
+      subtitle="Synthetic correction queue rendering the production DashboardView with persisted values and display-only terminology mapping."
+    >
+      <DashboardView
+        isLoading={false}
+        error={null}
+        refetch={() => {}}
+        isLiveRole={false}
+        intervalMs={120_000}
+        showReportsSummary={false}
+        btCorrectionTasks={[dashboardCorrectionTask]}
+        correctionOnly
+        onResubmitBtCorrection={async () => {}}
+      />
+    </ShellFrame>
+  );
+};
+
 export function HarnessApp() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -108,6 +188,7 @@ export function HarnessApp() {
           <Route path="/" element={<Navigate replace to="/clients/test-client" />} />
           <Route path="/clients/test-client" element={<ClientDetailsHarnessRoute />} />
           <Route path="/schedule" element={<ScheduleHarnessRoute />} />
+          <Route path="/dashboard" element={<DashboardHarnessRoute />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

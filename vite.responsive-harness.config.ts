@@ -48,6 +48,7 @@ const suffixRemaps: Array<[suffix: string, target: string]> = [
 
 const responsiveHarnessAliases = () => ({
   name: "responsive-harness-aliases",
+  enforce: "pre" as const,
   async resolveId(source: string, importer?: string, options?: { attributes?: Record<string, string> }) {
     const directShim = specifierRemaps.get(source);
     if (directShim) {
@@ -98,7 +99,11 @@ const responsiveHarnessBoundary = () => ({
       .filter((moduleId) => forbiddenProductionModules.has(moduleId));
 
     if (leakedModules.length > 0) {
-      throw new Error(`responsive_harness_production_boundary_leak:${leakedModules.join(",")}`);
+      const leakDetails = leakedModules.map((moduleId) => {
+        const importers = this.getModuleInfo(moduleId)?.importers ?? [];
+        return `${moduleId}<-${importers.join("|")}`;
+      });
+      throw new Error(`responsive_harness_production_boundary_leak:${leakDetails.join(",")}`);
     }
   },
 });
@@ -120,6 +125,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: [
+      ...Array.from(moduleRemaps, ([find, replacement]) => ({ find, replacement })),
       { find: /^.*\/lib\/authContext(?:\.[cm]?[jt]sx?)?$/, replacement: normalizePath(path.join(shimRoot, "authContext.tsx")) },
       { find: /^.*\/lib\/organization(?:\.[cm]?[jt]sx?)?$/, replacement: normalizePath(path.join(shimRoot, "organization.ts")) },
       { find: /^.*\/lib\/assessment-documents(?:\.[cm]?[jt]sx?)?$/, replacement: normalizePath(path.join(shimRoot, "assessment-documents.ts")) },

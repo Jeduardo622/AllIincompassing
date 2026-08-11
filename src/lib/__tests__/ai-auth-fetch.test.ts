@@ -282,6 +282,22 @@ describe('AI edge function authentication', () => {
     });
   });
 
+  it('uses domain terminology when draft generation fails', async () => {
+    fetchMock.mockResolvedValueOnce(buildFetchResponse({}, false, 500));
+
+    await expect(
+      generateProgramGoalDraft(
+        'Synthetic assessment text with sufficient detail.',
+        { accessToken },
+        {
+          assessmentDocumentId: ASSESSMENT_ID,
+          clientId: CLIENT_ID,
+          organizationId: ORG_ID,
+        },
+      ),
+    ).rejects.toThrow('Failed to generate domain/goal draft (status 500)');
+  });
+
   it('rejects legacy generate-program-goals requests missing assessment, client, or organization scope before fetch', async () => {
     await expect(
       generateProgramGoalDraft(

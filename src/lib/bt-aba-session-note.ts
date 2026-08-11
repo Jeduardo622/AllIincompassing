@@ -58,6 +58,11 @@ export const BT_ABA_SUPERVISOR_SUPPORT_OPTIONS = [
   'Other',
 ] as const;
 
+export const getBtAbaOptionDisplayLabel = (option: string): string =>
+  option === 'Discussed programs/progress/data collection'
+    ? 'Discussed domains/progress/data collection'
+    : option;
+
 export const BT_ABA_FIELD_LABELS = {
   purpose_of_session: 'Purpose of Session',
   purpose_other: 'Describe Other',

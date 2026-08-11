@@ -22,6 +22,8 @@ const jsonResponse = (payload: unknown, status = 200) =>
 
 const methodFromInit = (init?: RequestInit) => (init?.method ?? "GET").toUpperCase();
 
+export const getCurrentAccessToken = async (): Promise<null> => null;
+
 export const callEdgeFunctionHttp = async (path: string, init?: RequestInit): Promise<Response> => {
   const method = methodFromInit(init);
   recordApiCall(method, path);

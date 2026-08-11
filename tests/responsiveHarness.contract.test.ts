@@ -62,7 +62,7 @@ describe("responsive harness contract", () => {
     await expect(storage.remove()).rejects.toThrow("responsive_harness_read_only");
   });
 
-  it("builds separately, binds loopback-only, and renders the two isolated pathname routes without env, storage, or network mutation drift", async () => {
+  it("builds separately, binds loopback-only, and renders the isolated pathname routes without env, storage, or network mutation drift", async () => {
     const packageJson = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")) as {
       scripts?: Record<string, string>;
     };
@@ -85,7 +85,7 @@ describe("responsive harness contract", () => {
 
     browser = await chromium.launch({ headless: true });
 
-    const visit = async (route: "/clients/test-client" | "/schedule") => {
+    const visit = async (route: "/clients/test-client" | "/schedule" | "/dashboard") => {
       const page = await browser!.newPage();
       const requests: Array<{ method: string; url: string }> = [];
       page.on("request", (request) => {
@@ -98,9 +98,13 @@ describe("responsive harness contract", () => {
         await page.getByText("Add Target").waitFor();
         await page.getByText("Add Goal").waitFor();
         await page.getByText("Domain Notes").waitFor();
-      } else {
+      } else if (route === "/schedule") {
         await page.getByRole("dialog", { name: /Auto Schedule Sessions/i }).waitFor();
         await page.getByRole("button", { name: /Generate Preview/i }).waitFor();
+      } else {
+        await page.getByRole("dialog", { name: /Amend BT Note/i }).waitFor();
+        await page.getByLabel("Discussed domains/progress/data collection").waitFor();
+        expect(await page.getByLabel("Discussed programs/progress/data collection").count()).toBe(0);
       }
 
       const runtimeState = await page.evaluate(() => ({
@@ -129,5 +133,6 @@ describe("responsive harness contract", () => {
 
     await visit("/clients/test-client");
     await visit("/schedule");
+    await visit("/dashboard");
   }, 120_000);
 });

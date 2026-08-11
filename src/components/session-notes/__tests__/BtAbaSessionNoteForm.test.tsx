@@ -74,6 +74,8 @@ describe('BtAbaSessionNoteForm', () => {
     expect(screen.getByRole('group', { name: 'Behavior Strategies' })).toBeVisible();
     expect(screen.getByLabelText('Differential Reinforcement')).toBeVisible();
     expect(screen.getByRole('group', { name: 'Supervisor Support and Discussion Included' })).toBeVisible();
+    expect(screen.getByLabelText('Discussed domains/progress/data collection')).toBeVisible();
+    expect(screen.queryByLabelText('Discussed programs/progress/data collection')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Summary of Progress Toward Treatment Goals')).toBeVisible();
     expect(screen.getByLabelText("Client's Response to Treatment")).toBeVisible();
     expect(screen.getByRole('group', { name: 'Data Point Scope' })).toBeVisible();

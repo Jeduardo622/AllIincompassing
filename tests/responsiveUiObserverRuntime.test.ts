@@ -36,6 +36,11 @@ const undersizedHtml = `<!doctype html>
 <style>body{margin:0}button{width:16px;height:16px;padding:0}</style></head>
 <body><button>OK</button></body></html>`;
 
+const labeledCheckboxHtml = `<!doctype html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{margin:0}label{display:flex;align-items:center;width:160px;height:48px}input{width:13px;height:13px}</style></head>
+<body><label><input type="checkbox">Receive updates</label></body></html>`;
+
 type ScheduleFixtureMode =
   | 'pass'
   | 'clipped-control'
@@ -114,6 +119,11 @@ beforeAll(async () => {
     if (request.url === '/observer-runtime-undersized') {
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       response.end(undersizedHtml);
+      return;
+    }
+    if (request.url === '/observer-runtime-labeled-checkbox') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(labeledCheckboxHtml);
       return;
     }
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
@@ -233,6 +243,24 @@ describe('responsive UI observer browser runtime', () => {
     for (const result of summary.results) {
       artifactPaths.add(result.screenshotPath);
       artifactPaths.add(result.evidencePath);
+    }
+  }, 60_000);
+
+  it('measures the clickable label row for a nested native checkbox', async () => {
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/observer-runtime-labeled-checkbox',
+    ]);
+
+    expect(summary.ok).toBe(true);
+    expect(summary.results).toHaveLength(2);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.result).toBe('pass');
+      expect(result.failureCodes).toEqual([]);
     }
   }, 60_000);
 

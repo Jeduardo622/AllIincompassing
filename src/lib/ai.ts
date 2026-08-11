@@ -346,7 +346,7 @@ export async function generateProgramGoalDraft(
   );
 
   if (!response.ok) {
-    throw new Error(`Failed to generate program/goal draft (status ${response.status})`);
+    throw new Error(`Failed to generate domain/goal draft (status ${response.status})`);
   }
 
   const data = (await response.json()) as ProgramGoalDraftResponse;

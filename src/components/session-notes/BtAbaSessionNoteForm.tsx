@@ -6,6 +6,7 @@ import {
   BT_ABA_PURPOSE_OPTIONS,
   BT_ABA_SKILL_STRATEGY_OPTIONS,
   BT_ABA_SUPERVISOR_SUPPORT_OPTIONS,
+  getBtAbaOptionDisplayLabel,
   validateBtAbaSessionNoteResponses,
   type BtAbaSessionNoteResponses,
 } from '../../lib/bt-aba-session-note';
@@ -67,7 +68,7 @@ function CheckboxGroup({ field, label, options, values, disabled, error, onToggl
               onChange={(event) => onToggle(option, event.target.checked)}
               className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            <span>{option}</span>
+            <span>{getBtAbaOptionDisplayLabel(option)}</span>
           </label>
         ))}
       </div>
@@ -218,7 +219,7 @@ export function BtAbaSessionNoteForm({ initialResponses, context, onSaveDraft, o
           ))}
         </dl>
         <div>
-          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-200">Programs and Goals</h4>
+          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-200">Domains and Goals</h4>
           <ul className="mt-1 space-y-1 text-sm text-gray-900 dark:text-gray-100">
             {context.programs.flatMap((program) => program.goals.map((goal) => (
               <li key={`${program.name}-${goal}`}>{program.name} — {goal}</li>

@@ -1711,7 +1711,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     queryKey: clientProgramsQueryKey,
     queryFn: async () => {
       if (!organizationId) {
-        throw new Error("Organization context is required to load programs.");
+        throw new Error("Organization context is required to load domains.");
       }
       const response = await callEdgeWithSupabaseFallback({
         edgePath: buildProgramsQueryPath(client.id),
@@ -1728,10 +1728,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           return jsonResponse(data ?? []);
         },
         timeoutMs: PROGRAMS_REQUEST_TIMEOUT_MS,
-        timeoutMessage: "Programs request timed out. Please retry.",
+        timeoutMessage: "Domains request timed out. Please retry.",
       });
       if (!response.ok) {
-        throw new Error("Failed to load programs");
+        throw new Error("Failed to load domains");
       }
       return parseJson<Program[]>(response);
     },
@@ -1806,8 +1806,8 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const editingGoalError = editingGoalObjectiveDataPointsError;
   const hasResolvedProgram = Boolean(resolvedProgramId);
   const noProgramHelperText = programsLoading
-    ? "Programs are still loading. You can create one now, or wait for an existing program before adding goals or notes."
-    : "Create a program or select an existing one before adding goals or notes.";
+    ? "Domains are still loading. You can create one now, or wait for an existing domain before adding goals or notes."
+    : "Create a domain or select an existing one before adding goals or notes.";
   const createGoalDisabledReason = !hasResolvedProgram
     ? noProgramHelperText
     : !goalTitleValue
@@ -1823,7 +1823,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const createNoteDisabledReason = !hasResolvedProgram
     ? noProgramHelperText
     : !noteContentValue
-      ? "Program note is required."
+      ? "Domain note is required."
       : null;
   const programGoalsQueryKey = buildProgramGoalsQueryKey(resolvedProgramId, organizationId);
   const programNotesQueryKey = buildProgramNotesQueryKey(resolvedProgramId, organizationId);
@@ -1940,10 +1940,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           return jsonResponse(data ?? []);
         },
         timeoutMs: PROGRAM_NOTES_REQUEST_TIMEOUT_MS,
-        timeoutMessage: "Program notes request timed out. Please retry.",
+        timeoutMessage: "Domain notes request timed out. Please retry.",
       });
       if (!response.ok) {
-        throw new Error("Failed to load program notes");
+        throw new Error("Failed to load domain notes");
       }
       return parseJson<ProgramNote[]>(response);
     },
@@ -2263,7 +2263,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       : hasPendingRequiredChecklistItems
         ? `${unresolvedRequiredCount} required checklist or structured row${unresolvedRequiredCount === 1 ? "" : "s"} must be approved before publishing.`
         : acceptedDraftProgramCount === 0
-          ? "At least one draft program must be accepted or edited before publishing."
+          ? "At least one draft domain must be accepted or edited before publishing."
           : acceptedDraftGoalCount === 0
             ? "At least one draft goal must be accepted or edited before publishing."
             : null;
@@ -2565,7 +2565,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
     mutationFn: async (programId: string) => {
       const edit = draftProgramEdits[programId];
       if (!edit) {
-        throw new Error("Program edit state not found.");
+        throw new Error("Domain edit state not found.");
       }
       const response = await callApi("/api/assessment-drafts", {
         method: "PATCH",
@@ -2579,14 +2579,14 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         }),
       });
       if (!response.ok) {
-        throw new Error("Failed to update draft program.");
+        throw new Error("Failed to update draft domain.");
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
       });
-      showSuccess("Program draft saved. Not published yet.");
+      showSuccess("Domain draft saved. Not published yet.");
     },
     onError: showError,
   });
@@ -2668,7 +2668,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
       });
       showSuccess(
-        `Published to live records. Created ${programCount} production program${programCount === 1 ? "" : "s"} and ${goalCount} goal${goalCount === 1 ? "" : "s"}.`,
+        `Published to live records. Created ${programCount} production domain${programCount === 1 ? "" : "s"} and ${goalCount} goal${goalCount === 1 ? "" : "s"}.`,
       );
     },
     onError: showError,
@@ -2753,15 +2753,15 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           body: payload,
         },
         timeoutMs: PROGRAM_CREATE_REQUEST_TIMEOUT_MS,
-        timeoutMessage: "Create program request timed out. Please retry.",
+        timeoutMessage: "Create domain request timed out. Please retry.",
       });
       if (!response.ok) {
-        throw new Error(await parseApiErrorMessage(response, "Failed to create program."));
+        throw new Error(await parseApiErrorMessage(response, "Failed to create domain."));
       }
       return parseJson<Program>(response);
     },
     onSuccess: (created) => {
-      showSuccess("Program created");
+      showSuccess("Domain created");
       setProgramName("");
       setProgramDescription("");
       setSelectedProgramId(created.id);
@@ -2773,7 +2773,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const updateProgram = useMutation({
     mutationFn: async (program: Program) => {
       if (!editingProgramNameValue) {
-        throw new Error("Program name is required.");
+        throw new Error("Domain name is required.");
       }
       const payload = JSON.stringify({
         name: editingProgramNameValue,
@@ -2805,10 +2805,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           body: payload,
         },
         timeoutMs: PROGRAM_CREATE_REQUEST_TIMEOUT_MS,
-        timeoutMessage: "Update program request timed out. Please retry.",
+        timeoutMessage: "Update domain request timed out. Please retry.",
       });
       if (!response.ok) {
-        throw new Error(await parseApiErrorMessage(response, "Failed to update program."));
+        throw new Error(await parseApiErrorMessage(response, "Failed to update domain."));
       }
       return parseJson<Program>(response);
     },
@@ -2823,7 +2823,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
       setEditingProgramId(null);
       setEditingProgramName("");
       setEditingProgramDescription("");
-      showSuccess("Program updated");
+      showSuccess("Domain updated");
     },
     onError: showError,
     onSettled: () => {
@@ -2967,7 +2967,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const createGoal = useMutation({
     mutationFn: async () => {
       if (!resolvedProgramId) {
-        throw new Error("Select a program first");
+        throw new Error("Select a domain first");
       }
       const objectiveDataPoints = parseObjectiveDataPointsInput(goalObjectiveDataPoints);
       const targetCriteria = formatGoalTimelineCriteria({
@@ -3231,17 +3231,17 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           body: JSON.stringify({ status: "archived" }),
         },
         timeoutMs: PROGRAM_CREATE_REQUEST_TIMEOUT_MS,
-        timeoutMessage: "Archive program request timed out. Please retry.",
+        timeoutMessage: "Archive domain request timed out. Please retry.",
       });
       if (!response.ok) {
-        throw new Error(await parseApiErrorMessage(response, "Failed to remove program."));
+        throw new Error(await parseApiErrorMessage(response, "Failed to remove domain."));
       }
     },
     onMutate: (program) => {
       setArchivingProgramId(program.id);
     },
     onSuccess: (_, program) => {
-      showSuccess(`Program "${program.name}" removed from active care plan.`);
+      showSuccess(`Domain "${program.name}" removed from active care plan.`);
       if (selectedProgramId === program.id) {
         setSelectedProgramId(null);
       }
@@ -3342,7 +3342,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   const createNote = useMutation({
     mutationFn: async () => {
       if (!resolvedProgramId) {
-        throw new Error("Select a program first");
+        throw new Error("Select a domain first");
       }
       const payload = JSON.stringify({
         program_id: resolvedProgramId,
@@ -3378,15 +3378,15 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           body: payload,
         },
         timeoutMs: PROGRAM_NOTE_CREATE_REQUEST_TIMEOUT_MS,
-        timeoutMessage: "Program note request timed out. Please retry.",
+        timeoutMessage: "Domain note request timed out. Please retry.",
       });
       if (!response.ok) {
-        throw new Error("Failed to add program note");
+        throw new Error("Failed to add domain note");
       }
       return parseJson<ProgramNote>(response);
     },
     onSuccess: (created) => {
-      showSuccess("Program note added");
+      showSuccess("Domain note added");
       setNoteContent("");
       queryClient.setQueryData<ProgramNote[]>(buildProgramNotesQueryKey(created.program_id, organizationId), (current) =>
         upsertById(current, created),
@@ -3398,18 +3398,18 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   if (!organizationId) {
     return (
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
-        Organization context is required to manage programs and goals.
+        Organization context is required to manage domains and goals.
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 [&_button]:min-h-11 [&_button]:min-w-11 [&_input]:min-h-11 [&_select]:min-h-11 [&_textarea]:min-h-11 sm:[&_button]:min-h-0 sm:[&_button]:min-w-0 sm:[&_input]:min-h-0 sm:[&_select]:min-h-0 sm:[&_textarea]:min-h-0">
       <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-4 py-3 text-sm text-sky-900 dark:border-sky-700/60 dark:bg-sky-900/20 dark:text-sky-100">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p>
-            Live care plan: <span className="font-semibold">{livePrograms.length}</span> program(s) and{" "}
-            <span className="font-semibold">{liveGoals.length}</span> active goal(s) in the selected program.
+            Live care plan: <span className="font-semibold">{livePrograms.length}</span> domain(s) and{" "}
+            <span className="font-semibold">{liveGoals.length}</span> active goal(s) in the selected domain.
           </p>
           {canManageProgramsGoals && showDraftReviewPanel && hasDraftsButNoLivePrograms && (
             <button
@@ -3423,7 +3423,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         </div>
         {canManageProgramsGoals && showDraftReviewPanel && hasDraftsButNoLivePrograms && (
           <p className="mt-2 text-xs text-sky-800/90 dark:text-sky-100/90">
-            Uploaded assessments and draft proposals stay in review until you publish them to live Programs & Goals.
+            Uploaded assessments and draft proposals stay in review until you publish them to live Domains & Goals.
           </p>
         )}
       </div>
@@ -3577,9 +3577,9 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             </div>
 
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Programs</h3>
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Domains</h3>
             <p className="mb-3 text-xs text-gray-500 dark:text-gray-300">
-              Live records only. Uploaded assessments stay in structured review until you add live programs manually.
+              Live records only. Uploaded assessments stay in structured review until you add live domains manually.
             </p>
             <div className="space-y-2">
               {programsLoading && (
@@ -3588,14 +3588,14 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                   role="status"
                 >
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                  <span>Loading existing programs. You can still add a new program below.</span>
+                  <span>Loading existing domains. You can still add a new domain below.</span>
                 </div>
               )}
               {livePrograms.length === 0 && (
                 <p className="text-sm text-gray-500">
                   {programsLoading
-                    ? "No existing programs loaded yet."
-                    : "No programs yet. Create a program to unlock goals and notes for this client."}
+                    ? "No existing domains loaded yet."
+                    : "No domains yet. Create a domain to unlock goals and notes for this client."}
                 </p>
               )}
               {livePrograms.map((program) => (
@@ -3618,8 +3618,8 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                     {canManageProgramsGoals && (
                       <button
                         type="button"
-                        aria-label={`Edit program ${program.name}`}
-                        title="Edit live program"
+                        aria-label={`Edit domain ${program.name}`}
+                        title="Edit live domain"
                         onClick={() => beginProgramEdit(program)}
                         disabled={updatingProgramId === program.id && updateProgram.isLoading}
                         className="shrink-0 rounded-md border border-transparent px-2 py-2 text-sky-700 hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-sky-900/30 disabled:opacity-50"
@@ -3635,7 +3635,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         onClick={() => {
                           if (typeof window !== "undefined") {
                             const confirmed = window.confirm(
-                              `Remove "${program.name}" from the active care plan? You can add programs again later.`,
+                              `Remove "${program.name}" from the active care plan? You can add domains again later.`,
                             );
                             if (!confirmed) {
                               return;
@@ -3656,7 +3656,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         htmlFor={`program-edit-name-${program.id}`}
                         className="block text-xs font-medium text-gray-700 dark:text-gray-200"
                       >
-                        Program name
+                        Domain name
                       </label>
                       <input
                         id={`program-edit-name-${program.id}`}
@@ -3669,7 +3669,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         htmlFor={`program-edit-description-${program.id}`}
                         className="block text-xs font-medium text-gray-700 dark:text-gray-200"
                       >
-                        Program description
+                        Domain description
                       </label>
                       <textarea
                         id={`program-edit-description-${program.id}`}
@@ -3685,7 +3685,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           disabled={!editingProgramNameValue || (updatingProgramId === program.id && updateProgram.isLoading)}
                           className="rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                         >
-                          {updatingProgramId === program.id && updateProgram.isLoading ? "Saving..." : "Save program changes"}
+                          {updatingProgramId === program.id && updateProgram.isLoading ? "Saving..." : "Save domain changes"}
                         </button>
                         <button
                           type="button"
@@ -3697,7 +3697,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                         </button>
                       </div>
                       {!editingProgramNameValue && (
-                        <p className="text-xs text-gray-500 dark:text-gray-300">Enter a program name to save changes.</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-300">Enter a domain name to save changes.</p>
                       )}
                     </div>
                   )}
@@ -3710,23 +3710,23 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
               <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3 flex items-center gap-2">
                 <Plus className="w-4 h-4" />
-                Add Program
+                Add Domain
               </h3>
               <div className="space-y-3">
                 <p className="text-xs text-gray-500 dark:text-gray-300">
-                  Add a program first if this client does not have one yet. Goals and notes attach to the selected program.
+                  Add a domain first if this client does not have one yet. Goals and notes attach to the selected domain.
                 </p>
                 <input
                   type="text"
                   value={programName}
                   onChange={(event) => setProgramName(event.target.value)}
-                  placeholder="Program name"
+                  placeholder="Domain name"
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
                 />
                 <textarea
                   value={programDescription}
                   onChange={(event) => setProgramDescription(event.target.value)}
-                  placeholder="Program description"
+                  placeholder="Domain description"
                   rows={3}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
                 />
@@ -3736,15 +3736,15 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                   disabled={!programNameValue || createProgram.isLoading}
                   className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {createProgram.isLoading ? "Creating..." : "Create Program"}
+                  {createProgram.isLoading ? "Creating..." : "Create Domain"}
                 </button>
                 {programsQueryError instanceof Error && (
                   <p className="text-xs text-amber-700 dark:text-amber-300">
-                    Could not load programs yet: {programsQueryError.message}
+                    Could not load domains yet: {programsQueryError.message}
                   </p>
                 )}
                 {!createProgram.isLoading && !programNameValue && (
-                  <p className="text-xs text-gray-500 dark:text-gray-300">Enter a program name to create a program.</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-300">Enter a domain name to create a domain.</p>
                 )}
               </div>
             </div>
@@ -4114,7 +4114,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               </p>
             )}
             {!selectedAssessmentId ? (
-              <p className="text-sm text-gray-500">Select an assessment to review its draft program and goals.</p>
+              <p className="text-sm text-gray-500">Select an assessment to review its draft domain and goals.</p>
             ) : (
               <div className="space-y-4">
                 {(assessmentDrafts?.programs ?? []).map((program) => {
@@ -4126,7 +4126,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                   };
                   return (
                     <div key={program.id} className="rounded border border-gray-200 dark:border-gray-700 p-3">
-                      <p className="text-xs font-semibold mb-2">Draft Program</p>
+                      <p className="text-xs font-semibold mb-2">Draft Domain</p>
                       <div className="grid grid-cols-1 gap-2">
                         <input
                           value={edit.name}
@@ -4189,7 +4189,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                                 },
                               }))
                             }
-                            placeholder="Program review notes"
+                            placeholder="Domain review notes"
                             className="rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark text-sm"
                           />
                         </div>
@@ -4201,7 +4201,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           disabled={updateDraftProgram.isLoading}
                           className="mt-2 px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
                         >
-                          Save Program Draft
+                          Save Domain Draft
                         </button>
                       )}
                       <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-300">
@@ -4470,10 +4470,10 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                   <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm dark:border-gray-700 dark:bg-gray-900/40">
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                       <div className="space-y-1">
-                        <p className="font-semibold text-gray-800 dark:text-gray-100">Publish accepted drafts to live Programs & Goals</p>
+                        <p className="font-semibold text-gray-800 dark:text-gray-100">Publish accepted drafts to live Domains & Goals</p>
                         <p className="text-xs text-gray-600 dark:text-gray-300">
-                          Accepted drafts: {acceptedDraftProgramCount} program(s), {acceptedDraftGoalCount} goal(s). Pending drafts:{" "}
-                          {pendingDraftProgramCount} program(s), {pendingDraftGoalCount} goal(s).
+                          Accepted drafts: {acceptedDraftProgramCount} domain(s), {acceptedDraftGoalCount} goal(s). Pending drafts:{" "}
+                          {pendingDraftProgramCount} domain(s), {pendingDraftGoalCount} goal(s).
                         </p>
                         {promoteDisabledReason && (
                           <p className="text-xs text-amber-700 dark:text-amber-200">{promoteDisabledReason}</p>
@@ -4485,7 +4485,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           onClick={() => {
                             if (typeof window !== "undefined") {
                               const confirmed = window.confirm(
-                                "Publish accepted assessment drafts to this client's live Programs & Goals?",
+                                "Publish accepted assessment drafts to this client's live Domains & Goals?",
                               );
                               if (!confirmed) {
                                 return;
@@ -4496,7 +4496,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                           disabled={Boolean(promoteDisabledReason) || promoteAssessment.isLoading}
                           className="rounded-md bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {promoteAssessment.isLoading ? "Publishing..." : "Publish to Live Programs + Goals"}
+                          {promoteAssessment.isLoading ? "Publishing..." : "Publish to Live Domains + Goals"}
                         </button>
                       )}
                     </div>
@@ -4523,7 +4523,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
             ) : (
               <div className="space-y-3">
                 {liveGoals.length === 0 && (
-                  <p className="text-sm text-gray-500">No goals in this program yet.</p>
+                  <p className="text-sm text-gray-500">No goals in this domain yet.</p>
                 )}
                 {goalDisplaySections.map((section) => (
                   <section
@@ -4697,7 +4697,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Add Goal</h3>
               <div className="space-y-3">
                 <p className="text-xs text-gray-500 dark:text-gray-300">
-                  Select a program before creating a goal. Required fields are marked with an asterisk.
+                  Select a domain before creating a goal. Required fields are marked with an asterisk.
                 </p>
                 {!hasResolvedProgram && (
                   <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
@@ -4917,18 +4917,18 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
           )}
 
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Program Notes</h3>
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Domain Notes</h3>
             <div className="space-y-3">
               {!hasResolvedProgram ? (
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
                   {noProgramHelperText}
                 </div>
               ) : programNotes.length === 0 ? (
-                <p className="text-sm text-gray-500">No program notes yet.</p>
+                <p className="text-sm text-gray-500">No domain notes yet.</p>
               ) : null}
               {hasResolvedProgram && programNotes.length === 0 && (
                 <p className="text-xs text-gray-500 dark:text-gray-300">
-                  Add a note to document plan updates, progress summaries, or other program-specific context.
+                  Add a note to document plan updates, progress summaries, or other domain-specific context.
                 </p>
               )}
               {programNotes.map((note) => (
@@ -4959,7 +4959,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                 <textarea
                   value={noteContent}
                   onChange={(event) => setNoteContent(event.target.value)}
-                  placeholder="Add a program note"
+                  placeholder="Add a domain note"
                   rows={3}
                   disabled={!hasResolvedProgram}
                   className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"

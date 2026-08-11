@@ -203,6 +203,28 @@ describe("ChatBot scheduling", () => {
     expect(mockedProcessMessage).not.toHaveBeenCalled();
   });
 
+  it("uses domain terminology when a session-start action is incomplete", async () => {
+    mockedProcessMessage.mockResolvedValueOnce({
+      response: "Starting the session now.",
+      action: {
+        type: "start_session",
+        data: {
+          session_id: "session-123",
+          goal_id: "goal-1",
+        },
+      },
+    } as never);
+
+    renderWithProviders(<ChatBot />);
+    await userEvent.click(document.getElementById("chat-trigger")!);
+    await userEvent.type(screen.getByPlaceholderText(/Type your message/), "start the session");
+    await userEvent.click(screen.getByTestId("send-message"));
+
+    await screen.findByText(/Session start requires a session, domain, and goal/);
+    expect(mockedShowError).toHaveBeenCalledWith("Session start requires a session, domain, and goal");
+    expect(screen.queryByText(/program_id/)).not.toBeInTheDocument();
+  });
+
   it("routes modify_session through booking API path", async () => {
     mockedProcessMessage.mockResolvedValueOnce({
       response: "Updating the session now.",

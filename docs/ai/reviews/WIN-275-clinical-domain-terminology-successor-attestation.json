@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 1,
+  "issue": "WIN-275",
+  "attestationType": "supplemental-successor-evidence-skeleton",
+  "successorKey": "clinical-domain-terminology",
+  "repository": "Jeduardo622/AllIincompassing",
+  "createdAt": "2026-08-11T11:35:27.4621824-07:00",
+  "status": "PASS_WITH_CI_PENDING",
+  "authorization": {
+    "uiOnlyEvidence": true,
+    "hostedAction": false,
+    "runtimeActivation": false,
+    "workflowDispatch": false,
+    "activeMode": false,
+    "providerCall": false,
+    "phiBearingFixture": false,
+    "localHarnessOnly": true
+  },
+  "routeTask": {
+    "classification": "high-risk human-reviewed",
+    "lane": "critical",
+    "why": "The successor changes a hash-bound protected UI surface and adds an isolated local harness that remaps auth and transport dependencies for responsive verification without changing production auth, runtime, Supabase, or deploy behavior.",
+    "triggeringPaths": [
+      "src/components/ClientDetails/ProgramsGoalsTab.tsx",
+      "src/components/AutoScheduleModal.tsx",
+      "src/components/ChatBot.tsx",
+      "src/components/session-notes/BtAbaSessionNoteForm.tsx",
+      "src/lib/ai.ts",
+      "src/lib/bt-aba-session-note.ts",
+      "src/pages/Dashboard.tsx",
+      "scripts/playwright-responsive-ui-observer.ts",
+      "tests/fixtures/responsive-harness/**",
+      "vite.responsive-harness.config.ts"
+    ],
+    "reviewerRequired": true,
+    "verifyChangeRequired": true,
+    "mandatoryChecks": [
+      "npm run ci:check-focused",
+      "npm run lint",
+      "npm run typecheck",
+      "npm run test:ci",
+      "npm run build",
+      "npm run test:routes:tier0",
+      "npm run ci:playwright",
+      "responsive observer at 1440x900 and 390x844",
+      "critical specialist review",
+      "exact-head required CI",
+      "verify-change",
+      "pr-hygiene"
+    ]
+  },
+  "branchContext": {
+    "branch": "codex/win-275-terminology-successor",
+    "baseMergeCommit": "37e7cbfa888ebb3b33cf895cb9638f6b6590bd5f",
+    "implementationHeadCommit": "e5f9e0843149df6260838d75df66feebb11a979c",
+    "mergedVerificationHeadCommit": "e5f9e0843149df6260838d75df66feebb11a979c"
+  },
+  "successorAgents": {
+    "specification-engineer": {
+      "agentId": "019ff23a-54ee-71d0-aa4b-9cdc78df7f69",
+      "status": "PASS_SCOPE_DEFINED"
+    },
+    "software-architect": {
+      "agentId": "019ff23e-39ca-7551-850e-bc5cbea525a7",
+      "status": "PASS_ISOLATED_HARNESS_ARCHITECTURE"
+    },
+    "implementation-engineer": {
+      "agentId": "019ff240-9997-74a0-b8a9-073f5304d7d6",
+      "status": "IMPLEMENTATION_STARTED_PARENT_COMPLETED"
+    },
+    "code-review-engineer": {
+      "agentId": "019ff261-adb3-7680-b1df-e7a7a28c7709",
+      "status": "PASS"
+    },
+    "security-engineer": {
+      "agentId": "019ff265-5b6d-7313-a7fc-c6432fa90fe4",
+      "status": "PASS"
+    },
+    "test-engineer": {
+      "agentId": "019ff263-3e23-7d70-b098-5e8626b1ed86",
+      "status": "PASS_LOCAL_WITH_SECRET_BACKED_CI_PENDING"
+    },
+    "responsive-ui-observer": {
+      "status": "PASS_SIX_OF_SIX",
+      "command": "npm run test:ui:responsive -- --base-url=http://127.0.0.1:4180 --route=/clients/test-client --route=/schedule --route=/dashboard"
+    },
+    "devops-engineer": {
+      "agentId": "019ff265-5d0d-75e0-855e-d70651484713",
+      "status": "PASS_BUILD_CONFIG_ISOLATION"
+    },
+    "continuation-code-review-engineer": {
+      "agentId": "019ff283-a829-7e11-9d80-1e6247538f09",
+      "status": "APPROVE_AFTER_EVIDENCE_REFRESH"
+    },
+    "continuation-test-engineer": {
+      "agentId": "019ff283-a960-7931-977a-18adf298da90",
+      "status": "GAPS_ADDRESSED_BY_DIRECT_MAPPING_AND_PAYLOAD_TESTS"
+    },
+    "continuation-security-engineer": {
+      "agentId": "019ff283-ab49-7f23-9d9e-d9f12447434e",
+      "status": "APPROVE"
+    },
+    "responsive-closure-code-review-engineer": {
+      "agentId": "019ff29c-fada-7c43-9723-09afe5640ce6",
+      "status": "APPROVE"
+    },
+    "responsive-closure-test-engineer": {
+      "agentId": "019ff29c-ffed-7363-b07f-e896271f5881",
+      "status": "PASS"
+    },
+    "responsive-closure-security-engineer": {
+      "agentId": "019ff29d-0687-7e60-a659-535a66c25a49",
+      "status": "APPROVE"
+    }
+  },
+  "verification": {
+    "result": "pass-with-blocked-checks",
+    "passed": [
+      "npm run lint",
+      "npm run typecheck",
+      "six focused Vitest files: 77 tests",
+      "responsive harness contract: 2 tests",
+      "responsive observer: six of six route and viewport results",
+      "npm run build",
+      "npm run ci:check-focused",
+      "npm run test:routes:tier0: 220 tests",
+      "npm run test:ci: 4178 tests across 484 files",
+      "npm run ci:verify-coverage: 92.81 percent line coverage",
+      "NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local"
+    ],
+    "failed": [],
+    "blocked": [
+      "npm run ci:playwright requires PW_ADMIN or PW_SUPERADMIN credentials and stopped at preflight locally",
+      "exact-head CI requires this evidence refresh to be committed and pushed"
+    ]
+  },
+  "predecessorReferences": [
+    {
+      "path": "docs/ai/reviews/WIN-275-solo-maintainer-attestation.json",
+      "sha256": "53e83bd78fef02c24dbd4bf8fbd66bdd4f92c38b44f0edfd61d9aceb1b5aa322"
+    },
+    {
+      "path": "docs/ai/reviews/WIN-275-agent-work-ledger-adoption-contract-attestation.json",
+      "sha256": "8b7517861e1a5ade3a6c6a8f385866a334f7f0d08aa45ac67a6e068d02d87303"
+    },
+    {
+      "path": "docs/ai/reviews/WIN-275-retention-policy-encoding-attestation.json",
+      "sha256": "14cfe7c62cc44d9191fa7727a3d9f1cd022c343c610d96bb4a572a0682fb5f95"
+    },
+    {
+      "path": "docs/ai/reviews/WIN-275-local-operator-responsive-observer-attestation.json",
+      "sha256": "4ebba04d72666b1d78454834dfd8dedc81b72906ec80398b52e678f3d86a9f93"
+    },
+    {
+      "path": "docs/ai/reviews/WIN-275-hosted-shadow-proof-attestation.md"
+    },
+    {
+      "path": "docs/ai/handoffs/WIN-275-ledger-hash-baseline-repair.md"
+    },
+    {
+      "path": "docs/ai/handoffs/WIN-275-supabase-validate-playwright.md"
+    }
+  ],
+  "implementationEvidence": {
+    "uiOnlyDiff": true,
+    "internalProgramContractsUnchanged": true,
+    "basis": [
+      "docs/superpowers/plans/2026-08-11-clinical-domain-terminology.md",
+      "docs/superpowers/specs/2026-08-11-clinical-domain-terminology-design.md",
+      "git diff --name-only origin/main...HEAD"
+    ],
+    "changedUiSurfaces": [
+      "src/pages/ClientDetails.tsx",
+      "src/components/ClientDetails/ProgramsGoalsTab.tsx",
+      "src/components/SessionModal.tsx",
+      "src/components/AddSessionNoteModal.tsx",
+      "src/components/AutoScheduleModal.tsx",
+      "src/components/session-notes/BtAbaSessionNoteForm.tsx",
+      "src/components/ChatBot.tsx",
+      "src/pages/Dashboard.tsx"
+    ],
+    "changedUiTests": [
+      "src/pages/__tests__/ClientDetails.test.tsx",
+      "src/components/__tests__/ProgramsGoalsTab.test.tsx",
+      "src/components/__tests__/SessionModal.test.tsx",
+      "src/components/__tests__/AddSessionNoteModal.test.tsx",
+      "src/components/__tests__/AutoScheduleModalWarnings.test.tsx",
+      "src/components/__tests__/SchedulingFlow.test.tsx",
+      "src/components/session-notes/__tests__/BtAbaSessionNoteForm.test.tsx",
+      "src/components/__tests__/ChatBot.test.tsx",
+      "src/lib/__tests__/ai-auth-fetch.test.ts",
+      "src/lib/__tests__/bt-aba-session-note.test.ts",
+      "src/pages/__tests__/Dashboard.dashboardQueryGate.test.tsx",
+      "tests/responsiveUiObserverRuntime.test.ts"
+    ],
+    "protectedSurfaceHash": {
+      "path": "src/components/ClientDetails/ProgramsGoalsTab.tsx",
+      "algorithm": "sha256",
+      "canonicalization": "UTF-8 text with CRLF normalized to LF, matching tests/agentWorkLedgerHostedShadowProof.test.ts",
+      "canonicalSha256": "b35c8c719a68cdba9be9183b99a5a690da26d097bb12915c354243102b4bdea6"
+    }
+  },
+  "expectedHashDrift": {
+    "rollingManifestPath": "docs/ai/reviews/WIN-275-solo-maintainer-attestation.json",
+    "status": "RESOLVED_BY_THIS_EVIDENCE_REFRESH",
+    "driftedProtectedSurfaceHashes": [
+      {
+        "path": "src/components/ClientDetails/ProgramsGoalsTab.tsx",
+        "manifestSha256": "fbc032c2dddca32dd846ce1a89e80fdd0cb45500bb31f21c773cc2c33dd74fa4",
+        "currentBranchCanonicalSha256": "b35c8c719a68cdba9be9183b99a5a690da26d097bb12915c354243102b4bdea6"
+      }
+    ],
+    "noManifestUpdatePerformed": false
+  },
+  "laterRollingManifestUpdateRequired": {
+    "path": "docs/ai/reviews/WIN-275-solo-maintainer-attestation.json",
+    "status": "COMPLETED_IN_SUCCESSOR_EVIDENCE_COMMIT",
+    "requiredWhen": [],
+    "requiredChanges": []
+  }
+}

@@ -183,8 +183,8 @@ export function ClientDetails() {
       },
       {
         id: 'programs-goals' as TabType,
-        name: 'Programs & Goals',
-        mobileName: 'Programs',
+        name: 'Domains & Goals',
+        mobileName: 'Domains',
         icon: FileText,
       },
       {

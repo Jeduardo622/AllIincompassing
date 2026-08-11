@@ -2668,7 +2668,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         queryKey: ["assessment-drafts", selectedAssessmentId, organizationId ?? "MISSING_ORG"],
       });
       showSuccess(
-        `Published to live records. Created ${programCount} production program${programCount === 1 ? "" : "s"} and ${goalCount} goal${goalCount === 1 ? "" : "s"}.`,
+        `Published to live records. Created ${programCount} production domain${programCount === 1 ? "" : "s"} and ${goalCount} goal${goalCount === 1 ? "" : "s"}.`,
       );
     },
     onError: showError,
@@ -3398,7 +3398,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
   if (!organizationId) {
     return (
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
-        Organization context is required to manage programs and goals.
+        Organization context is required to manage domains and goals.
       </div>
     );
   }
@@ -4697,7 +4697,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
               <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Add Goal</h3>
               <div className="space-y-3">
                 <p className="text-xs text-gray-500 dark:text-gray-300">
-                  Select a program before creating a goal. Required fields are marked with an asterisk.
+                  Select a domain before creating a goal. Required fields are marked with an asterisk.
                 </p>
                 {!hasResolvedProgram && (
                   <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">

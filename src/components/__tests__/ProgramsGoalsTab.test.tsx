@@ -5810,9 +5810,9 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     await screen.findByText("fba.pdf");
-    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Publish to Live Domains \+ Goals/i })).not.toBeInTheDocument();
     expect(showSuccess).not.toHaveBeenCalledWith(
-      "Published to live records. Created 2 production programs and 26 goals.",
+      "Published to live records. Created 2 production domains and 26 goals.",
     );
     invalidateQueriesSpy.mockRestore();
     confirmSpy.mockRestore();
@@ -5871,9 +5871,9 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     await screen.findByText("fba.pdf");
-    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Publish to Live Domains \+ Goals/i })).not.toBeInTheDocument();
     expect(showSuccess).not.toHaveBeenCalledWith(
-      "Published to live records. Created 1 production program and 26 goals.",
+      "Published to live records. Created 1 production domain and 26 goals.",
     );
     confirmSpy.mockRestore();
   });
@@ -5939,9 +5939,9 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
 
     await screen.findByText("fba.pdf");
-    expect(screen.queryByRole("button", { name: /Publish to Live Programs \+ Goals/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Publish to Live Domains \+ Goals/i })).not.toBeInTheDocument();
     expect(showSuccess).not.toHaveBeenCalledWith(
-      "Published to live records. Created 1 production program and 26 goals.",
+      "Published to live records. Created 1 production domain and 26 goals.",
     );
     confirmSpy.mockRestore();
   });
@@ -6732,7 +6732,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
       );
     });
     expect(showSuccess).toHaveBeenCalledWith(
-      "Published to live records. Created 1 production program and 2 goals.",
+      "Published to live records. Created 1 production domain and 2 goals.",
     );
     expect(invalidateQueriesSpy).toHaveBeenCalled();
     invalidateQueriesSpy.mockRestore();

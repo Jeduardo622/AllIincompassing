@@ -64,8 +64,10 @@ export function usePayrollAdministration(
   });
 
   const reviewQueue = reviewQueueQuery.data;
+  const administrationCapabilities = administrationQuery.data?.capabilities;
   const reviewDetailsEnabled = Boolean(
     selectedReview
+    && administrationQuery.status === "success"
     && reviewQueue?.state === "ok"
     && reviewQueue.queue.some((item) => (
       item.snapshot.id === selectedReview.snapshotId
@@ -79,7 +81,7 @@ export function usePayrollAdministration(
       ...scope,
       snapshotId: selectedReview!.snapshotId,
       snapshotHash: selectedReview!.snapshotHash,
-      canViewCompensation: administrationQuery.data?.capabilities.canViewCompensation ?? false,
+      canViewCompensation: administrationCapabilities!.canViewCompensation,
     }),
     enabled: reviewDetailsEnabled,
   });

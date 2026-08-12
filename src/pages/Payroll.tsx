@@ -159,6 +159,22 @@ const ActionButton = ({
 
 type ReviewSelection = { snapshotId: string; snapshotHash: string } | null;
 
+const isOkState = (value: unknown): value is { state: "ok" } =>
+  Boolean(value) && typeof value === "object" && (value as { state?: unknown }).state === "ok";
+
+const QueryStatusPanel = ({
+  title,
+  body,
+}: {
+  title: string;
+  body: string;
+}) => (
+  <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-600 dark:border-gray-700 dark:bg-dark-lighter dark:text-gray-300">
+    <p className="font-medium text-gray-900 dark:text-white">{title}</p>
+    <p className="mt-1">{body}</p>
+  </div>
+);
+
 function EmploymentTab({
   data,
   canConfigureEmployment,
@@ -201,12 +217,6 @@ function EmploymentTab({
     effectiveFrom: `${data.selectedLocalDate}T00:00:00Z`,
     deactivateId: "",
     deactivateThrough: `${data.selectedLocalDate}T23:59:59Z`,
-  });
-  const [capabilityForm, setCapabilityForm] = useState({
-    userId: "",
-    capability: "payroll.configure_employment",
-    effectiveFrom: `${data.selectedLocalDate}T00:00:00Z`,
-    revokeThrough: `${data.selectedLocalDate}T23:59:59Z`,
   });
 
   return (
@@ -346,7 +356,7 @@ function EmploymentTab({
             </div>
 
             <div className="rounded-xl border border-gray-100 p-4 dark:border-gray-800">
-              <p className="mb-3 text-sm font-medium text-gray-900 dark:text-white">Rates, manager assignments, and capabilities</p>
+              <p className="mb-3 text-sm font-medium text-gray-900 dark:text-white">Rates and manager assignments</p>
               <div className="grid gap-3">
                 <Field label="Employment profile ID" value={rateForm.employmentProfileId} onChange={(value) => setRateForm((current) => ({ ...current, employmentProfileId: value }))} />
                 <Field label="Hourly rate cents" type="number" value={rateForm.hourlyRateCents} onChange={(value) => setRateForm((current) => ({ ...current, hourlyRateCents: value }))} />
@@ -385,32 +395,6 @@ function EmploymentTab({
                     effectiveThrough: managerForm.deactivateThrough.trim(),
                   }, "payroll-manager")}
                 />
-                <Field label="Capability user ID" value={capabilityForm.userId} onChange={(value) => setCapabilityForm((current) => ({ ...current, userId: value }))} />
-                <SelectField label="Capability" value={capabilityForm.capability} onChange={(value) => setCapabilityForm((current) => ({ ...current, capability: value }))} options={["payroll.configure_employment", "payroll.resolve_exceptions", "payroll.lock_period", "payroll.reopen_period", "payroll.view_compensation"]} />
-                <Field label="Capability effective from" value={capabilityForm.effectiveFrom} onChange={(value) => setCapabilityForm((current) => ({ ...current, effectiveFrom: value }))} />
-                <div className="flex flex-wrap gap-2">
-                  <ActionButton
-                    label="Grant capability"
-                    disabled={actionPending || !capabilityForm.userId.trim()}
-                    onClick={() => onAction({
-                      action: "grant_capability",
-                      userId: capabilityForm.userId.trim(),
-                      capability: capabilityForm.capability as PayrollAdministrationActionInput["capability"],
-                      effectiveFrom: capabilityForm.effectiveFrom.trim(),
-                    }, "payroll-capability")}
-                  />
-                  <ActionButton
-                    label="Revoke capability"
-                    variant="secondary"
-                    disabled={actionPending || !capabilityForm.userId.trim()}
-                    onClick={() => onAction({
-                      action: "revoke_capability",
-                      userId: capabilityForm.userId.trim(),
-                      capability: capabilityForm.capability as PayrollAdministrationActionInput["capability"],
-                      effectiveThrough: capabilityForm.revokeThrough.trim(),
-                    }, "payroll-capability")}
-                  />
-                </div>
               </div>
             </div>
           </div>
@@ -661,18 +645,43 @@ function PeriodsTab({
 }
 
 function ExceptionsTab({
-  reviewQueue,
-  reviewDetails,
+  reviewQueueQuery,
+  reviewDetailsQuery,
+  selectedReview,
   canResolveExceptions,
 }: {
-  reviewQueue: ReturnType<typeof usePayrollAdministration>["reviewQueueQuery"]["data"];
-  reviewDetails: ReturnType<typeof usePayrollAdministration>["reviewDetailsQuery"]["data"];
+  reviewQueueQuery: ReturnType<typeof usePayrollAdministration>["reviewQueueQuery"];
+  reviewDetailsQuery: ReturnType<typeof usePayrollAdministration>["reviewDetailsQuery"];
+  selectedReview: ReviewSelection;
   canResolveExceptions: boolean;
 }) {
+  if (reviewQueueQuery.isLoading) {
+    return (
+      <div className="grid gap-6">
+        <SectionCard title="Blocking exceptions" body="Blocker visibility comes from the immutable payroll approval review surfaces.">
+          <QueryStatusPanel title="Loading payroll review queue" body="Waiting for the authoritative payroll review queue." />
+        </SectionCard>
+      </div>
+    );
+  }
+
+  if (reviewQueueQuery.isError || !isOkState(reviewQueueQuery.data)) {
+    return (
+      <div className="grid gap-6">
+        <SectionCard title="Blocking exceptions" body="Blocker visibility comes from the immutable payroll approval review surfaces.">
+          <QueryStatusPanel title="Authoritative payroll review queue is unavailable" body="Payroll administration stays fail-closed until the review queue loads successfully." />
+        </SectionCard>
+      </div>
+    );
+  }
+
+  const reviewQueue = reviewQueueQuery.data;
+  const reviewDetails = isOkState(reviewDetailsQuery.data) ? reviewDetailsQuery.data : null;
+
   return (
     <div className="grid gap-6">
       <SectionCard title="Blocking exceptions" body="Blocker visibility comes from the immutable payroll approval review surfaces.">
-        {!reviewQueue || reviewQueue.queue.length === 0 ? (
+        {reviewQueue.queue.length === 0 ? (
           <EmptyPanel title="No pending exception rows" body="The review queue did not return any payroll snapshots for exception review." />
         ) : (
           <div className="grid gap-3">
@@ -685,6 +694,16 @@ function ExceptionsTab({
             ))}
           </div>
         )}
+        {selectedReview && reviewDetailsQuery.isLoading ? (
+          <div className="mt-4">
+            <QueryStatusPanel title="Loading approval details" body="Waiting for authoritative blocker details for the selected snapshot." />
+          </div>
+        ) : null}
+        {selectedReview && (reviewDetailsQuery.isError || (reviewDetailsQuery.data && !isOkState(reviewDetailsQuery.data))) ? (
+          <div className="mt-4">
+            <QueryStatusPanel title="Authoritative approval details are unavailable" body="Payroll administration stays fail-closed until the selected approval details load successfully." />
+          </div>
+        ) : null}
         {reviewDetails ? (
           <div className="mt-4 rounded-xl border border-gray-100 p-4 dark:border-gray-800">
             <p className="font-medium text-gray-900 dark:text-white">Selected snapshot blockers</p>
@@ -713,8 +732,8 @@ function ExceptionsTab({
 }
 
 function ApprovalsTab({
-  reviewQueue,
-  reviewDetails,
+  reviewQueueQuery,
+  reviewDetailsQuery,
   selectedReview,
   onSelectReview,
   canLockPeriod,
@@ -726,20 +745,44 @@ function ApprovalsTab({
   reopenPending,
   actionError,
 }: {
-  reviewQueue: ReturnType<typeof usePayrollAdministration>["reviewQueueQuery"]["data"];
-  reviewDetails: ReturnType<typeof usePayrollAdministration>["reviewDetailsQuery"]["data"];
+  reviewQueueQuery: ReturnType<typeof usePayrollAdministration>["reviewQueueQuery"];
+  reviewDetailsQuery: ReturnType<typeof usePayrollAdministration>["reviewDetailsQuery"];
   selectedReview: ReviewSelection;
   onSelectReview: (value: ReviewSelection) => void;
   canLockPeriod: boolean;
   canReopenPeriod: boolean;
   canViewCompensation: boolean;
   onLock: (snapshotId: string, snapshotHash: string) => void;
-  onReopen: (snapshotId: string, snapshotHash: string) => void;
+  onReopen: (snapshotId: string, snapshotHash: string, reason: string) => void;
   lockPending: boolean;
   reopenPending: boolean;
   actionError: unknown;
 }) {
-  if (!reviewQueue || reviewQueue.queue.length === 0) {
+  const [reopenReason, setReopenReason] = useState("");
+  const trimmedReopenReason = reopenReason.trim();
+  const reviewQueue = isOkState(reviewQueueQuery.data) ? reviewQueueQuery.data : null;
+  const reviewDetails = isOkState(reviewDetailsQuery.data) ? reviewDetailsQuery.data : null;
+
+  if (reviewQueueQuery.isLoading) {
+    return (
+      <SectionCard title="Approvals" body="Lock and reopen actions are driven from the immutable approval queue.">
+        <QueryStatusPanel title="Loading payroll review queue" body="Waiting for the authoritative payroll review queue." />
+        <div className="mt-4">
+          <QueryStatusPanel title="Loading approval details" body="Waiting for authoritative approval details for the selected snapshot." />
+        </div>
+      </SectionCard>
+    );
+  }
+
+  if (reviewQueueQuery.isError || !reviewQueue) {
+    return (
+      <SectionCard title="Approvals" body="Lock and reopen actions are driven from the immutable approval queue.">
+        <QueryStatusPanel title="Authoritative payroll review queue is unavailable" body="Payroll administration stays fail-closed until the review queue loads successfully." />
+      </SectionCard>
+    );
+  }
+
+  if (reviewQueue.queue.length === 0) {
     return (
       <SectionCard title="Approvals" body="Lock and reopen actions are driven from the immutable approval queue.">
         <EmptyPanel title="No approval rows" body="The authoritative approval queue is empty for the selected payroll date." />
@@ -773,7 +816,11 @@ function ApprovalsTab({
       </SectionCard>
 
       <SectionCard title="Approval details" body="This view stays immutable. It does not permit punch editing.">
-        {!selectedReview || !reviewDetails ? (
+        {selectedReview && reviewDetailsQuery.isLoading ? (
+          <QueryStatusPanel title="Loading approval details" body="Waiting for authoritative approval details for the selected snapshot." />
+        ) : selectedReview && (reviewDetailsQuery.isError || (reviewDetailsQuery.data && !isOkState(reviewDetailsQuery.data))) ? (
+          <QueryStatusPanel title="Authoritative approval details are unavailable" body="Payroll administration stays fail-closed until the selected approval details load successfully." />
+        ) : !selectedReview || !reviewDetails ? (
           <EmptyPanel title="No approval details selected" body="Select a queue row to review blocker state, history, and lock controls." />
         ) : (
           <div className="space-y-4">
@@ -838,6 +885,19 @@ function ApprovalsTab({
               )}
             </div>
 
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-gray-700 dark:text-gray-200">Reopen reason</span>
+              <textarea
+                value={reopenReason}
+                onChange={(event) => setReopenReason(event.target.value)}
+                rows={3}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-dark"
+              />
+              {!trimmedReopenReason ? (
+                <span className="mt-1 block text-xs text-amber-800 dark:text-amber-200">Reopen reason is required.</span>
+              ) : null}
+            </label>
+
             <div className="flex flex-wrap gap-2">
               {canLockPeriod ? (
                 <ActionButton
@@ -850,8 +910,8 @@ function ApprovalsTab({
                 <ActionButton
                   label="Reopen period"
                   variant="secondary"
-                  disabled={reopenPending}
-                  onClick={() => onReopen(reviewDetails.snapshotId, reviewDetails.snapshotHash)}
+                  disabled={reopenPending || !trimmedReopenReason}
+                  onClick={() => onReopen(reviewDetails.snapshotId, reviewDetails.snapshotHash, trimmedReopenReason)}
                 />
               ) : null}
             </div>
@@ -1004,16 +1064,17 @@ export function Payroll() {
 
       {activeTab === "Exceptions" ? (
         <ExceptionsTab
-          reviewQueue={reviewQueueQuery.data}
-          reviewDetails={reviewDetailsQuery.data}
+          reviewQueueQuery={reviewQueueQuery}
+          reviewDetailsQuery={reviewDetailsQuery}
+          selectedReview={selectedReview}
           canResolveExceptions={administration.capabilities.canResolveExceptions}
         />
       ) : null}
 
       {activeTab === "Approvals" ? (
         <ApprovalsTab
-          reviewQueue={reviewQueueQuery.data}
-          reviewDetails={reviewDetailsQuery.data}
+          reviewQueueQuery={reviewQueueQuery}
+          reviewDetailsQuery={reviewDetailsQuery}
           selectedReview={selectedReview}
           onSelectReview={setSelectedReview}
           canLockPeriod={administration.capabilities.canLockPeriod}
@@ -1025,12 +1086,12 @@ export function Payroll() {
             snapshotId,
             snapshotHash,
           })}
-          onReopen={(snapshotId, snapshotHash) => void reopenPayrollTimesheetMutation.mutateAsync({
+          onReopen={(snapshotId, snapshotHash, reason) => void reopenPayrollTimesheetMutation.mutateAsync({
             ...scope,
             idempotencyKey: buildIdempotencyKey("payroll-reopen"),
             snapshotId,
             snapshotHash,
-            reason: "Payroll administration review requested reopen.",
+            reason,
           })}
           lockPending={lockPayrollTimesheetMutation.isPending}
           reopenPending={reopenPayrollTimesheetMutation.isPending}

@@ -140,6 +140,16 @@ describe('route guard access controls', () => {
     expect(hasRoleAccess('/payroll', 'therapist')).toBe(false);
   });
 
+  it('declares both payroll administration read and execute surfaces for /payroll', () => {
+    expect(findGuardForPath('/payroll')?.supabasePolicies).toEqual([
+      'public.get_payroll_administration: authenticated_execute',
+      'public.execute_payroll_administration: authenticated_execute',
+      'public.get_payroll_review_queue: authenticated_execute',
+      'public.get_payroll_review_details: authenticated_execute',
+      'public.transition_timesheet_approval: authenticated_execute',
+    ]);
+  });
+
   it('allows canonical BT users to access fill-docs after therapist role normalization', () => {
     expect(hasRoleAccess('/fill-docs', 'bt')).toBe(true);
     expect(hasRoleAccess('/fill-docs', 'therapist')).toBe(true);

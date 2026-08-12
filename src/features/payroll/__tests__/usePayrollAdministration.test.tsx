@@ -38,6 +38,11 @@ const scope = {
   localDate: "2026-08-12",
 };
 
+const flushPromises = async () => {
+  await Promise.resolve();
+  await Promise.resolve();
+};
+
 function Probe() {
   const payrollAdministration = usePayrollAdministration(scope, {
     selectedReview: {
@@ -210,5 +215,57 @@ describe("usePayrollAdministration", () => {
     await waitFor(() => expect(vi.mocked(reopenPayrollTimesheet)).toHaveBeenCalled());
     expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: payrollAdministrationQueryKey("org-1", "user-1", "2026-08-12") }));
     expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: payrollAdministrationQueueKey("org-1", "user-1", "2026-08-12") }));
+  });
+
+  it("waits for authoritative administration capabilities before loading review details", async () => {
+    let resolveAdministration: ((value: Awaited<ReturnType<typeof fetchPayrollAdministration>>) => void) | null = null;
+    vi.mocked(fetchPayrollAdministration).mockImplementation(() => new Promise((resolve) => {
+      resolveAdministration = resolve;
+    }) as ReturnType<typeof fetchPayrollAdministration>);
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <Probe />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(vi.mocked(fetchPayrollReviewQueue)).toHaveBeenCalled());
+    await flushPromises();
+    expect(vi.mocked(fetchPayrollReviewDetails)).not.toHaveBeenCalled();
+
+    resolveAdministration?.({
+      state: "ok",
+      selectedLocalDate: "2026-08-12",
+      capabilities: {
+        canConfigureEmployment: true,
+        canResolveExceptions: true,
+        canLockPeriod: true,
+        canReopenPeriod: true,
+        canGeneratePeriods: true,
+        canViewCompensation: true,
+        canManagePolicyMutations: false,
+      },
+      orgSettings: [],
+      policies: [],
+      employments: [],
+      payGroups: [],
+      generationVersions: [],
+      payPeriods: [],
+      bounds: {
+        orgSettings: 50,
+        policies: 20,
+        employments: 50,
+        payGroups: 50,
+        generationVersions: 50,
+        payPeriods: 50,
+      },
+    } as never);
+
+    await waitFor(() => expect(vi.mocked(fetchPayrollReviewDetails)).toHaveBeenCalledWith(expect.objectContaining({
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "a".repeat(64),
+      canViewCompensation: true,
+    })));
   });
 });

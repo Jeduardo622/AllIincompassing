@@ -55,6 +55,7 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
     requiredPermissions: [],
     supabasePolicies: [
       'public.get_payroll_administration: authenticated_execute',
+      'public.execute_payroll_administration: authenticated_execute',
       'public.get_payroll_review_queue: authenticated_execute',
       'public.get_payroll_review_details: authenticated_execute',
       'public.transition_timesheet_approval: authenticated_execute',

@@ -157,6 +157,43 @@ const reviewDetails = {
   compensation: { grossEarningsCents: 12345 },
 };
 
+const buildPayrollAdministrationMock = (overrides: Record<string, unknown> = {}) => ({
+  administrationQuery: {
+    data: administrationData,
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  },
+  reviewQueueQuery: {
+    data: reviewQueue,
+    isLoading: false,
+    isError: false,
+    error: null,
+  },
+  reviewDetailsQuery: {
+    data: reviewDetails,
+    isLoading: false,
+    isError: false,
+    error: null,
+  },
+  administrationActionMutation: {
+    mutateAsync: vi.fn(),
+    isPending: false,
+    error: null,
+  },
+  lockPayrollTimesheetMutation: {
+    mutateAsync: vi.fn(),
+    isPending: false,
+    error: null,
+  },
+  reopenPayrollTimesheetMutation: {
+    mutateAsync: vi.fn(),
+    isPending: false,
+    error: null,
+  },
+  ...overrides,
+});
+
 const renderPage = () => render(
   <MemoryRouter initialEntries={["/payroll"]}>
     <Payroll />
@@ -171,35 +208,7 @@ describe("Payroll page", () => {
       loading: false,
       profileLoading: false,
     });
-    mockUsePayrollAdministration.mockReturnValue({
-      administrationQuery: {
-        data: administrationData,
-        isLoading: false,
-        isError: false,
-        refetch: vi.fn(),
-      },
-      reviewQueueQuery: {
-        data: reviewQueue,
-      },
-      reviewDetailsQuery: {
-        data: reviewDetails,
-      },
-      administrationActionMutation: {
-        mutateAsync: vi.fn(),
-        isPending: false,
-        error: null,
-      },
-      lockPayrollTimesheetMutation: {
-        mutateAsync: vi.fn(),
-        isPending: false,
-        error: null,
-      },
-      reopenPayrollTimesheetMutation: {
-        mutateAsync: vi.fn(),
-        isPending: false,
-        error: null,
-      },
-    });
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock());
   });
 
   it("renders the exact payroll administration tabs", () => {
@@ -249,6 +258,9 @@ describe("Payroll page", () => {
     expect(screen.getByText(/policy list is read-only/i)).toBeInTheDocument();
     expect(screen.queryByText(/hourly rate:/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/gross earnings:/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /grant capability/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /revoke capability/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /export/i })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Approvals" }));
     expect(screen.queryByText(/gross earnings:/i)).not.toBeInTheDocument();
@@ -265,5 +277,176 @@ describe("Payroll page", () => {
     expect(screen.getByRole("button", { name: /lock period/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /reopen period/i })).toBeInTheDocument();
     expect(screen.queryByText(/edit punch/i)).not.toBeInTheDocument();
+  });
+
+  it("requires an operator-entered reopen reason and submits the exact rationale", async () => {
+    const user = userEvent.setup();
+    const reopenMutateAsync = vi.fn();
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      reopenPayrollTimesheetMutation: {
+        mutateAsync: reopenMutateAsync,
+        isPending: false,
+        error: null,
+      },
+    }));
+
+    renderPage();
+
+    await user.click(screen.getByRole("button", { name: "Approvals" }));
+    expect(screen.getByRole("button", { name: /reopen period/i })).toBeDisabled();
+    expect(screen.getByText(/reopen reason is required/i)).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/reopen reason/i), "Manager confirmed the correction is complete.");
+    await user.click(screen.getByRole("button", { name: /reopen period/i }));
+
+    expect(reopenMutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+      snapshotId: "88888888-8888-4888-8888-888888888888",
+      snapshotHash: "a".repeat(64),
+      reason: "Manager confirmed the correction is complete.",
+    }));
+  });
+
+  it("renders explicit loading states for approval queue and selected details", async () => {
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      reviewQueueQuery: {
+        data: undefined,
+        isLoading: true,
+        isError: false,
+        error: null,
+      },
+      reviewDetailsQuery: {
+        data: undefined,
+        isLoading: true,
+        isError: false,
+        error: null,
+      },
+    }));
+
+    renderPage();
+
+    await userEvent.click(screen.getByRole("button", { name: "Exceptions" }));
+    expect(screen.getByText(/loading payroll review queue/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Approvals" }));
+    expect(screen.getByText(/loading payroll review queue/i)).toBeInTheDocument();
+    expect(screen.getByText(/loading approval details/i)).toBeInTheDocument();
+  });
+
+  it("fails closed when the review queue transport errors", async () => {
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      reviewQueueQuery: {
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: { message: "queue transport failed" },
+      },
+      reviewDetailsQuery: {
+        data: undefined,
+        isLoading: false,
+        isError: false,
+        error: null,
+      },
+    }));
+
+    renderPage();
+
+    await userEvent.click(screen.getByRole("button", { name: "Exceptions" }));
+    expect(screen.getByText(/authoritative payroll review queue is unavailable/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no pending exception rows/i)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Approvals" }));
+    expect(screen.getByText(/authoritative payroll review queue is unavailable/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no approval rows/i)).not.toBeInTheDocument();
+  });
+
+  it("fails closed when the review queue resolves to a non-ok state", async () => {
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      reviewQueueQuery: {
+        data: {
+          ...reviewQueue,
+          state: "feature_disabled",
+          queue: [],
+        },
+        isLoading: false,
+        isError: false,
+        error: null,
+      },
+      reviewDetailsQuery: {
+        data: undefined,
+        isLoading: false,
+        isError: false,
+        error: null,
+      },
+    }));
+
+    renderPage();
+
+    await userEvent.click(screen.getByRole("button", { name: "Approvals" }));
+    expect(screen.getByText(/authoritative payroll review queue is unavailable/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no approval rows/i)).not.toBeInTheDocument();
+  });
+
+  it("fails closed when selected approval details transport error", async () => {
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      reviewDetailsQuery: {
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: { message: "details transport failed" },
+      },
+    }));
+
+    renderPage();
+
+    await userEvent.click(screen.getByRole("button", { name: "Approvals" }));
+    expect(screen.getByText(/authoritative approval details are unavailable/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no approval details selected/i)).not.toBeInTheDocument();
+  });
+
+  it("fails closed when selected approval details resolve to a non-ok state", async () => {
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      reviewDetailsQuery: {
+        data: {
+          state: "feature_disabled",
+        },
+        isLoading: false,
+        isError: false,
+        error: null,
+      },
+    }));
+
+    renderPage();
+
+    await userEvent.click(screen.getByRole("button", { name: "Approvals" }));
+    expect(screen.getByText(/authoritative approval details are unavailable/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no approval details selected/i)).not.toBeInTheDocument();
+  });
+
+  it("preserves genuine empty states when the authoritative queue is ok but empty", async () => {
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      reviewQueueQuery: {
+        data: {
+          ...reviewQueue,
+          queue: [],
+        },
+        isLoading: false,
+        isError: false,
+        error: null,
+      },
+      reviewDetailsQuery: {
+        data: undefined,
+        isLoading: false,
+        isError: false,
+        error: null,
+      },
+    }));
+
+    renderPage();
+
+    await userEvent.click(screen.getByRole("button", { name: "Exceptions" }));
+    expect(screen.getByText(/no pending exception rows/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Approvals" }));
+    expect(screen.getByText(/no approval rows/i)).toBeInTheDocument();
   });
 });

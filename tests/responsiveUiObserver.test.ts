@@ -270,6 +270,33 @@ describe('responsive-ui-observer contract', () => {
       }
     });
 
+    it('accepts only the fixed synthetic payroll-administration scenario on /payroll', () => {
+      expect(parseObserverArgs([
+        'node',
+        'scripts/playwright-responsive-ui-observer.ts',
+        `--base-url=${baseUrl}`,
+        '--route=/payroll',
+        '--scenario=payroll-administration',
+      ])).toEqual({
+        baseUrl,
+        routes: ['/payroll'],
+        scenario: 'payroll-administration',
+      });
+
+      for (const invalidArgs of [
+        ['--route=/time', '--scenario=payroll-administration'],
+        ['--route=/payroll', '--route=/desk', '--scenario=payroll-administration'],
+        ['--route=/payroll', '--scenario=payroll-administration', '--scenario=payroll-administration'],
+      ]) {
+        expect(() => parseObserverArgs([
+          'node',
+          'scripts/playwright-responsive-ui-observer.ts',
+          `--base-url=${baseUrl}`,
+          ...invalidArgs,
+        ])).toThrow();
+      }
+    });
+
     it('rejects a missing route flag', () => {
       expect(() =>
         parseObserverArgs([
@@ -501,6 +528,27 @@ describe('responsive-ui-observer contract', () => {
       expect(evidenceCard).toMatchObject({ scenarioId: 'payroll-time-review' });
       expect(JSON.stringify(evidenceCard)).not.toContain('blockerId');
       expect(JSON.stringify(evidenceCard)).not.toContain('hourlyRateCents');
+    });
+
+    it('records fixed payroll-administration provenance without exposing compensation or staffing payload details', () => {
+      const evidenceCard = buildEvidenceCard({
+        route: '/payroll',
+        viewportName: 'desktop',
+        result: 'pass',
+        failures: [],
+        metrics: {
+          horizontalOverflow: false,
+          clippedFixedControls: [],
+          visibleTouchTargets: [{ width: 48, height: 48 }],
+        },
+        screenshotHash: `sha256:${'7'.repeat(64)}`,
+        evidenceHash: `sha256:${'8'.repeat(64)}`,
+        scenario: 'payroll-administration',
+      } as any);
+
+      expect(evidenceCard).toMatchObject({ scenarioId: 'payroll-administration' });
+      expect(JSON.stringify(evidenceCard)).not.toContain('hourlyRateCents');
+      expect(JSON.stringify(evidenceCard)).not.toContain('managerUserId');
     });
 
     it('derives deterministic route slugs and paths while excluding raw payloads', () => {

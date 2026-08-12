@@ -526,7 +526,103 @@ describe("payrollApprovalsHandler", () => {
     );
 
     expect(forwarded.status).toBe(expectedStatus);
+    expect(forwarded.headers.get("Idempotency-Key")).toBe(String(expectedBody.idempotencyKey));
     await expect(forwarded.json()).resolves.toEqual(expect.objectContaining(expectedBody));
+  });
+
+  it("fails closed when a typed edge-authority error body omits the authoritative idempotency header echo", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
+    vi.mocked(proxyToEdgeAuthority).mockResolvedValue(
+      new Response(JSON.stringify({
+        success: false,
+        error: "Idempotency conflict.",
+        requestId: "edge-conflict",
+        code: "conflict",
+        message: "Idempotency conflict.",
+        classification: {
+          category: "request",
+          severity: "medium",
+          retryable: false,
+          httpStatus: 409,
+        },
+        idempotencyKey: "approval-conflict-key",
+      }), {
+        status: 409,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }),
+    );
+
+    const response = await payrollApprovalsHandler(
+      new Request("http://localhost/api/payroll-approvals", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${createAuthToken()}`,
+          "Idempotency-Key": "approval-conflict-key",
+        },
+        body: JSON.stringify({
+          action: "lock",
+          snapshotId: "11111111-1111-1111-1111-111111111111",
+          snapshotHash: "a".repeat(64),
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get("Idempotency-Key")).toBeNull();
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      code: "invalid_response",
+      error: "Invalid payroll approval response.",
+    }));
+  });
+
+  it("fails closed when a typed edge-authority error header echo mismatches the body or request", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
+    vi.mocked(proxyToEdgeAuthority).mockResolvedValue(
+      new Response(JSON.stringify({
+        success: false,
+        error: "Idempotency conflict.",
+        requestId: "edge-conflict",
+        code: "conflict",
+        message: "Idempotency conflict.",
+        classification: {
+          category: "request",
+          severity: "medium",
+          retryable: false,
+          httpStatus: 409,
+        },
+        idempotencyKey: "approval-body-key",
+      }), {
+        status: 409,
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": "approval-header-key",
+        },
+      }),
+    );
+
+    const response = await payrollApprovalsHandler(
+      new Request("http://localhost/api/payroll-approvals", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${createAuthToken()}`,
+          "Idempotency-Key": "approval-request-key",
+        },
+        body: JSON.stringify({
+          action: "lock",
+          snapshotId: "11111111-1111-1111-1111-111111111111",
+          snapshotHash: "a".repeat(64),
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get("Idempotency-Key")).toBeNull();
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      code: "invalid_response",
+      error: "Invalid payroll approval response.",
+    }));
   });
 
   it("maps ad hoc edge-authority error bodies back into the protected approval envelope", async () => {

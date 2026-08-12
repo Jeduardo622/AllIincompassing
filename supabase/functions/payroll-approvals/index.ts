@@ -62,6 +62,12 @@ const blockerTypeSchema = z.enum([
   "timekeeping_exception",
 ]);
 const blockerResolutionSchema = z.enum(["resolved", "reopened"]);
+const protectedErrorClassificationSchema = z.object({
+  category: z.string().min(1),
+  severity: z.enum(["low", "medium", "high", "critical"]),
+  retryable: z.boolean(),
+  httpStatus: z.number().int(),
+}).strict();
 
 const payrollApprovalActionSchema = z.discriminatedUnion("action", [
   z.object({
@@ -132,6 +138,16 @@ const payrollApprovalResponseSchema = z.union([
   payrollApprovalTransitionResponseSchema,
   payrollBlockerResolutionResponseSchema,
 ]);
+const protectedErrorResponseSchema = z.object({
+  success: z.literal(false),
+  requestId: z.string().min(1),
+  code: z.string().min(1),
+  error: z.string().min(1),
+  message: z.string().min(1),
+  classification: protectedErrorClassificationSchema,
+  idempotencyKey: z.string().min(1).optional(),
+  state: z.string().min(1).optional(),
+}).strict();
 
 type PayrollApprovalAction = z.infer<typeof payrollApprovalActionSchema>;
 type PayrollApprovalResponse = z.infer<typeof payrollApprovalResponseSchema>;
@@ -201,6 +217,13 @@ const jsonErrorResponse = (
   ...body,
 }, extra);
 
+const protectedErrorResponse = (
+  req: Request,
+  status: number,
+  body: z.infer<typeof protectedErrorResponseSchema>,
+  extra: HeadersInit = {},
+) => jsonErrorResponse(req, status, protectedErrorResponseSchema.parse(body), extra);
+
 const normalizeSafeMessage = (value: unknown): string => {
   if (typeof value !== "string") {
     return "";
@@ -260,15 +283,33 @@ const validateApprovalResponse = (
 ): PayrollApprovalResponse | Response => {
   const parsed = payrollApprovalResponseSchema.safeParse(data);
   if (!parsed.success) {
-    return jsonResponse(req, 502, {
+    return protectedErrorResponse(req, 502, {
+      success: false,
+      requestId: req.headers.get("x-request-id")?.trim() || crypto.randomUUID(),
       code: "invalid_response",
       error: "Invalid payroll approval response.",
+      message: "Invalid payroll approval response.",
+      classification: {
+        category: "upstream",
+        severity: "high",
+        retryable: false,
+        httpStatus: 502,
+      },
     });
   }
   if (parsed.data.idempotencyKey !== requestedKey) {
-    return jsonResponse(req, 502, {
+    return protectedErrorResponse(req, 502, {
+      success: false,
+      requestId: req.headers.get("x-request-id")?.trim() || crypto.randomUUID(),
       code: "invalid_response",
       error: "Invalid payroll approval response.",
+      message: "Invalid payroll approval response.",
+      classification: {
+        category: "upstream",
+        severity: "high",
+        retryable: false,
+        httpStatus: 502,
+      },
     });
   }
   return parsed.data;
@@ -427,11 +468,35 @@ const mapRpcError = (req: Request, error: { code?: string; message?: string } | 
 export async function handlePayrollApprovals({ req, userContext, db }: HandlerParams): Promise<Response> {
   const requestedOrigin = req.headers.get("origin");
   if (requestedOrigin && !resolveAllowedOriginForRequest(req)) {
-    return jsonResponse(req, 403, { error: "Origin not allowed" });
+    return protectedErrorResponse(req, 403, {
+      success: false,
+      requestId: req.headers.get("x-request-id")?.trim() || crypto.randomUUID(),
+      code: "forbidden",
+      error: "Origin not allowed",
+      message: "Origin not allowed",
+      classification: {
+        category: "auth",
+        severity: "medium",
+        retryable: false,
+        httpStatus: 403,
+      },
+    });
   }
 
   if (req.method !== "POST") {
-    return jsonResponse(req, 405, { error: "Method not allowed" });
+    return protectedErrorResponse(req, 405, {
+      success: false,
+      requestId: req.headers.get("x-request-id")?.trim() || crypto.randomUUID(),
+      code: "validation_error",
+      error: "Method not allowed",
+      message: "Method not allowed",
+      classification: {
+        category: "validation",
+        severity: "low",
+        retryable: false,
+        httpStatus: 405,
+      },
+    });
   }
 
   const limit = consumeEdgeRateLimit(`payroll-approvals:${userContext.user.id}`, 60, 60_000);
@@ -455,11 +520,35 @@ export async function handlePayrollApprovals({ req, userContext, db }: HandlerPa
   try {
     payload = await req.json();
   } catch {
-    return jsonResponse(req, 400, { error: "Invalid JSON body" });
+    return protectedErrorResponse(req, 400, {
+      success: false,
+      requestId: req.headers.get("x-request-id")?.trim() || crypto.randomUUID(),
+      code: "validation_error",
+      error: "Invalid JSON body",
+      message: "Invalid JSON body",
+      classification: {
+        category: "validation",
+        severity: "low",
+        retryable: false,
+        httpStatus: 400,
+      },
+    });
   }
 
   if (containsForbiddenAuthority(payload)) {
-    return jsonResponse(req, 400, { error: "Authority fields are not allowed in payroll requests." });
+    return protectedErrorResponse(req, 400, {
+      success: false,
+      requestId: req.headers.get("x-request-id")?.trim() || crypto.randomUUID(),
+      code: "validation_error",
+      error: "Authority fields are not allowed in payroll requests.",
+      message: "Authority fields are not allowed in payroll requests.",
+      classification: {
+        category: "validation",
+        severity: "low",
+        retryable: false,
+        httpStatus: 400,
+      },
+    });
   }
 
   const parsed = payrollApprovalActionSchema.safeParse(payload);
@@ -468,11 +557,22 @@ export async function handlePayrollApprovals({ req, userContext, db }: HandlerPa
       payload && typeof payload === "object" && !Array.isArray(payload)
         ? (payload as Record<string, unknown>).action
         : undefined;
-    return jsonResponse(
-      req,
-      400,
-      { error: typeof actionValue === "string" && SUPPORTED_ACTIONS.has(actionValue) ? "Invalid payroll approval request body" : "Unsupported action" },
-    );
+    const message = typeof actionValue === "string" && SUPPORTED_ACTIONS.has(actionValue)
+      ? "Invalid payroll approval request body"
+      : "Unsupported action";
+    return protectedErrorResponse(req, 400, {
+      success: false,
+      requestId: req.headers.get("x-request-id")?.trim() || crypto.randomUUID(),
+      code: "validation_error",
+      error: message,
+      message,
+      classification: {
+        category: "validation",
+        severity: "low",
+        retryable: false,
+        httpStatus: 400,
+      },
+    });
   }
 
   const validated = validateIdempotency(req, parsed.data);
@@ -546,7 +646,19 @@ export async function handler(req: Request): Promise<Response> {
   const allowedOrigin = resolveAllowedOriginForRequest(req);
 
   if (requestedOrigin && !allowedOrigin) {
-    return jsonResponse(req, 403, { error: "Origin not allowed" });
+    return protectedErrorResponse(req, 403, {
+      success: false,
+      requestId: req.headers.get("x-request-id")?.trim() || crypto.randomUUID(),
+      code: "forbidden",
+      error: "Origin not allowed",
+      message: "Origin not allowed",
+      classification: {
+        category: "auth",
+        severity: "medium",
+        retryable: false,
+        httpStatus: 403,
+      },
+    });
   }
 
   if (req.method === "OPTIONS") {

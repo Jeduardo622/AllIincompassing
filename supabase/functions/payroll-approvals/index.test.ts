@@ -19,13 +19,14 @@ function createUserContext(role: UserContext["profile"]["role"] = "bt", userId =
 function createRequest(body: unknown, init: { method?: string; headers?: HeadersInit; origin?: string | null } = {}) {
   const headers = new Headers(init.headers);
   headers.set("Content-Type", "application/json");
+  const method = init.method ?? "POST";
   if (init.origin !== null) {
     headers.set("Origin", init.origin ?? "https://app.allincompassing.ai");
   }
   return new Request("https://example.com/functions/v1/payroll-approvals", {
-    method: init.method ?? "POST",
+    method,
     headers,
-    body: init.method === "OPTIONS" ? undefined : JSON.stringify(body),
+    body: method === "OPTIONS" || method === "GET" || method === "HEAD" ? undefined : JSON.stringify(body),
   });
 }
 
@@ -33,6 +34,30 @@ function createRpcClient(resolver: (fn: string, args: Record<string, unknown>) =
   return {
     rpc: async (fn: string, args: Record<string, unknown>) => resolver(fn, args),
   } as unknown as SupabaseClient;
+}
+
+async function expectStructuredError(
+  response: Response,
+  expected: {
+    status: number;
+    code: string;
+    error: string;
+    message: string;
+    classification: Record<string, unknown>;
+    idempotencyKey?: string | null;
+    state?: string;
+  },
+) {
+  const body = await response.json() as Record<string, unknown>;
+  assertEquals(response.status, expected.status);
+  assertEquals(body.success, false);
+  assertMatch(String(body.requestId ?? ""), /.+/);
+  assertEquals(body.code, expected.code);
+  assertEquals(body.error, expected.error);
+  assertEquals(body.message, expected.message);
+  assertEquals(body.classification, expected.classification);
+  assertEquals(body.idempotencyKey ?? null, expected.idempotencyKey ?? null);
+  assertEquals(body.state, expected.state);
 }
 
 Deno.test("OPTIONS returns payroll approval CORS headers for allowed origins", async () => {
@@ -50,6 +75,91 @@ Deno.test("OPTIONS returns payroll approval CORS headers for allowed origins", a
   assertEquals(response.status, 204);
   assertEquals(response.headers.get("Access-Control-Allow-Origin"), "https://app.allincompassing.ai");
   assertEquals(response.headers.get("Access-Control-Allow-Methods"), "POST, OPTIONS");
+});
+
+Deno.test("uses the protected structured envelope for origin deny", async () => {
+  const response = await handler(
+    new Request("https://example.com/functions/v1/payroll-approvals", {
+      method: "POST",
+      headers: {
+        Origin: "https://denied.example.com",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    }),
+  );
+
+  await expectStructuredError(response, {
+    status: 403,
+    code: "forbidden",
+    error: "Origin not allowed",
+    message: "Origin not allowed",
+    classification: {
+      category: "auth",
+      severity: "medium",
+      retryable: false,
+      httpStatus: 403,
+    },
+  });
+});
+
+Deno.test("uses the protected structured envelope for method deny", async () => {
+  const response = await handlePayrollApprovals({
+    req: createRequest({}, {
+      method: "GET",
+      headers: {
+        "Idempotency-Key": "approval-method-key",
+      },
+    }),
+    userContext: createUserContext(),
+    db: createRpcClient(() => {
+      throw new Error("RPC should not execute for method mismatch");
+    }),
+  });
+
+  await expectStructuredError(response, {
+    status: 405,
+    code: "validation_error",
+    error: "Method not allowed",
+    message: "Method not allowed",
+    classification: {
+      category: "validation",
+      severity: "low",
+      retryable: false,
+      httpStatus: 405,
+    },
+  });
+});
+
+Deno.test("uses the protected structured envelope for malformed JSON", async () => {
+  const response = await handlePayrollApprovals({
+    req: new Request("https://example.com/functions/v1/payroll-approvals", {
+      method: "POST",
+      headers: {
+        Origin: "https://app.allincompassing.ai",
+        "Content-Type": "application/json",
+        "Idempotency-Key": "approval-json-key",
+      },
+      body: "{",
+    }),
+    userContext: createUserContext(),
+    db: createRpcClient(() => {
+      throw new Error("RPC should not execute for malformed JSON");
+    }),
+  });
+
+  await expectStructuredError(response, {
+    status: 400,
+    code: "validation_error",
+    error: "Invalid JSON body",
+    message: "Invalid JSON body",
+    classification: {
+      category: "validation",
+      severity: "low",
+      retryable: false,
+      httpStatus: 400,
+    },
+  });
 });
 
 Deno.test("rejects nested authority fields before any approval RPC", async () => {
@@ -73,9 +183,18 @@ Deno.test("rejects nested authority fields before any approval RPC", async () =>
     }),
   });
 
-  const body = await response.json() as { error: string };
-  assertEquals(response.status, 400);
-  assertMatch(body.error, /authority/i);
+  await expectStructuredError(response, {
+    status: 400,
+    code: "validation_error",
+    error: "Authority fields are not allowed in payroll requests.",
+    message: "Authority fields are not allowed in payroll requests.",
+    classification: {
+      category: "validation",
+      severity: "low",
+      retryable: false,
+      httpStatus: 400,
+    },
+  });
 });
 
 Deno.test("submit calls transition_timesheet_approval with exact payload and replay headers", async () => {
@@ -329,10 +448,18 @@ Deno.test("fails closed when the approval response leaks compensation data", asy
     })),
   });
 
-  const body = await response.json() as { code?: string; error?: string };
-  assertEquals(response.status, 502);
-  assertEquals(body.code, "invalid_response");
-  assertEquals(body.error, "Invalid payroll approval response.");
+  await expectStructuredError(response, {
+    status: 502,
+    code: "invalid_response",
+    error: "Invalid payroll approval response.",
+    message: "Invalid payroll approval response.",
+    classification: {
+      category: "upstream",
+      severity: "high",
+      retryable: false,
+      httpStatus: 502,
+    },
+  });
 });
 
 Deno.test("fails closed when the authoritative approval response omits the idempotency echo", async () => {
@@ -363,12 +490,82 @@ Deno.test("fails closed when the authoritative approval response omits the idemp
     })),
   });
 
-  const body = await response.json() as { code?: string; error?: string };
-  assertEquals(response.status, 502);
-  assertEquals(body.code, "invalid_response");
-  assertEquals(body.error, "Invalid payroll approval response.");
+  await expectStructuredError(response, {
+    status: 502,
+    code: "invalid_response",
+    error: "Invalid payroll approval response.",
+    message: "Invalid payroll approval response.",
+    classification: {
+      category: "upstream",
+      severity: "high",
+      retryable: false,
+      httpStatus: 502,
+    },
+  });
   assertEquals(response.headers.get("Idempotency-Key"), null);
   assertEquals(response.headers.get("Idempotent-Replay"), null);
+});
+
+Deno.test("uses the protected structured envelope for unsupported actions", async () => {
+  const response = await handlePayrollApprovals({
+    req: createRequest({
+      action: "destroy",
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "a".repeat(64),
+    }, {
+      headers: {
+        "Idempotency-Key": "approval-unsupported-key",
+      },
+    }),
+    userContext: createUserContext(),
+    db: createRpcClient(() => {
+      throw new Error("RPC should not execute for unsupported actions");
+    }),
+  });
+
+  await expectStructuredError(response, {
+    status: 400,
+    code: "validation_error",
+    error: "Unsupported action",
+    message: "Unsupported action",
+    classification: {
+      category: "validation",
+      severity: "low",
+      retryable: false,
+      httpStatus: 400,
+    },
+  });
+});
+
+Deno.test("uses the protected structured envelope for request-shape validation", async () => {
+  const response = await handlePayrollApprovals({
+    req: createRequest({
+      action: "reopen",
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "a".repeat(64),
+    }, {
+      headers: {
+        "Idempotency-Key": "approval-shape-key",
+      },
+    }),
+    userContext: createUserContext("admin"),
+    db: createRpcClient(() => {
+      throw new Error("RPC should not execute for invalid request shape");
+    }),
+  });
+
+  await expectStructuredError(response, {
+    status: 400,
+    code: "validation_error",
+    error: "Invalid payroll approval request body",
+    message: "Invalid payroll approval request body",
+    classification: {
+      category: "validation",
+      severity: "low",
+      retryable: false,
+      httpStatus: 400,
+    },
+  });
 });
 
 Deno.test("rate limits direct edge callers by authenticated actor and returns retry metadata", async () => {

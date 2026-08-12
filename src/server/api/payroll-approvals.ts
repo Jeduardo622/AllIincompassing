@@ -132,7 +132,7 @@ const payrollApprovalErrorSchema = z.object({
   success: z.literal(false),
   error: z.string().min(1),
   requestId: z.string().min(1),
-  code: z.enum(["feature_disabled", "conflict", "validation_error", "forbidden", "upstream_error", "rate_limited"]),
+  code: z.enum(["feature_disabled", "conflict", "validation_error", "forbidden", "upstream_error", "rate_limited", "invalid_response"]),
   message: z.string().min(1),
   classification: z.object({
     category: z.string().min(1),
@@ -398,18 +398,72 @@ const mapForwardedEdgeError = (
   });
 };
 
+const invalidForwardedEdgeResponse = (
+  request: Request,
+  traceHeaders: Record<string, string>,
+) =>
+  errorResponse(request, "upstream_error", "Invalid payroll approval response.", {
+    status: 502,
+    headers: traceHeaders,
+    extra: {
+      code: "invalid_response",
+      classification: {
+        category: "upstream",
+        severity: "high",
+        retryable: false,
+        httpStatus: 502,
+      },
+    },
+  });
+
+const validateForwardedErrorIdempotency = (
+  request: Request,
+  traceHeaders: Record<string, string>,
+  payload: z.infer<typeof payrollApprovalErrorSchema>,
+  forwardedHeaders: Headers,
+) => {
+  const requestIdempotencyKey = request.headers.get("Idempotency-Key")?.trim() ?? "";
+  const headerIdempotencyKey = forwardedHeaders.get("Idempotency-Key")?.trim() ?? "";
+  const bodyIdempotencyKey = payload.idempotencyKey?.trim() ?? "";
+  const expectedKey = requestIdempotencyKey;
+
+  if (bodyIdempotencyKey || headerIdempotencyKey || expectedKey) {
+    if (!bodyIdempotencyKey || !headerIdempotencyKey) {
+      return invalidForwardedEdgeResponse(request, traceHeaders);
+    }
+    if (bodyIdempotencyKey !== headerIdempotencyKey) {
+      return invalidForwardedEdgeResponse(request, traceHeaders);
+    }
+    if (expectedKey && headerIdempotencyKey !== expectedKey) {
+      return invalidForwardedEdgeResponse(request, traceHeaders);
+    }
+  }
+
+  return {
+    idempotencyKey: headerIdempotencyKey || bodyIdempotencyKey || null,
+  };
+};
+
 const buildForwardedEdgeResponse = (
   request: Request,
   traceHeaders: Record<string, string>,
   status: number,
-  payload: unknown,
+  payload: z.infer<typeof payrollApprovalErrorSchema>,
   forwardedHeaders: Headers,
 ) => {
+  const validatedIdempotency = validateForwardedErrorIdempotency(request, traceHeaders, payload, forwardedHeaders);
+  if (validatedIdempotency instanceof Response) {
+    return validatedIdempotency;
+  }
+
   const responseHeaders = new Headers({
     ...corsHeadersForRequest(request),
     ...traceHeaders,
     "Content-Type": "application/json",
   });
+  if (validatedIdempotency.idempotencyKey) {
+    responseHeaders.set("Idempotency-Key", validatedIdempotency.idempotencyKey);
+  }
   if (forwardedHeaders.get("Retry-After")) {
     responseHeaders.set("Retry-After", forwardedHeaders.get("Retry-After") as string);
   }

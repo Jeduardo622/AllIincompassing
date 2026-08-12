@@ -623,11 +623,7 @@ const expressionContainsWholeSecretsContext = (expression) => {
 };
 
 const scalarContainsWholeSecretsContext = ({ key, value }) => {
-  const normalized = String(value)
-    .split(/\r?\n/)
-    .map((line) => stripComment(line))
-    .join("\n")
-    .trim();
+  const normalized = String(value).trim();
   if (!normalized) {
     return false;
   }

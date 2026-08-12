@@ -1379,6 +1379,20 @@ describe("check-session-deploy-safety", () => {
     expect(result.stderr).toContain("CI workflow must not reference the whole GitHub secrets context");
   });
 
+  test("rejects whole-secrets access after a hash inside a folded block scalar", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        policyExtra: `      - run: >-
+          echo prefix
+          # \${{ toJSON(secrets) }}`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("CI workflow must not reference the whole GitHub secrets context");
+  });
+
   test("rejects literal multiline fromJSON(toJSON(secrets)) access", () => {
     const fixtureRoot = makeFixture({
       ci: {

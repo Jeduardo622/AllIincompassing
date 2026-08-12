@@ -44,6 +44,14 @@ describe("payroll administration migration contract", () => {
     expect(sql).toMatch(/alter table public\.pay_periods[\s\S]*exclude using gist[\s\S]*organization_id with =[\s\S]*pay_group_id with =[\s\S]*daterange\(starts_on, ends_on \+ 1, '\[\)'\) with &&/i);
   });
 
+  it("backfills effective_from from historical created_at values and preserves external payroll organization uniqueness across effective-dated rows", () => {
+    expect(sql).toMatch(/update public\.payroll_organization_settings[\s\S]*set effective_from = \(created_at at time zone 'utc'\)::date/i);
+    expect(sql).toMatch(/update public\.pay_groups[\s\S]*set effective_from = \(created_at at time zone 'utc'\)::date/i);
+    expect(sql).toMatch(
+      /payroll_organization_settings_external_payroll_organization_id_no_overlap[\s\S]*external_payroll_organization_id with =[\s\S]*daterange\(effective_from, coalesce\(effective_through \+ 1, 'infinity'::date\), '\[\)'\) with &&/i,
+    );
+  });
+
   it("defines deterministic containing-period helpers that fail closed for monthly cadence", () => {
     const definition = functionDefinition("app.payroll_containing_period");
     expect(definition).toMatch(/p_anchor_starts_on date/i);
@@ -58,6 +66,9 @@ describe("payroll administration migration contract", () => {
   it("adds authenticated-only payroll administration rpc surfaces with recursive authority rejection, org-derived scope, and idempotent receipts", () => {
     const executeDefinition = functionDefinition("public.execute_payroll_administration");
     const readDefinition = functionDefinition("public.get_payroll_administration");
+    const auditRedactionDefinition = functionDefinition("app.redact_payroll_administration_audit_payload");
+    const lockScopeDefinition = functionDefinition("app.payroll_administration_lock_scope");
+    const boundaryFactsDefinition = functionDefinition("app.payroll_generation_boundary_has_facts");
 
     expect(sql).toMatch(/create or replace function public\.execute_payroll_administration\(\s*p_payload jsonb,\s*p_idempotency_key text\s*\)/i);
     expect(sql).toMatch(/create or replace function public\.get_payroll_administration\(\s*selected_local_date date\s*\)/i);
@@ -80,10 +91,22 @@ describe("payroll administration migration contract", () => {
     expect(executeDefinition).toMatch(/insert into public\.payroll_audit_events/i);
     expect(executeDefinition).toMatch(/unsupported payroll administration action/i);
     expect(executeDefinition).toMatch(/pg_catalog\.pg_advisory_xact_lock/i);
-    expect(executeDefinition).toMatch(/payroll-administration:organization:/i);
-    expect(executeDefinition).not.toMatch(
-      /payroll-administration:'\s*\|\|\s*v_actor_org::text\s*\|\|\s*':'\s*\|\|\s*v_action/i,
-    );
+    expect(executeDefinition).toMatch(/app\.payroll_administration_lock_scope\(v_action, v_actor_org, p_payload\)/i);
+    expect(lockScopeDefinition).toMatch(/payroll-administration:org-settings:/i);
+    expect(lockScopeDefinition).toMatch(/payroll-administration:employment:/i);
+    expect(lockScopeDefinition).toMatch(/payroll-administration:assignment:/i);
+    expect(lockScopeDefinition).toMatch(/payroll-administration:capability:/i);
+    expect(lockScopeDefinition).toMatch(/payroll-administration:pay-group:/i);
+    expect(lockScopeDefinition).not.toMatch(/payroll-administration:organization:/i);
+    expect(auditRedactionDefinition).toMatch(/p_action = 'add_rate_version'/i);
+    expect(auditRedactionDefinition).toMatch(/- 'hourlyRateCents'/i);
+    expect(auditRedactionDefinition).toMatch(/'compensationRedacted', true/i);
+    expect(boundaryFactsDefinition).toMatch(/from public\.pay_periods pay_period/i);
+    expect(boundaryFactsDefinition).toMatch(/from public\.timesheet_snapshots snapshot_row/i);
+    expect(boundaryFactsDefinition).toMatch(/from public\.employee_time_events event_row/i);
+    expect(boundaryFactsDefinition).toMatch(/from public\.session_attendance_events event_row/i);
+    expect(executeDefinition).toMatch(/app\.payroll_generation_boundary_has_facts\(/i);
+    expect(executeDefinition).toMatch(/generation version boundary cannot change after payroll facts exist/i);
 
     for (const action of [
       "create_org_settings",
@@ -116,10 +139,37 @@ describe("payroll administration migration contract", () => {
     expect(readDefinition).toMatch(/'payGroups'/i);
     expect(readDefinition).toMatch(/'generationVersions'/i);
     expect(readDefinition).toMatch(/'payPeriods'/i);
+    expect(readDefinition).toMatch(/'bounds'/i);
     expect(readDefinition).toMatch(/payroll\.view_compensation/i);
+    expect(readDefinition).toMatch(/left join lateral/i);
     expect(readDefinition).not.toMatch(/client_id/i);
     expect(readDefinition).not.toMatch(/session_id/i);
     expect(readDefinition).not.toMatch(/clinical/i);
+  });
+
+  it("closes only currently-open admin rows and keeps unsupported or incomplete timesheet prerequisites fail-closed", () => {
+    const executeDefinition = functionDefinition("public.execute_payroll_administration");
+    const timesheetDefinition = functionDefinition("public.get_payroll_timesheet_period");
+
+    expect(executeDefinition).toMatch(/update public\.employment_profiles[\s\S]*and active_through is null/i);
+    expect(executeDefinition).toMatch(/update public\.employee_manager_assignments[\s\S]*and effective_through is null/i);
+    expect(executeDefinition).toMatch(/update public\.pay_groups[\s\S]*and effective_through is null/i);
+    expect(executeDefinition).toMatch(/update public\.pay_group_assignments[\s\S]*and effective_through is null/i);
+    expect(timesheetDefinition).toMatch(/if not found then[\s\S]*'state', 'missing_prerequisite'/i);
+    expect(timesheetDefinition).not.toMatch(/'state', 'missing_policy'/i);
+    expect(timesheetDefinition).toMatch(/'state', 'unsupported_policy'/i);
+  });
+
+  it("bounds payroll administration history reads and supports the set-based compensation lookup path", () => {
+    const readDefinition = functionDefinition("public.get_payroll_administration");
+
+    expect(sql).toMatch(/create index if not exists employee_rate_versions_history_lookup_idx/i);
+    expect(readDefinition).toMatch(/v_history_limit integer := 50/i);
+    expect(readDefinition).toMatch(/v_policy_limit integer := 20/i);
+    expect(readDefinition).toMatch(/limit v_history_limit/i);
+    expect(readDefinition).toMatch(/limit v_policy_limit/i);
+    expect(readDefinition).toMatch(/left join lateral/i);
+    expect(readDefinition).toMatch(/'bounds', jsonb_build_object/i);
   });
 
   it("keeps policy mutation read-only in v1 and preserves append-only administration semantics", () => {

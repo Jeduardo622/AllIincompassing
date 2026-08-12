@@ -24,6 +24,16 @@ alter table public.pay_groups
 alter table public.pay_groups
   add column if not exists created_by uuid references auth.users(id) on delete restrict;
 
+update public.payroll_organization_settings
+set effective_from = (created_at at time zone 'utc')::date
+where effective_from = current_date
+  and (created_at at time zone 'utc')::date <> current_date;
+
+update public.pay_groups
+set effective_from = (created_at at time zone 'utc')::date
+where effective_from = current_date
+  and (created_at at time zone 'utc')::date <> current_date;
+
 do $$
 begin
   if exists (
@@ -39,11 +49,13 @@ begin
   if exists (
     select 1
     from pg_catalog.pg_constraint constraint_row
-    where constraint_row.conname = 'payroll_organization_settings_external_payroll_organization_id_key'
+    where constraint_row.conname like 'payroll_organization_settings_external_payroll_organization%'
       and constraint_row.conrelid = 'public.payroll_organization_settings'::regclass
   ) then
     alter table public.payroll_organization_settings
-      drop constraint payroll_organization_settings_external_payroll_organization_id_key;
+      drop constraint if exists payroll_organization_settings_external_payroll_organization_id_key;
+    alter table public.payroll_organization_settings
+      drop constraint if exists payroll_organization_settings_external_payroll_organization_key;
   end if;
 end
 $$;
@@ -78,6 +90,13 @@ alter table public.payroll_organization_settings
   add constraint payroll_organization_settings_no_overlap
   exclude using gist (
     organization_id with =,
+    daterange(effective_from, coalesce(effective_through + 1, 'infinity'::date), '[)') with &&
+  );
+
+alter table public.payroll_organization_settings
+  add constraint payroll_organization_settings_external_payroll_organization_id_no_overlap
+  exclude using gist (
+    external_payroll_organization_id with =,
     daterange(effective_from, coalesce(effective_through + 1, 'infinity'::date), '[)') with &&
   );
 
@@ -123,6 +142,15 @@ create index if not exists pay_groups_active_idx
 
 create index if not exists pay_group_generation_versions_active_idx
   on public.pay_group_generation_versions (organization_id, pay_group_id, effective_from desc, effective_through);
+
+create index if not exists employee_rate_versions_history_lookup_idx
+  on public.employee_rate_versions (
+    organization_id,
+    employment_profile_id,
+    effective_from desc,
+    created_at desc,
+    id desc
+  );
 
 create or replace function app.jsonb_contains_authority_fields(p_payload jsonb)
 returns boolean
@@ -258,6 +286,155 @@ as $$
     and (version_row.effective_through is null or version_row.effective_through >= p_selected_date)
   order by version_row.effective_from desc, version_row.created_at desc, version_row.id desc
   limit 1;
+$$;
+
+create or replace function app.redact_payroll_administration_audit_payload(
+  p_action text,
+  p_payload jsonb
+)
+returns jsonb
+language plpgsql
+immutable
+security definer
+set search_path = ''
+as $$
+begin
+  if p_action = 'add_rate_version' then
+    return (coalesce(p_payload, '{}'::jsonb) - 'hourlyRateCents')
+      || jsonb_build_object('compensationRedacted', true);
+  end if;
+
+  return coalesce(p_payload, '{}'::jsonb);
+end;
+$$;
+
+create or replace function app.payroll_administration_lock_scope(
+  p_action text,
+  p_target_organization_id uuid,
+  p_payload jsonb
+)
+returns text
+language plpgsql
+immutable
+security definer
+set search_path = ''
+as $$
+declare
+  v_employment_id uuid := nullif(btrim(coalesce(p_payload ->> 'employmentProfileId', '')), '')::uuid;
+  v_assignment_id uuid := nullif(btrim(coalesce(p_payload ->> 'managerAssignmentId', p_payload ->> 'payGroupAssignmentId', '')), '')::uuid;
+  v_pay_group_id uuid := nullif(btrim(coalesce(p_payload ->> 'payGroupId', '')), '')::uuid;
+  v_user_id uuid := nullif(btrim(coalesce(p_payload ->> 'userId', '')), '')::uuid;
+  v_capability text := nullif(btrim(coalesce(p_payload ->> 'capability', '')), '');
+  v_external_payroll_organization_id text := nullif(btrim(coalesce(p_payload ->> 'externalPayrollOrganizationId', '')), '');
+  v_pay_group_name text := nullif(btrim(coalesce(p_payload ->> 'name', '')), '');
+begin
+  case p_action
+    when 'create_org_settings', 'supersede_org_settings' then
+      return format(
+        'payroll-administration:org-settings:%s:%s',
+        p_target_organization_id,
+        coalesce(v_external_payroll_organization_id, 'unkeyed')
+      );
+    when 'create_employment', 'deactivate_employment', 'add_rate_version', 'create_manager_assignment', 'create_pay_group_assignment' then
+      return format(
+        'payroll-administration:employment:%s:%s',
+        p_target_organization_id,
+        coalesce(v_employment_id::text, 'pending')
+      );
+    when 'deactivate_manager_assignment', 'deactivate_pay_group_assignment' then
+      return format(
+        'payroll-administration:assignment:%s:%s:%s',
+        p_target_organization_id,
+        p_action,
+        coalesce(v_assignment_id::text, 'pending')
+      );
+    when 'grant_capability', 'revoke_capability' then
+      return format(
+        'payroll-administration:capability:%s:%s:%s',
+        p_target_organization_id,
+        coalesce(v_user_id::text, 'pending'),
+        coalesce(v_capability, 'pending')
+      );
+    when 'create_pay_group' then
+      return format(
+        'payroll-administration:pay-group-name:%s:%s',
+        p_target_organization_id,
+        coalesce(v_pay_group_name, 'pending')
+      );
+    when 'deactivate_pay_group', 'set_generation_version', 'generate_periods' then
+      return format(
+        'payroll-administration:pay-group:%s:%s:%s',
+        p_target_organization_id,
+        p_action,
+        coalesce(v_pay_group_id::text, 'pending')
+      );
+    else
+      return format('payroll-administration:%s:%s', p_target_organization_id, p_action);
+  end case;
+end;
+$$;
+
+create or replace function app.payroll_generation_boundary_has_facts(
+  p_target_organization_id uuid,
+  p_pay_group_id uuid,
+  p_boundary date,
+  p_timezone text
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select (
+    exists (
+      select 1
+      from public.pay_periods pay_period
+      where pay_period.organization_id = p_target_organization_id
+        and pay_period.pay_group_id = p_pay_group_id
+        and pay_period.ends_on >= p_boundary
+    )
+    or exists (
+      select 1
+      from public.timesheet_snapshots snapshot_row
+      join public.pay_periods pay_period
+        on pay_period.organization_id = snapshot_row.organization_id
+       and pay_period.id = snapshot_row.pay_period_id
+      where snapshot_row.organization_id = p_target_organization_id
+        and pay_period.pay_group_id = p_pay_group_id
+        and pay_period.ends_on >= p_boundary
+    )
+    or exists (
+      select 1
+      from public.employee_time_events event_row
+      join public.pay_group_assignments assignment_row
+        on assignment_row.organization_id = event_row.organization_id
+       and assignment_row.employment_profile_id = event_row.employment_profile_id
+       and ((event_row.event_at at time zone p_timezone)::date) >= assignment_row.effective_from
+       and (
+         assignment_row.effective_through is null
+         or ((event_row.event_at at time zone p_timezone)::date) <= assignment_row.effective_through
+       )
+      where event_row.organization_id = p_target_organization_id
+        and assignment_row.pay_group_id = p_pay_group_id
+        and ((event_row.event_at at time zone p_timezone)::date) >= p_boundary
+    )
+    or exists (
+      select 1
+      from public.session_attendance_events event_row
+      join public.pay_group_assignments assignment_row
+        on assignment_row.organization_id = event_row.organization_id
+       and assignment_row.employment_profile_id = event_row.employment_profile_id
+       and ((event_row.event_at at time zone p_timezone)::date) >= assignment_row.effective_from
+       and (
+         assignment_row.effective_through is null
+         or ((event_row.event_at at time zone p_timezone)::date) <= assignment_row.effective_through
+       )
+      where event_row.organization_id = p_target_organization_id
+        and assignment_row.pay_group_id = p_pay_group_id
+        and ((event_row.event_at at time zone p_timezone)::date) >= p_boundary
+    )
+  );
 $$;
 
 create or replace function public.get_payroll_timesheet_period(
@@ -418,6 +595,15 @@ begin
   order by pay_period.starts_on desc, pay_period.id desc
   limit 1;
 
+  if not found then
+    return jsonb_build_object(
+      'state', 'missing_prerequisite',
+      'selectedLocalDate', v_selected_local_date,
+      'employmentProfileId', v_employment.id,
+      'employmentTimezone', v_employment.timezone
+    );
+  end if;
+
   select policy.*
   into v_policy
   from public.payroll_policy_versions policy
@@ -432,7 +618,7 @@ begin
 
   if not found then
     return jsonb_build_object(
-      'state', 'missing_policy',
+      'state', 'unsupported_policy',
       'selectedLocalDate', v_selected_local_date,
       'employmentProfileId', v_employment.id,
       'employmentTimezone', v_employment.timezone
@@ -529,6 +715,8 @@ declare
   v_actor uuid := auth.uid();
   v_actor_org uuid;
   v_selected_local_date date := coalesce(selected_local_date, current_date);
+  v_history_limit integer := 50;
+  v_policy_limit integer := 20;
   v_can_configure_employment boolean := false;
   v_can_resolve_exceptions boolean := false;
   v_can_lock_period boolean := false;
@@ -589,8 +777,13 @@ begin
         )
         order by settings.effective_from desc, settings.created_at desc, settings.id desc
       )
-      from public.payroll_organization_settings settings
-      where settings.organization_id = v_actor_org
+      from (
+        select settings.*
+        from public.payroll_organization_settings settings
+        where settings.organization_id = v_actor_org
+        order by settings.effective_from desc, settings.created_at desc, settings.id desc
+        limit v_history_limit
+      ) settings
     ), '[]'::jsonb),
     'policies', coalesce((
       select jsonb_agg(
@@ -606,10 +799,15 @@ begin
         )
         order by (policy.organization_id is not null) desc, policy.effective_from desc, policy.created_at desc, policy.id desc
       )
-      from public.payroll_policy_versions policy
-      where (policy.organization_id is null or policy.organization_id = v_actor_org)
-        and policy.effective_from <= v_selected_local_date
-        and (policy.effective_through is null or policy.effective_through >= v_selected_local_date)
+      from (
+        select policy.*
+        from public.payroll_policy_versions policy
+        where (policy.organization_id is null or policy.organization_id = v_actor_org)
+          and policy.effective_from <= v_selected_local_date
+          and (policy.effective_through is null or policy.effective_through >= v_selected_local_date)
+        order by (policy.organization_id is not null) desc, policy.effective_from desc, policy.created_at desc, policy.id desc
+        limit v_policy_limit
+      ) policy
     ), '[]'::jsonb),
     'employments', coalesce((
       select jsonb_agg(
@@ -626,22 +824,33 @@ begin
         ) || case
           when v_can_view_compensation then jsonb_build_object(
             'compensation', (
-              select jsonb_build_object(
-                'hourlyRateCents', rate_row.hourly_rate_cents,
-                'effectiveFrom', rate_row.effective_from,
-                'effectiveThrough', rate_row.effective_through
-              )
-              from public.employee_rate_versions rate_row
-              where rate_row.organization_id = employment.organization_id
-                and rate_row.employment_profile_id = employment.id
-              order by rate_row.effective_from desc, rate_row.created_at desc, rate_row.id desc
-              limit 1
+              case
+                when rate_row.id is null then null
+                else jsonb_build_object(
+                  'hourlyRateCents', rate_row.hourly_rate_cents,
+                  'effectiveFrom', rate_row.effective_from,
+                  'effectiveThrough', rate_row.effective_through
+                )
+              end
             )
           ) else '{}'::jsonb end
         order by employment.active_from desc, employment.created_at desc, employment.id desc
       )
-      from public.employment_profiles employment
-      where employment.organization_id = v_actor_org
+      from (
+        select employment.*
+        from public.employment_profiles employment
+        where employment.organization_id = v_actor_org
+        order by employment.active_from desc, employment.created_at desc, employment.id desc
+        limit v_history_limit
+      ) employment
+      left join lateral (
+        select rate_row.id, rate_row.hourly_rate_cents, rate_row.effective_from, rate_row.effective_through
+        from public.employee_rate_versions rate_row
+        where rate_row.organization_id = employment.organization_id
+          and rate_row.employment_profile_id = employment.id
+        order by rate_row.effective_from desc, rate_row.created_at desc, rate_row.id desc
+        limit 1
+      ) rate_row on true
     ), '[]'::jsonb),
     'payGroups', coalesce((
       select jsonb_agg(
@@ -655,8 +864,13 @@ begin
         )
         order by pay_group.effective_from desc, pay_group.created_at desc, pay_group.id desc
       )
-      from public.pay_groups pay_group
-      where pay_group.organization_id = v_actor_org
+      from (
+        select pay_group.*
+        from public.pay_groups pay_group
+        where pay_group.organization_id = v_actor_org
+        order by pay_group.effective_from desc, pay_group.created_at desc, pay_group.id desc
+        limit v_history_limit
+      ) pay_group
     ), '[]'::jsonb),
     'generationVersions', coalesce((
       select jsonb_agg(
@@ -671,8 +885,13 @@ begin
         )
         order by version_row.effective_from desc, version_row.created_at desc, version_row.id desc
       )
-      from public.pay_group_generation_versions version_row
-      where version_row.organization_id = v_actor_org
+      from (
+        select version_row.*
+        from public.pay_group_generation_versions version_row
+        where version_row.organization_id = v_actor_org
+        order by version_row.effective_from desc, version_row.created_at desc, version_row.id desc
+        limit v_history_limit
+      ) version_row
     ), '[]'::jsonb),
     'payPeriods', coalesce((
       select jsonb_agg(
@@ -686,9 +905,22 @@ begin
         )
         order by pay_period.starts_on desc, pay_period.id desc
       )
-      from public.pay_periods pay_period
-      where pay_period.organization_id = v_actor_org
-    ), '[]'::jsonb)
+      from (
+        select pay_period.*
+        from public.pay_periods pay_period
+        where pay_period.organization_id = v_actor_org
+        order by pay_period.starts_on desc, pay_period.id desc
+        limit v_history_limit
+      ) pay_period
+    ), '[]'::jsonb),
+    'bounds', jsonb_build_object(
+      'orgSettings', v_history_limit,
+      'policies', v_policy_limit,
+      'employments', v_history_limit,
+      'payGroups', v_history_limit,
+      'generationVersions', v_history_limit,
+      'payPeriods', v_history_limit
+    )
   );
 end;
 $$;
@@ -756,6 +988,7 @@ declare
   v_generated_count integer := 0;
   v_inserted_count integer := 0;
   v_temp date;
+  v_lock_scope text;
 begin
   if v_actor is null then
     raise exception using errcode = '42501', message = 'authentication required';
@@ -838,11 +1071,10 @@ begin
     return v_receipt.result_payload || jsonb_build_object('replayed', true);
   end if;
 
+  v_lock_scope := app.payroll_administration_lock_scope(v_action, v_actor_org, p_payload);
+
   perform pg_catalog.pg_advisory_xact_lock(
-    pg_catalog.hashtextextended(
-      'payroll-administration:organization:' || v_actor_org::text,
-      0
-    )
+    pg_catalog.hashtextextended(v_lock_scope, 0)
   );
 
   case v_action
@@ -986,6 +1218,7 @@ begin
       set active_through = v_active_through
       where organization_id = v_actor_org
         and id = v_employment_id
+        and active_through is null
       returning * into v_employment_row;
 
       if not found then
@@ -1090,6 +1323,7 @@ begin
       set effective_through = v_effective_through_timestamptz
       where organization_id = v_actor_org
         and id = v_assignment_id
+        and effective_through is null
       returning id into v_target_row_id;
 
       if not found then
@@ -1203,6 +1437,7 @@ begin
       set effective_through = v_active_through
       where organization_id = v_actor_org
         and id = v_pay_group_id
+        and effective_through is null
       returning id into v_target_row_id;
 
       if not found then
@@ -1271,6 +1506,7 @@ begin
       set effective_through = v_active_through
       where organization_id = v_actor_org
         and id = v_assignment_id
+        and effective_through is null
       returning id into v_target_row_id;
 
       if not found then
@@ -1305,6 +1541,15 @@ begin
 
       if v_pay_group.cadence = 'monthly' or v_pay_group_cadence = 'monthly' then
         raise exception using errcode = '22023', message = 'monthly cadence is unsupported for payroll administration';
+      end if;
+
+      if app.payroll_generation_boundary_has_facts(
+        v_actor_org,
+        v_pay_group_id,
+        v_active_from,
+        v_timezone
+      ) then
+        raise exception using errcode = '23514', message = 'generation version boundary cannot change after payroll facts exist';
       end if;
 
       update public.pay_group_generation_versions
@@ -1448,7 +1693,7 @@ begin
     'execute_payroll_administration',
     v_target_table,
     v_target_row_id,
-    v_payload
+    app.redact_payroll_administration_audit_payload(v_action, v_payload)
   );
 
   insert into public.payroll_mutation_receipts (
@@ -1494,6 +1739,9 @@ revoke all on function app.jsonb_contains_authority_fields(jsonb) from public, a
 revoke all on function app.current_user_is_payroll_admin(uuid) from public, anon, authenticated, service_role;
 revoke all on function app.payroll_containing_period(date, date, public.pay_group_cadence) from public, anon, authenticated, service_role;
 revoke all on function app.resolve_active_payroll_generation_version(uuid, uuid, date) from public, anon, authenticated, service_role;
+revoke all on function app.redact_payroll_administration_audit_payload(text, jsonb) from public, anon, authenticated, service_role;
+revoke all on function app.payroll_administration_lock_scope(text, uuid, jsonb) from public, anon, authenticated, service_role;
+revoke all on function app.payroll_generation_boundary_has_facts(uuid, uuid, date, text) from public, anon, authenticated, service_role;
 
 revoke all on function public.execute_payroll_administration(jsonb, text) from public, anon, service_role;
 revoke all on function public.execute_payroll_administration(jsonb, text) from authenticated;

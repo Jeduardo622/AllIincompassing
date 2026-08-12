@@ -210,6 +210,20 @@ const getAdministration = async (client: Client, userId: string, selectedLocalDa
       ).rows[0].result,
   );
 
+const getTimesheetPeriod = async (client: Client, userId: string, selectedLocalDate = "2026-08-13") =>
+  withRole(
+    client,
+    "authenticated",
+    userId,
+    async () =>
+      (
+        await client.query(
+          "select public.get_payroll_timesheet_period($1::date) as result",
+          [selectedLocalDate],
+        )
+      ).rows[0].result,
+  );
+
 const countAdminWrites = async (client: Client) =>
   (
     await client.query(
@@ -662,6 +676,366 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll administration rpc runtime contr
     ).rejects.toThrow();
   });
 
+  it("rejects generation-version boundary rewrites once payroll facts exist and preserves deterministic weekly periods", async () => {
+    await executeAdministration(
+      admin,
+      {
+        action: "create_pay_group_assignment",
+        employmentProfileId: IDS.employmentA,
+        payGroupId: IDS.payGroupWeeklyA,
+        effectiveFrom: "2026-08-01",
+      },
+      "assign-weekly-pay-group-for-facts",
+      IDS.adminA,
+    );
+
+    await admin.query(
+      `insert into public.employee_time_events (
+         organization_id, employment_profile_id, event_type, event_at, actor_user_id, source_timezone, work_location
+       ) values (
+         $1::uuid, $2::uuid, 'shift_started', '2026-08-14T16:00:00Z', $3::uuid, 'America/Los_Angeles', 'office'
+       )`,
+      [IDS.orgA, IDS.employmentA, IDS.employeeA],
+    );
+
+    await expect(
+      executeAdministration(
+        admin,
+        {
+          action: "set_generation_version",
+          payGroupId: IDS.payGroupWeeklyA,
+          cadence: "weekly",
+          startsOn: "2026-08-11",
+          effectiveFrom: "2026-08-11",
+          timezone: "America/Los_Angeles",
+        },
+        "set-generation-after-source-facts",
+        IDS.adminA,
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+
+    await executeAdministration(
+      admin,
+      {
+        action: "set_generation_version",
+        payGroupId: IDS.payGroupBiweeklyA,
+        cadence: "biweekly",
+        startsOn: "2026-08-04",
+        effectiveFrom: "2026-08-01",
+        timezone: "America/Los_Angeles",
+      },
+      "set-generation-before-period-facts",
+      IDS.adminA,
+    );
+    await executeAdministration(
+      admin,
+      {
+        action: "generate_periods",
+        payGroupId: IDS.payGroupBiweeklyA,
+        from: "2026-08-01",
+        to: "2026-08-31",
+      },
+      "generate-periods-before-boundary-rewrite",
+      IDS.adminA,
+    );
+
+    await expect(
+      executeAdministration(
+        admin,
+        {
+          action: "set_generation_version",
+          payGroupId: IDS.payGroupBiweeklyA,
+          cadence: "biweekly",
+          startsOn: "2026-08-18",
+          effectiveFrom: "2026-08-18",
+          timezone: "America/Los_Angeles",
+        },
+        "rewrite-generation-after-period-facts",
+        IDS.adminA,
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+
+    const weeklyPeriods = await admin.query(
+      `select to_char(starts_on, 'YYYY-MM-DD') as starts_on, to_char(ends_on, 'YYYY-MM-DD') as ends_on
+       from public.pay_periods
+       where organization_id = $1::uuid
+         and pay_group_id = $2::uuid
+       order by starts_on`,
+      [IDS.orgA, IDS.payGroupBiweeklyA],
+    );
+    expect(weeklyPeriods.rows).toEqual([
+      { starts_on: "2026-07-21", ends_on: "2026-08-03" },
+      { starts_on: "2026-08-04", ends_on: "2026-08-17" },
+      { starts_on: "2026-08-18", ends_on: "2026-08-31" },
+    ]);
+  });
+
+  it("only deactivates open rows and rejects a different key from rewriting already-closed payroll administration rows", async () => {
+    const weeklyAssignment = await executeAdministration(
+      admin,
+      {
+        action: "create_pay_group_assignment",
+        employmentProfileId: IDS.employmentA,
+        payGroupId: IDS.payGroupWeeklyA,
+        effectiveFrom: "2026-08-01",
+      },
+      "create-assignment-for-close-guards",
+      IDS.adminA,
+    );
+
+    const closeEmployment = await executeAdministration(
+      admin,
+      {
+        action: "deactivate_employment",
+        employmentProfileId: IDS.employmentA,
+        effectiveThrough: "2026-08-20",
+      },
+      "close-employment-once",
+      IDS.adminA,
+    );
+    expect(closeEmployment).toMatchObject({ action: "deactivate_employment", replayed: false });
+    await expect(
+      executeAdministration(
+        admin,
+        {
+          action: "deactivate_employment",
+          employmentProfileId: IDS.employmentA,
+          effectiveThrough: "2026-08-25",
+        },
+        "close-employment-twice-different-key",
+        IDS.adminA,
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+    expect(
+      await executeAdministration(
+        admin,
+        {
+          action: "deactivate_employment",
+          employmentProfileId: IDS.employmentA,
+          effectiveThrough: "2026-08-20",
+        },
+        "close-employment-once",
+        IDS.adminA,
+      ),
+    ).toMatchObject({ replayed: true });
+
+    const managerAssignmentId = (
+      await admin.query(
+        `select id
+         from public.employee_manager_assignments
+         where organization_id = $1::uuid
+           and employment_profile_id = $2::uuid
+         order by created_at desc
+         limit 1`,
+        [IDS.orgA, IDS.employmentA],
+      )
+    ).rows[0].id as string;
+    await executeAdministration(
+      admin,
+      {
+        action: "deactivate_manager_assignment",
+        managerAssignmentId,
+        effectiveThrough: "2026-08-20T00:00:00Z",
+      },
+      "close-manager-assignment-once",
+      IDS.adminA,
+    );
+    await expect(
+      executeAdministration(
+        admin,
+        {
+          action: "deactivate_manager_assignment",
+          managerAssignmentId,
+          effectiveThrough: "2026-08-25T00:00:00Z",
+        },
+        "close-manager-assignment-twice-different-key",
+        IDS.adminA,
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+
+    await executeAdministration(
+      admin,
+      {
+        action: "deactivate_pay_group",
+        payGroupId: IDS.payGroupWeeklyA,
+        effectiveThrough: "2026-08-20",
+      },
+      "close-pay-group-once",
+      IDS.adminA,
+    );
+    await expect(
+      executeAdministration(
+        admin,
+        {
+          action: "deactivate_pay_group",
+          payGroupId: IDS.payGroupWeeklyA,
+          effectiveThrough: "2026-08-25",
+        },
+        "close-pay-group-twice-different-key",
+        IDS.adminA,
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+
+    await executeAdministration(
+      admin,
+      {
+        action: "deactivate_pay_group_assignment",
+        payGroupAssignmentId: weeklyAssignment.payGroupAssignmentId,
+        effectiveThrough: "2026-08-20",
+      },
+      "close-pay-group-assignment-once",
+      IDS.adminA,
+    );
+    await expect(
+      executeAdministration(
+        admin,
+        {
+          action: "deactivate_pay_group_assignment",
+          payGroupAssignmentId: weeklyAssignment.payGroupAssignmentId,
+          effectiveThrough: "2026-08-25",
+        },
+        "close-pay-group-assignment-twice-different-key",
+        IDS.adminA,
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+  });
+
+  it("keeps payroll organization external ids unique across effective-dated overlap while allowing non-overlapping history for the same org", async () => {
+    const superseded = await executeAdministration(
+      admin,
+      {
+        action: "supersede_org_settings",
+        externalPayrollOrganizationId: "payroll-contract-org-a",
+        timezone: "America/Los_Angeles",
+        workdayStartsAt: "05:00",
+        workweekStartsOn: 0,
+        effectiveFrom: "2026-08-15",
+      },
+      "supersede-org-settings-same-external-id",
+      IDS.adminA,
+    );
+    expect(superseded).toMatchObject({ action: "supersede_org_settings", replayed: false });
+
+    await expect(
+      admin.query(
+        `insert into public.payroll_organization_settings (
+           organization_id,
+           external_payroll_organization_id,
+           timezone,
+           workday_starts_at,
+           workweek_starts_on,
+           effective_from
+         ) values (
+           $1::uuid,
+           'payroll-contract-org-a',
+           'America/Los_Angeles',
+           '05:00',
+           0,
+           '2026-08-10'
+         )`,
+        [IDS.orgB],
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("returns missing_prerequisite without broadening events when no pay period covers the selected date, and maps missing policy to unsupported_policy", async () => {
+    await executeAdministration(
+      admin,
+      {
+        action: "create_pay_group_assignment",
+        employmentProfileId: IDS.employmentA,
+        payGroupId: IDS.payGroupWeeklyA,
+        effectiveFrom: "2026-08-01",
+      },
+      "create-assignment-for-timesheet-period",
+      IDS.adminA,
+    );
+
+    await admin.query(
+      `insert into public.employee_time_events (
+         organization_id, employment_profile_id, event_type, event_at, actor_user_id, source_timezone, work_location
+       ) values
+         ($1::uuid, $2::uuid, 'shift_started', '2026-08-13T16:00:00Z', $3::uuid, 'America/Los_Angeles', 'office'),
+         ($1::uuid, $2::uuid, 'shift_ended', '2026-08-13T23:00:00Z', $3::uuid, 'America/Los_Angeles', 'office')`,
+      [IDS.orgA, IDS.employmentA, IDS.employeeA],
+    );
+
+    const missingPeriod = await getTimesheetPeriod(admin, IDS.employeeA, "2026-08-13");
+    expect(missingPeriod).toMatchObject({
+      state: "missing_prerequisite",
+      employmentProfileId: IDS.employmentA,
+    });
+    expect(missingPeriod.snapshot).toBeUndefined();
+
+    const weeklyAssignmentId = (
+      await admin.query(
+        `select id
+         from public.pay_group_assignments
+         where organization_id = $1::uuid
+           and employment_profile_id = $2::uuid
+         order by created_at desc
+         limit 1`,
+        [IDS.orgA, IDS.employmentA],
+      )
+    ).rows[0].id as string;
+    await executeAdministration(
+      admin,
+      {
+        action: "deactivate_pay_group_assignment",
+        payGroupAssignmentId: weeklyAssignmentId,
+        effectiveThrough: "2026-08-13",
+      },
+      "close-weekly-assignment-before-unsupported-policy",
+      IDS.adminA,
+    );
+    await executeAdministration(
+      admin,
+      {
+        action: "create_pay_group_assignment",
+        employmentProfileId: IDS.employmentA,
+        payGroupId: IDS.payGroupBiweeklyA,
+        effectiveFrom: "2026-08-14",
+      },
+      "create-biweekly-assignment-for-unsupported-policy",
+      IDS.adminA,
+    );
+    await executeAdministration(
+      admin,
+      {
+        action: "set_generation_version",
+        payGroupId: IDS.payGroupBiweeklyA,
+        cadence: "biweekly",
+        startsOn: "2026-08-04",
+        effectiveFrom: "2026-08-14",
+        timezone: "America/Los_Angeles",
+      },
+      "set-generation-for-unsupported-policy",
+      IDS.adminA,
+    );
+    await executeAdministration(
+      admin,
+      {
+        action: "generate_periods",
+        payGroupId: IDS.payGroupBiweeklyA,
+        from: "2026-08-14",
+        to: "2026-08-31",
+      },
+      "generate-periods-for-unsupported-policy",
+      IDS.adminA,
+    );
+    await admin.query(
+      `delete from public.payroll_policy_versions
+       where organization_id = $1::uuid`,
+      [IDS.orgA],
+    );
+
+    const unsupportedPolicy = await getTimesheetPeriod(admin, IDS.employeeA, "2026-08-20");
+    expect(unsupportedPolicy).toMatchObject({
+      state: "unsupported_policy",
+      employmentProfileId: IDS.employmentA,
+    });
+  });
+
   it("returns sanitized administration reads, redacts compensation without the exact capability, and preserves audit history", async () => {
     await executeAdministration(
       admin,
@@ -730,6 +1104,160 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll administration rpc runtime contr
       { operation: "execute_payroll_administration", action: "set_generation_version" },
       { operation: "execute_payroll_administration", action: "generate_periods" },
     ]);
+  });
+
+  it("redacts compensation from audit visibility for export-only and resolve-only readers", async () => {
+    await admin.query(
+      `update public.employee_rate_versions
+       set effective_through = '2026-08-15T00:00:00Z'
+       where organization_id = $1::uuid
+         and employment_profile_id = $2::uuid`,
+      [IDS.orgA, IDS.employmentA],
+    );
+    await executeAdministration(
+      admin,
+      {
+        action: "add_rate_version",
+        employmentProfileId: IDS.employmentA,
+        hourlyRateCents: 3200,
+        effectiveFrom: "2026-08-15T00:00:01Z",
+      },
+      "add-rate-version-redacted-audit",
+      IDS.adminA,
+    );
+
+    await admin.query(
+      `delete from public.payroll_capability_grants
+       where organization_id = $1::uuid
+         and user_id = $2::uuid
+         and capability = 'payroll.view_compensation'`,
+      [IDS.orgA, IDS.adminA],
+    );
+
+    const exportAuditRows = await withRole(
+      admin,
+      "authenticated",
+      IDS.adminA,
+      async () =>
+        (
+          await admin.query(
+            `select payload
+             from public.payroll_audit_events
+             where organization_id = $1::uuid
+               and operation = 'execute_payroll_administration'
+             order by created_at desc
+             limit 1`,
+            [IDS.orgA],
+          )
+        ).rows,
+    );
+    expect(exportAuditRows).toEqual([
+      {
+        payload: expect.objectContaining({
+          action: "add_rate_version",
+          compensationRedacted: true,
+        }),
+      },
+    ]);
+    expect(JSON.stringify(exportAuditRows)).not.toContain("hourlyRateCents");
+
+    const resolveVisibility = await withRole(
+      admin,
+      "authenticated",
+      IDS.adminA,
+      async () =>
+        (
+          await admin.query(
+            `select
+               (select payload from public.payroll_audit_events where organization_id = $1::uuid order by created_at desc limit 1) as audit_payload,
+               (select result_payload from public.payroll_mutation_receipts where organization_id = $1::uuid and actor_user_id = $2::uuid and idempotency_key = 'add-rate-version-redacted-audit' limit 1) as receipt_payload`,
+            [IDS.orgA, IDS.adminA],
+          )
+        ).rows[0],
+    );
+    expect(resolveVisibility.audit_payload).toMatchObject({
+      action: "add_rate_version",
+      compensationRedacted: true,
+    });
+    expect(JSON.stringify(resolveVisibility)).not.toContain("hourlyRateCents");
+  });
+
+  it("bounds payroll administration history by default and keeps the unrelated advisory-lock scope independent from pay-group generation", async () => {
+    await executeAdministration(
+      admin,
+      {
+        action: "set_generation_version",
+        payGroupId: IDS.payGroupWeeklyA,
+        cadence: "weekly",
+        startsOn: "2026-08-11",
+        effectiveFrom: "2026-08-01",
+        timezone: "America/Los_Angeles",
+      },
+      "set-generation-bounded-admin-read",
+      IDS.adminA,
+    );
+    await executeAdministration(
+      admin,
+      {
+        action: "generate_periods",
+        payGroupId: IDS.payGroupWeeklyA,
+        from: "2026-08-01",
+        to: "2027-08-31",
+      },
+      "generate-periods-bounded-admin-read",
+      IDS.adminA,
+    );
+
+    const boundedView = await getAdministration(admin, IDS.adminA);
+    expect(boundedView.bounds).toMatchObject({
+      payPeriods: 50,
+      employments: 50,
+      orgSettings: 50,
+      policies: 20,
+    });
+    expect(boundedView.payPeriods).toHaveLength(50);
+
+    const lockHolder = await connect();
+    const unrelatedWriter = await connect();
+    try {
+      await lockHolder.query("begin");
+      await lockHolder.query(
+        `select pg_catalog.pg_advisory_xact_lock(
+           pg_catalog.hashtextextended(
+             app.payroll_administration_lock_scope(
+               'generate_periods',
+               $1::uuid,
+               jsonb_build_object('payGroupId', $2::uuid)
+             ),
+             0
+           )
+         )`,
+        [IDS.orgA, IDS.payGroupWeeklyA],
+      );
+
+      const startedAt = Date.now();
+      const unrelatedWritePromise = executeAdministration(
+        unrelatedWriter,
+        {
+          action: "grant_capability",
+          userId: IDS.schedulerA,
+          capability: "payroll.export_period",
+          effectiveFrom: "2026-08-01T00:00:00Z",
+        },
+        "grant-capability-during-generate-lock",
+        IDS.adminA,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const unrelatedWriteResult = await unrelatedWritePromise;
+      const elapsedMs = Date.now() - startedAt;
+
+      expect(unrelatedWriteResult).toMatchObject({ action: "grant_capability", replayed: false });
+      expect(elapsedMs).toBeLessThan(1500);
+    } finally {
+      await lockHolder.query("rollback");
+      await lockHolder.end();
+      await unrelatedWriter.end();
+    }
   });
 
   it("keeps direct delete and RPC grants least-privilege", async () => {

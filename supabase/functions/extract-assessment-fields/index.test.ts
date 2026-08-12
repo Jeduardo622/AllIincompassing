@@ -848,6 +848,140 @@ Deno.test("extractStructuredSections splits Adobe-collapsed IEHP checkbox target
   });
 });
 
+Deno.test("extractStructuredSections excludes Roman numeral spillover and ignores generic IEHP BIP narrative during reconciliation", () => {
+  const sections = asSections(
+    "iehp_fba",
+    `
+      BEHAVIORS
+      The behaviors and functional skills to be addressed are:
+      Transition Tolerance
+      Functional Communication
+      Waiting
+      Community Safety
+      III.
+      BACKGROUND INFORMATION
+      Living Situation
+      Member lives with two caregivers.
+      TARGET BEHAVIORS:
+      Program Name: Transition Tolerance
+      Instrumental Goal: Member will transition without dropping to the floor.
+      Data Collection: Frequency.
+      Mastery Criteria: Zero episodes across 4 consecutive weeks.
+      Baseline: 4 episodes per week.
+      REPLACEMENT BEHAVIORS:
+      Program Name: Functional Communication
+      Instrumental Goal: Member will request help with a verbal or AAC response.
+      Data Collection: Percent opportunities.
+      Mastery Criteria: 80% across 4 consecutive weeks.
+      Baseline: 10% independent.
+      Program Name: Waiting
+      Instrumental Goal: Member will wait for 2 minutes without unsafe behavior.
+      Data Collection: Duration.
+      Mastery Criteria: 2 minutes across 4 consecutive weeks.
+      Baseline: 5 seconds.
+      Program Name: Community Safety
+      Instrumental Goal: Member will stop at curb lines and remain within arm's reach.
+      Data Collection: Percent opportunities.
+      Mastery Criteria: 90% across 4 consecutive weeks.
+      Baseline: 20% independent.
+      Behavior Intervention Plan
+      Antecedent Strategies: visual countdown and first/then reminders.
+      Replacement Behavior: prompt functional communication and waiting.
+      Consequence Strategies: reinforce calm transitions and safe community behavior.
+      Safety/Crisis Procedure
+      Crisis safety narrative.
+    `,
+  );
+
+  const summary = sections.find((section) => section.field_key === "IEHP_FBA_BEHAVIOR_SKILL_TARGETS");
+  const skillsBehaviors = summary?.payload.skills_behaviors as
+    | { items?: Array<Record<string, unknown>>; counts?: Record<string, unknown> }
+    | undefined;
+
+  expect(summary?.payload.targets).toEqual([
+    "Transition Tolerance",
+    "Functional Communication",
+    "Waiting",
+    "Community Safety",
+  ]);
+  expect(summary?.payload.raw_text).not.toContain("III");
+  expect(summary?.payload.raw_text).not.toContain("BACKGROUND INFORMATION");
+  expect(summary?.payload.targets).not.toContain("III.");
+  expect(skillsBehaviors).toMatchObject({
+    counts: {
+      total: 4,
+      behavior: 1,
+      skill: 3,
+      summary_only: 0,
+      detailed_only: 0,
+      ambiguous: 0,
+    },
+    items: [
+      expect.objectContaining({
+        name: "Transition Tolerance",
+        clinical_goal_type: "behavior",
+        reconciliation_status: "matched",
+      }),
+      expect.objectContaining({
+        name: "Functional Communication",
+        clinical_goal_type: "skill",
+        reconciliation_status: "matched",
+      }),
+      expect.objectContaining({
+        name: "Waiting",
+        clinical_goal_type: "skill",
+        reconciliation_status: "matched",
+      }),
+      expect.objectContaining({
+        name: "Community Safety",
+        clinical_goal_type: "skill",
+        reconciliation_status: "matched",
+      }),
+    ],
+  });
+  expect(skillsBehaviors?.items).not.toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        name: "III.",
+      }),
+      expect.objectContaining({
+        name: "Behavior Treatment",
+      }),
+    ]),
+  );
+});
+
+Deno.test("extractStructuredSections preserves legacy IEHP BIP subsections when explicit markers exist", () => {
+  const sections = asSections(
+    "iehp_fba",
+    `
+      BEHAVIOR INTERVENTION PLAN
+      Short-Term: reduce transition-related dropping to one episode per week.
+      Intermediate: use a visual countdown across home and community settings.
+      Progress: maintain safe transitions for four consecutive weeks.
+      Safety/Crisis Procedure
+      Crisis safety narrative.
+    `,
+  );
+
+  const targetSections = sections.filter((section) =>
+    section.field_key === "IEHP_FBA_TARGET_BEHAVIOR_INTERVENTION_BLOCKS"
+  );
+
+  expect(targetSections).toHaveLength(3);
+  expect(targetSections.map((section) => section.payload.subsection)).toEqual([
+    "short",
+    "intermediate",
+    "progress",
+  ]);
+  expect(targetSections.map((section) => section.payload.program_name)).toEqual([
+    "Behavior Treatment",
+    "Behavior Treatment",
+    "Behavior Treatment",
+  ]);
+  expect(targetSections.every((section) => section.source_span?.method === "iehp_goal_subsection")).toBe(true);
+});
+
 Deno.test("extractStructuredSections preserves IEHP adaptive measure block slots when source content is missing", () => {
   const sections = asSections(
     "iehp_fba",

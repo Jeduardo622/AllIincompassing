@@ -59,17 +59,12 @@ type ClearRetainedPayrollOutboxEventInput = ScopedOutbox & {
 const PAYROLL_OUTBOX_DB_NAME = "allincompassing-payroll-time-outbox";
 const PAYROLL_OUTBOX_STORE_NAME = "payroll-time-events";
 const PAYROLL_OUTBOX_DB_VERSION = 2;
+const INVALID_RETAINED_PAYLOAD_SAFE_CODE = "invalid_retained_payload";
 
 const operationChains = new Map<string, Promise<void>>();
 
 const createStorageKey = (scope: ScopedOutbox, idempotencyKey: string): string =>
   JSON.stringify([scope.organizationId, scope.userId, idempotencyKey]);
-
-const normalizeStoredEvent = (event: PendingPayrollEvent): PendingPayrollEvent => ({
-  ...event,
-  storageKey: event.storageKey || createStorageKey(event, event.idempotencyKey),
-  retainForClinical: event.retainForClinical === true,
-});
 
 const runScopedOperation = <T>(
   scope: ScopedOutbox,
@@ -141,6 +136,39 @@ const canonicalizeRetainedSessionAttendancePayload = (
   };
 };
 
+const isRetainedSessionAttendanceEvent = (event: PendingPayrollEvent): boolean =>
+  event.action === "record_session_attendance" && event.retainForClinical === true;
+
+const buildInvalidRetainedPayloadError = (): Error => Object.assign(
+  new Error("Retained attendance payload is invalid and requires attention."),
+  { code: INVALID_RETAINED_PAYLOAD_SAFE_CODE },
+);
+
+const normalizeStoredEvent = (event: PendingPayrollEvent): PendingPayrollEvent => {
+  const normalized = {
+    ...event,
+    storageKey: event.storageKey || createStorageKey(event, event.idempotencyKey),
+    retainForClinical: event.retainForClinical === true,
+  };
+  if (!isRetainedSessionAttendanceEvent(normalized)) {
+    return normalized;
+  }
+
+  try {
+    return {
+      ...normalized,
+      payload: canonicalizeRetainedSessionAttendancePayload(normalized.payload),
+    };
+  } catch {
+    return {
+      ...normalized,
+      payload: {},
+      state: "needs_attention",
+      safeCode: INVALID_RETAINED_PAYLOAD_SAFE_CODE,
+    };
+  }
+};
+
 const withPendingState = (event: PendingPayrollEvent): PendingPayrollEvent => ({
   ...event,
   state: "pending",
@@ -169,8 +197,7 @@ const assertRetainForClinicalInput = (
 };
 
 const isRetainedConfirmedEvent = (event: PendingPayrollEvent): boolean =>
-  event.action === "record_session_attendance" &&
-  event.retainForClinical === true &&
+  isRetainedSessionAttendanceEvent(event) &&
   event.state === "confirmed_pending_clinical";
 
 const getScopedRetainedEvent = (
@@ -396,7 +423,7 @@ export async function listPayrollOutboxEvents(
   store: PayrollOutboxStore,
   scope: ScopedOutbox,
 ): Promise<PendingPayrollEvent[]> {
-  const events = await store.list();
+  const events = (await store.list()).map(normalizeStoredEvent);
   return sortOutboxEvents(events.filter((event) => isMatchingScope(event, scope)));
 }
 
@@ -407,7 +434,9 @@ export async function recoverPayrollOutbox(
   return runScopedOperation(scope, async () => {
     const events = await listPayrollOutboxEvents(store, scope);
     for (const event of events) {
-      if (event.state === "replaying") {
+      if (isRetainedSessionAttendanceEvent(event)) {
+        await store.put(event.state === "replaying" ? withPendingState(event) : event);
+      } else if (event.state === "replaying") {
         await store.put(withPendingState(event));
       }
     }
@@ -526,7 +555,14 @@ export async function reconfirmRetainedPayrollOutboxEvent(
   return runScopedOperation(input, async () => {
     const idempotencyKey = assertNonEmptyKey(input.idempotencyKey);
     const events = (await input.store.list()).map(normalizeStoredEvent);
+    const scopedStorageKey = createStorageKey(input, idempotencyKey);
+    const normalizedCandidate = events.find((candidate) => candidate.storageKey === scopedStorageKey);
+    if (normalizedCandidate?.safeCode === INVALID_RETAINED_PAYLOAD_SAFE_CODE) {
+      await input.store.put(normalizedCandidate);
+      throw buildInvalidRetainedPayloadError();
+    }
     const event = getScopedRetainedEvent(events, input, idempotencyKey);
+    const replayPayload = canonicalizeRetainedSessionAttendancePayload(event.payload);
 
     try {
       const result = await input.recordSessionAttendance({
@@ -534,7 +570,7 @@ export async function reconfirmRetainedPayrollOutboxEvent(
         userId: event.userId,
         localDate: event.localDate,
         idempotencyKey: event.idempotencyKey,
-        event: event.payload as PayrollSessionAttendancePayload,
+        event: replayPayload as PayrollSessionAttendancePayload,
       });
 
       if (result.idempotencyKey !== event.idempotencyKey) {
@@ -543,6 +579,7 @@ export async function reconfirmRetainedPayrollOutboxEvent(
 
       await input.store.put({
         ...event,
+        payload: replayPayload,
         state: "confirmed_pending_clinical",
         safeCode: null,
       });

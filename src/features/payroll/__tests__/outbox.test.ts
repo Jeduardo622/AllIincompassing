@@ -8,6 +8,7 @@ import {
   listPayrollOutboxEvents,
   reconfirmRetainedPayrollOutboxEvent,
   recoverPayrollOutbox,
+  type PayrollOutboxStore,
   type PendingPayrollEvent,
 } from "../outbox";
 
@@ -55,6 +56,27 @@ const createDeferred = () => {
     resolve = resolvePromise;
   });
   return { promise, resolve };
+};
+
+const createInjectedPayrollOutboxStore = (initialEvents: PendingPayrollEvent[]) => {
+  const entries = new Map(initialEvents.map((event) => [event.storageKey, { ...event }]));
+  const store: PayrollOutboxStore = {
+    put: vi.fn(async (event) => {
+      entries.set(event.storageKey, { ...event });
+    }),
+    list: vi.fn(async () => Array.from(entries.values()).map((event) => ({ ...event }))),
+    remove: vi.fn(async (storageKey) => {
+      entries.delete(storageKey);
+    }),
+    markFailed: vi.fn(async (storageKey, safeCode) => {
+      const event = entries.get(storageKey);
+      if (event) {
+        entries.set(storageKey, { ...event, state: "needs_attention", safeCode });
+      }
+    }),
+  };
+
+  return { store, readStored: () => Array.from(entries.values()).map((event) => ({ ...event })) };
 };
 
 describe("payroll outbox", () => {
@@ -701,6 +723,145 @@ describe("payroll outbox", () => {
         idempotencyKey: "retained-key",
         occurredAt: "2026-08-11T16:05:00.000Z",
         state: "confirmed_pending_clinical",
+      }),
+    ]);
+  });
+
+  it("canonicalizes and rewrites a legacy retained attendance row during recovery", async () => {
+    const canonicalPayload = { ...baseAttendanceEvent.payload };
+    const legacyEvent = {
+      storageKey: '["org-1","user-1","legacy-retained-key"]',
+      idempotencyKey: "legacy-retained-key",
+      action: "record_session_attendance",
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-11",
+      occurredAt: "2026-08-11T16:05:00.000Z",
+      payload: {
+        ...canonicalPayload,
+        note: "legacy top-level note",
+        topLevelExtra: { nested: "remove" },
+        data: {
+          ...canonicalPayload.data,
+          note: "legacy nested note",
+          nestedExtra: { remove: true },
+        },
+      },
+      enqueueSequence: 1,
+      enqueuedAt: "2026-08-11T16:05:01.000Z",
+      state: "confirmed_pending_clinical",
+      safeCode: null,
+      retainForClinical: true,
+    } satisfies PendingPayrollEvent;
+    const { store, readStored } = createInjectedPayrollOutboxStore([legacyEvent]);
+
+    await recoverPayrollOutbox(store, { organizationId: "org-1", userId: "user-1" });
+
+    expect(store.put).toHaveBeenCalledWith(expect.objectContaining({
+      storageKey: legacyEvent.storageKey,
+      payload: canonicalPayload,
+      state: "confirmed_pending_clinical",
+      safeCode: null,
+    }));
+    expect(readStored()).toEqual([
+      expect.objectContaining({
+        storageKey: legacyEvent.storageKey,
+        payload: canonicalPayload,
+        state: "confirmed_pending_clinical",
+        safeCode: null,
+      }),
+    ]);
+  });
+
+  it("canonicalizes a legacy retained attendance payload immediately before reconfirm replay", async () => {
+    const canonicalPayload = { ...baseAttendanceEvent.payload };
+    const legacyEvent = {
+      storageKey: '["org-1","user-1","legacy-reconfirm-key"]',
+      idempotencyKey: "legacy-reconfirm-key",
+      action: "record_session_attendance",
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-11",
+      occurredAt: "2026-08-11T16:05:00.000Z",
+      payload: {
+        ...canonicalPayload,
+        note: "legacy top-level note",
+        data: {
+          ...canonicalPayload.data,
+          note: "legacy nested note",
+          nestedExtra: ["remove"],
+        },
+      },
+      enqueueSequence: 1,
+      enqueuedAt: "2026-08-11T16:05:01.000Z",
+      state: "confirmed_pending_clinical",
+      safeCode: null,
+      retainForClinical: true,
+    } satisfies PendingPayrollEvent;
+    const { store, readStored } = createInjectedPayrollOutboxStore([legacyEvent]);
+    const replayedPayloads: unknown[] = [];
+
+    await reconfirmRetainedPayrollOutboxEvent({
+      store,
+      organizationId: "org-1",
+      userId: "user-1",
+      idempotencyKey: "legacy-reconfirm-key",
+      recordSessionAttendance: vi.fn(async (event) => {
+        replayedPayloads.push(event.event);
+        return { idempotencyKey: event.idempotencyKey };
+      }),
+    });
+
+    expect(replayedPayloads).toEqual([canonicalPayload]);
+    expect(readStored()).toEqual([
+      expect.objectContaining({ payload: canonicalPayload, state: "confirmed_pending_clinical" }),
+    ]);
+  });
+
+  it("fails closed and safely stops an invalid legacy retained attendance row", async () => {
+    const invalidEvent = {
+      storageKey: '["org-1","user-1","invalid-retained-key"]',
+      idempotencyKey: "invalid-retained-key",
+      action: "record_session_attendance",
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-11",
+      occurredAt: "2026-08-11T16:05:00.000Z",
+      payload: {
+        occurredAt: "2026-08-11T16:05:00.000Z",
+        timezone: "America/Los_Angeles",
+        workLocation: "client_site",
+        data: {
+          eventType: "session_started",
+          note: "legacy note without required session id",
+        },
+      },
+      enqueueSequence: 1,
+      enqueuedAt: "2026-08-11T16:05:01.000Z",
+      state: "confirmed_pending_clinical",
+      safeCode: null,
+      retainForClinical: true,
+    } satisfies PendingPayrollEvent;
+    const { store, readStored } = createInjectedPayrollOutboxStore([invalidEvent]);
+    const transport = vi.fn();
+
+    await expect(
+      reconfirmRetainedPayrollOutboxEvent({
+        store,
+        organizationId: "org-1",
+        userId: "user-1",
+        idempotencyKey: "invalid-retained-key",
+        recordSessionAttendance: transport,
+      }),
+    ).rejects.toMatchObject({ code: "invalid_retained_payload" });
+
+    expect(transport).not.toHaveBeenCalled();
+    expect(readStored()).toEqual([
+      expect.objectContaining({
+        storageKey: invalidEvent.storageKey,
+        payload: {},
+        state: "needs_attention",
+        safeCode: "invalid_retained_payload",
       }),
     ]);
   });

@@ -13,6 +13,7 @@ const mockPreloadRouteModule = vi.fn();
 const mockFetchMessageThreads = vi.fn();
 const mockFetchPendingSupervisionSessionNoteCount = vi.fn();
 const mockUsePayrollDayReadOnly = vi.fn();
+const mockUsePayrollApprovals = vi.fn();
 
 const capabilityForRole = (role: string) => (capability: string) => {
   const matrix: Record<string, string[]> = {
@@ -42,6 +43,9 @@ vi.mock("../../lib/organization", () => ({
 
 vi.mock("../../features/payroll/usePayrollTime", () => ({
   usePayrollDayReadOnly: (...args: unknown[]) => mockUsePayrollDayReadOnly(...args),
+}));
+vi.mock("../../features/payroll/usePayrollApprovals", () => ({
+  usePayrollApprovals: (...args: unknown[]) => mockUsePayrollApprovals(...args),
 }));
 
 vi.mock("../../lib/messages/fetchers", () => ({
@@ -115,6 +119,13 @@ describe("Sidebar navigation active styling", () => {
       data: undefined,
       isLoading: false,
       isError: false,
+    });
+    mockUsePayrollApprovals.mockReturnValue({
+      payrollReviewQueueQuery: {
+        data: undefined,
+        isLoading: false,
+        isError: false,
+      },
     });
   });
 
@@ -389,6 +400,29 @@ describe("Sidebar navigation active styling", () => {
     renderSidebar(["/"]);
 
     expect(screen.getByRole("link", { name: /^time$/i })).toBeInTheDocument();
+  });
+
+  it("shows the Time Review navigation only when the authoritative review queue grants review capability", () => {
+    mockUsePayrollApprovals.mockReturnValue({
+      payrollReviewQueueQuery: {
+        data: {
+          state: "ok",
+          capabilities: {
+            canReviewAssigned: true,
+            canApproveAssigned: false,
+            canViewCompensation: false,
+            hasOrgPayrollAccess: false,
+          },
+          queue: [],
+        },
+        isLoading: false,
+        isError: false,
+      },
+    });
+
+    renderSidebar(["/"]);
+
+    expect(screen.getByRole("link", { name: /time review/i })).toBeInTheDocument();
   });
 
   it("keeps the Time navigation hidden during loading, transport errors, and non-ok payroll states", () => {

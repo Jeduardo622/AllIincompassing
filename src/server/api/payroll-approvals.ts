@@ -35,6 +35,7 @@ const FORBIDDEN_AUTHORITY_KEYS = new Set([
 ]);
 const PAYROLL_ALLOWED_ROLES = new Set(["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"]);
 const SUPPORTED_ACTIONS = new Set([
+  "self_approval",
   "review_queue",
   "review_details",
   "submit",
@@ -62,6 +63,10 @@ const blockerTypeSchema = z.enum([
 const blockerResolutionSchema = z.enum(["resolved", "reopened"]);
 
 const payrollApprovalActionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("self_approval"),
+    selectedLocalDate: z.string().date(),
+  }).strict(),
   z.object({
     action: z.literal("review_queue"),
     selectedLocalDate: z.string().date(),
@@ -151,6 +156,43 @@ const payrollReviewCapabilitiesSchema = z.object({
   canApproveAssigned: z.boolean(),
   canViewCompensation: z.boolean(),
   hasOrgPayrollAccess: z.boolean(),
+}).strict();
+const payrollSelfApprovalStateSchema = z.enum([
+  "ok",
+  "feature_disabled",
+  "unsupported_policy",
+  "unsupported_jurisdiction",
+  "missing_prerequisite",
+  "no_employment_profile",
+]);
+const payrollSelfApprovalResponseSchema = z.object({
+  state: payrollSelfApprovalStateSchema,
+  selectedLocalDate: z.string().date(),
+  approval: z.object({
+    currentState: z.string().min(1),
+    submittedAt: z.string().min(1).nullable(),
+    returnedComment: z.string().nullable(),
+    unresolvedBlockerCount: z.number().int(),
+    snapshot: z.object({
+      id: z.string().uuid().nullable(),
+      hash: snapshotHashSchema.nullable(),
+      isCurrent: z.boolean(),
+    }).strict(),
+    actions: z.object({
+      canSubmit: z.boolean(),
+    }).strict(),
+    compensation: z.object({
+      grossEarningsCents: z.number().int(),
+    }).strict().optional(),
+    history: z.array(z.object({
+      action: z.string().min(1),
+      occurredAt: z.string().min(1),
+      comment: z.string().nullable(),
+      reason: z.string().nullable(),
+      snapshotId: z.string().uuid(),
+      snapshotHash: snapshotHashSchema,
+    }).strict()),
+  }).strict().optional(),
 }).strict();
 const payrollReviewQueueItemSchema = z.object({
   employeeLabel: z.string().min(1),
@@ -353,7 +395,11 @@ const validateIdempotency = (
     });
   }
 
-  if (parsed.action === "review_queue" || parsed.action === "review_details") {
+  if (
+    parsed.action === "self_approval"
+    || parsed.action === "review_queue"
+    || parsed.action === "review_details"
+  ) {
     return { idempotencyKey: "" };
   }
 
@@ -373,9 +419,16 @@ const validateApprovalResponse = (
   action: PayrollApprovalAction["action"],
   payload: unknown,
   requestedKey: string,
-): PayrollApprovalTransition | PayrollBlockerResolution | z.infer<typeof payrollReviewQueueResponseSchema> | z.infer<typeof payrollReviewDetailsResponseSchema> | Response => {
+): PayrollApprovalTransition
+  | PayrollBlockerResolution
+  | z.infer<typeof payrollSelfApprovalResponseSchema>
+  | z.infer<typeof payrollReviewQueueResponseSchema>
+  | z.infer<typeof payrollReviewDetailsResponseSchema>
+  | Response => {
   const schema =
-    action === "review_queue"
+    action === "self_approval"
+      ? payrollSelfApprovalResponseSchema
+      : action === "review_queue"
       ? payrollReviewQueueResponseSchema
       : action === "review_details"
       ? payrollReviewDetailsResponseSchema
@@ -388,7 +441,7 @@ const validateApprovalResponse = (
       classification: PAYROLL_ERROR_CLASSIFICATIONS.invalid_response,
     }, traceHeaders);
   }
-  if ((action === "review_queue" || action === "review_details")) {
+  if (action === "self_approval" || action === "review_queue" || action === "review_details") {
     return parsed.data;
   }
   if (parsed.data.idempotencyKey !== requestedKey) {
@@ -405,6 +458,15 @@ type PayrollApprovalTransition = z.infer<typeof payrollApprovalTransitionRespons
 type PayrollBlockerResolution = z.infer<typeof payrollBlockerResolutionResponseSchema>;
 
 const mapActionToRpc = (parsed: PayrollApprovalAction, idempotencyKey: string) => {
+  if (parsed.action === "self_approval") {
+    return {
+      functionName: "get_payroll_self_approval",
+      args: {
+        selected_local_date: parsed.selectedLocalDate,
+      },
+    };
+  }
+
   if (parsed.action === "review_queue") {
     return {
       functionName: "get_payroll_review_queue",
@@ -813,7 +875,11 @@ export async function payrollApprovalsHandler(request: Request): Promise<Respons
       if (successPayload instanceof Response) {
         return successPayload;
       }
-      if (parsed.data.action === "review_queue" || parsed.data.action === "review_details") {
+      if (
+        parsed.data.action === "self_approval"
+        || parsed.data.action === "review_queue"
+        || parsed.data.action === "review_details"
+      ) {
         return jsonForRequest(
           request,
           successPayload as Record<string, unknown>,
@@ -872,7 +938,11 @@ export async function payrollApprovalsHandler(request: Request): Promise<Respons
     return validatedResponse;
   }
 
-  if (parsed.data.action === "review_queue" || parsed.data.action === "review_details") {
+  if (
+    parsed.data.action === "self_approval"
+    || parsed.data.action === "review_queue"
+    || parsed.data.action === "review_details"
+  ) {
     return jsonForRequest(request, validatedResponse as Record<string, unknown>, 200, traceHeaders);
   }
 

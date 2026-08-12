@@ -193,6 +193,59 @@ describe("payrollApprovalsHandler", () => {
     expect(response.headers.get("x-request-id")).toBe("edge-review-queue");
   });
 
+  it("calls get_payroll_self_approval in legacy mode without Idempotency-Key requirements", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
+    vi.mocked(fetchJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        state: "ok",
+        selectedLocalDate: "2026-08-12",
+        approval: {
+          currentState: "submitted",
+          submittedAt: null,
+          returnedComment: null,
+          unresolvedBlockerCount: 0,
+          snapshot: {
+            id: "11111111-1111-1111-1111-111111111111",
+            hash: "a".repeat(64),
+            isCurrent: true,
+          },
+          actions: {
+            canSubmit: true,
+          },
+          history: [],
+        },
+      },
+    });
+
+    const response = await payrollApprovalsHandler(
+      new Request("http://localhost/api/payroll-approvals", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${createAuthToken()}`,
+        },
+        body: JSON.stringify({
+          action: "self_approval",
+          selectedLocalDate: "2026-08-12",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(vi.mocked(fetchJson)).toHaveBeenCalledWith(
+      "https://example.supabase.co/rest/v1/rpc/get_payroll_self_approval",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          selected_local_date: "2026-08-12",
+        }),
+      }),
+    );
+    expect(response.headers.get("Idempotency-Key")).toBeNull();
+    expect(response.headers.get("Idempotent-Replay")).toBeNull();
+  });
+
   it("returns edge-authority review details without mutation idempotency headers", async () => {
     vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
     vi.mocked(proxyToEdgeAuthority).mockResolvedValue(

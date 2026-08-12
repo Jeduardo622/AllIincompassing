@@ -63,6 +63,7 @@ export const routeGroups = {
   ],
   time: [
     { path: "/time", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
+    { path: "/time/review", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
   ],
   messages: [
     { path: "/messages", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },

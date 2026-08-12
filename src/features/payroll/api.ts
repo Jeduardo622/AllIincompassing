@@ -57,6 +57,14 @@ const payrollReviewStateSchema = z.enum([
   "unsupported_jurisdiction",
   "missing_prerequisite",
 ]);
+const payrollSelfApprovalStateSchema = z.enum([
+  "ok",
+  "feature_disabled",
+  "unsupported_policy",
+  "unsupported_jurisdiction",
+  "missing_prerequisite",
+  "no_employment_profile",
+]);
 
 const timeEventPayloadSchema = z.object({
   occurredAt: z.string().min(1),
@@ -240,6 +248,36 @@ const payrollReviewCapabilitiesSchema = z.object({
   canApproveAssigned: z.boolean(),
   canViewCompensation: z.boolean(),
   hasOrgPayrollAccess: z.boolean(),
+}).strict();
+const payrollSelfApprovalHistoryItemSchema = z.object({
+  action: z.string().min(1),
+  occurredAt: z.string().min(1),
+  comment: z.string().nullable(),
+  reason: z.string().nullable(),
+  snapshotId: z.string().uuid(),
+  snapshotHash: payrollSnapshotHashSchema,
+}).strict();
+const payrollSelfApprovalResponseSchema = z.object({
+  state: payrollSelfApprovalStateSchema,
+  selectedLocalDate: z.string().date(),
+  approval: z.object({
+    currentState: z.string().min(1),
+    submittedAt: z.string().min(1).nullable(),
+    returnedComment: z.string().nullable(),
+    unresolvedBlockerCount: z.number().int(),
+    snapshot: z.object({
+      id: z.string().uuid().nullable(),
+      hash: payrollSnapshotHashSchema.nullable(),
+      isCurrent: z.boolean(),
+    }).strict(),
+    actions: z.object({
+      canSubmit: z.boolean(),
+    }).strict(),
+    compensation: z.object({
+      grossEarningsCents: z.number().int(),
+    }).strict().optional(),
+    history: z.array(payrollSelfApprovalHistoryItemSchema),
+  }).strict().optional(),
 }).strict();
 const payrollReviewQueueItemSchema = z.object({
   employeeLabel: z.string().min(1),
@@ -457,6 +495,7 @@ export type PayrollTimesheetDeriveResponse =
   | z.infer<typeof payrollTimesheetDeriveBlockedSchema>;
 export type PayrollApprovalTransition = z.infer<typeof payrollApprovalTransitionSchema>;
 export type PayrollBlockerResolutionResponse = z.infer<typeof payrollBlockerResolutionResponseSchema>;
+export type PayrollSelfApprovalResponse = z.infer<typeof payrollSelfApprovalResponseSchema>;
 export type PayrollReviewQueueResponse = z.infer<typeof payrollReviewQueueResponseSchema>;
 export type PayrollReviewDetailsResponse = z.infer<typeof payrollReviewDetailsResponseSchema>;
 export type PayrollDayResponse = {
@@ -933,6 +972,37 @@ export async function submitPayrollApproval(
     attestation: true,
   }, idempotencyKey);
   return confirmExactApprovalResponse(response, idempotencyKey, payrollApprovalTransitionSchema);
+}
+
+export async function fetchPayrollSelfApproval(scope: PayrollScope): Promise<PayrollSelfApprovalResponse> {
+  const response = await callApi(PAYROLL_APPROVALS_ENDPOINT, {
+    method: "POST",
+    headers: new Headers({
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify({
+      action: "self_approval",
+      selectedLocalDate: z.string().date().parse(scope.localDate),
+    }),
+  });
+
+  if (!response.ok) {
+    throw await parseFailure(response, "Failed to fetch payroll self approval.");
+  }
+
+  const parsed = await parseJsonResponse(response.clone(), payrollSelfApprovalResponseSchema);
+  if (!parsed) {
+    throw toNormalizedApiError(
+      {
+        code: "invalid_response",
+        error: "Invalid payroll approval response.",
+      },
+      502,
+      "Invalid payroll approval response.",
+    );
+  }
+
+  return parsed;
 }
 
 export async function approvePayrollTimesheet(

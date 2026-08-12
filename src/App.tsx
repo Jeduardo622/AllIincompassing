@@ -26,6 +26,7 @@ const Layout = React.lazy(() => import('./components/Layout').then(module => ({ 
 const Dashboard = React.lazy(() => import('./pages/Dashboard').then(module => ({ default: module.Dashboard })));
 const Schedule = React.lazy(() => import('./pages/Schedule').then(module => ({ default: module.Schedule })));
 const Time = React.lazy(() => import('./pages/Time').then(module => ({ default: module.Time })));
+const TimeReview = React.lazy(() => import('./pages/TimeReview').then(module => ({ default: module.TimeReview })));
 const Clients = React.lazy(() => import('./pages/Clients').then(module => ({ default: module.Clients })));
 const ClientDetails = React.lazy(() => import('./pages/ClientDetails').then(module => ({ default: module.ClientDetails })));
 const ClientOnboardingPage = React.lazy(() =>
@@ -204,6 +205,11 @@ function App() {
                     <Route path="time" element={
                       <RoleGuard roles={['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin']}>
                         <Time />
+                      </RoleGuard>
+                    } />
+                    <Route path="time/review" element={
+                      <RoleGuard roles={['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin']}>
+                        <TimeReview />
                       </RoleGuard>
                     } />
 

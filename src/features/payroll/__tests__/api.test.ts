@@ -9,6 +9,7 @@ import {
   approvePayrollTimesheet,
   derivePayrollTimesheetSnapshot,
   fetchPayrollDay,
+  fetchPayrollSelfApproval,
   fetchPayrollReviewDetails,
   fetchPayrollReviewQueue,
   fetchPayrollTimesheetPeriod,
@@ -899,6 +900,49 @@ describe("payroll api client", () => {
       snapshotId: "11111111-1111-1111-1111-111111111111",
       snapshotHash: "a".repeat(64),
       attestation: true,
+    });
+  });
+
+  it("fetches self approval without Idempotency-Key and fails closed on response leakage", async () => {
+    mockedCallApi.mockResolvedValueOnce(
+      jsonResponse({
+        state: "ok",
+        selectedLocalDate: "2026-08-12",
+        approval: {
+          currentState: "submitted",
+          submittedAt: "2026-08-12T18:00:00.000Z",
+          returnedComment: null,
+          unresolvedBlockerCount: 0,
+          snapshot: {
+            id: "11111111-1111-1111-1111-111111111111",
+            hash: "a".repeat(64),
+            isCurrent: true,
+          },
+          actions: {
+            canSubmit: true,
+          },
+          history: [],
+          hourlyRateCents: 9999,
+        },
+      }),
+    );
+
+    await expect(fetchPayrollSelfApproval({
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-12",
+    })).rejects.toMatchObject({
+      code: "invalid_response",
+      status: 502,
+    });
+
+    const [path, init] = mockedCallApi.mock.calls[0] ?? [];
+    expect(path).toBe("/api/payroll-approvals");
+    const headers = init?.headers as Headers;
+    expect(headers.get("Idempotency-Key")).toBeNull();
+    expect(JSON.parse(String(init?.body))).toEqual({
+      action: "self_approval",
+      selectedLocalDate: "2026-08-12",
     });
   });
 

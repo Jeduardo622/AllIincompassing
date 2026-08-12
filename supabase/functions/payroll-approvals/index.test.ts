@@ -288,6 +288,52 @@ Deno.test("review_queue calls the exact read rpc without Idempotency-Key require
   assertEquals(response.headers.get("Idempotent-Replay"), null);
 });
 
+Deno.test("self_approval calls the exact read rpc without Idempotency-Key requirements", async () => {
+  const calls: RpcCall[] = [];
+  const response = await handlePayrollApprovals({
+    req: createRequest({
+      action: "self_approval",
+      selectedLocalDate: "2026-08-12",
+    }),
+    userContext: createUserContext("bt"),
+    db: createRpcClient((fn, args) => {
+      calls.push({ fn, args });
+      return {
+        data: {
+          state: "ok",
+          selectedLocalDate: "2026-08-12",
+          approval: {
+            currentState: "submitted",
+            submittedAt: null,
+            returnedComment: null,
+            unresolvedBlockerCount: 0,
+            snapshot: {
+              id: "11111111-1111-1111-1111-111111111111",
+              hash: "a".repeat(64),
+              isCurrent: true,
+            },
+            actions: {
+              canSubmit: true,
+            },
+            history: [],
+          },
+        },
+        error: null,
+      };
+    }),
+  });
+
+  assertEquals(response.status, 200);
+  assertEquals(calls, [{
+    fn: "get_payroll_self_approval",
+    args: {
+      selected_local_date: "2026-08-12",
+    },
+  }]);
+  assertEquals(response.headers.get("Idempotency-Key"), null);
+  assertEquals(response.headers.get("Idempotent-Replay"), null);
+});
+
 Deno.test("review_details calls the exact read rpc with snapshot binding and no mutation headers", async () => {
   const calls: RpcCall[] = [];
   const response = await handlePayrollApprovals({

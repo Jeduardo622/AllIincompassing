@@ -116,6 +116,33 @@ describe('responsive-ui-observer contract', () => {
       }
     });
 
+    it('accepts only the fixed synthetic payroll-time-review scenario on /time/review', () => {
+      expect(parseObserverArgs([
+        'node',
+        'scripts/playwright-responsive-ui-observer.ts',
+        `--base-url=${baseUrl}`,
+        '--route=/time/review',
+        '--scenario=payroll-time-review',
+      ])).toEqual({
+        baseUrl,
+        routes: ['/time/review'],
+        scenario: 'payroll-time-review',
+      });
+
+      for (const invalidArgs of [
+        ['--route=/time', '--scenario=payroll-time-review'],
+        ['--route=/time/review', '--route=/desk', '--scenario=payroll-time-review'],
+        ['--route=/time/review', '--scenario=payroll-time-review', '--scenario=payroll-time-review'],
+      ]) {
+        expect(() => parseObserverArgs([
+          'node',
+          'scripts/playwright-responsive-ui-observer.ts',
+          `--base-url=${baseUrl}`,
+          ...invalidArgs,
+        ])).toThrow();
+      }
+    });
+
     it('rejects a missing route flag', () => {
       expect(() =>
         parseObserverArgs([
@@ -326,6 +353,27 @@ describe('responsive-ui-observer contract', () => {
       expect(evidenceCard).toMatchObject({ scenarioId: 'payroll-time' });
       expect(JSON.stringify(evidenceCard)).not.toContain('employmentProfileId');
       expect(JSON.stringify(evidenceCard)).not.toContain('sessionAttendance');
+    });
+
+    it('records fixed payroll-time-review provenance without exposing approval payload details', () => {
+      const evidenceCard = buildEvidenceCard({
+        route: '/time/review',
+        viewportName: 'mobile',
+        result: 'pass',
+        failures: [],
+        metrics: {
+          horizontalOverflow: false,
+          clippedFixedControls: [],
+          visibleTouchTargets: [{ width: 48, height: 48 }],
+        },
+        screenshotHash: `sha256:${'5'.repeat(64)}`,
+        evidenceHash: `sha256:${'6'.repeat(64)}`,
+        scenario: 'payroll-time-review',
+      } as any);
+
+      expect(evidenceCard).toMatchObject({ scenarioId: 'payroll-time-review' });
+      expect(JSON.stringify(evidenceCard)).not.toContain('blockerId');
+      expect(JSON.stringify(evidenceCard)).not.toContain('hourlyRateCents');
     });
 
     it('derives deterministic route slugs and paths while excluding raw payloads', () => {

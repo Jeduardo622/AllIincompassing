@@ -39,6 +39,7 @@ const FORBIDDEN_AUTHORITY_KEYS = new Set([
   "payPeriodId",
 ]);
 const SUPPORTED_ACTIONS = new Set([
+  "self_approval",
   "review_queue",
   "review_details",
   "submit",
@@ -72,6 +73,10 @@ const protectedErrorClassificationSchema = z.object({
 }).strict();
 
 const payrollApprovalActionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("self_approval"),
+    selectedLocalDate: z.string().date(),
+  }).strict(),
   z.object({
     action: z.literal("review_queue"),
     selectedLocalDate: z.string().date(),
@@ -149,6 +154,8 @@ const payrollApprovalResponseSchema = z.union([
   payrollApprovalTransitionResponseSchema,
   payrollBlockerResolutionResponseSchema,
 ]);
+type PayrollApprovalTransition = z.infer<typeof payrollApprovalTransitionResponseSchema>;
+type PayrollBlockerResolution = z.infer<typeof payrollBlockerResolutionResponseSchema>;
 const payrollReviewStateSchema = z.enum([
   "ok",
   "feature_disabled",
@@ -161,6 +168,43 @@ const payrollReviewCapabilitiesSchema = z.object({
   canApproveAssigned: z.boolean(),
   canViewCompensation: z.boolean(),
   hasOrgPayrollAccess: z.boolean(),
+}).strict();
+const payrollSelfApprovalStateSchema = z.enum([
+  "ok",
+  "feature_disabled",
+  "unsupported_policy",
+  "unsupported_jurisdiction",
+  "missing_prerequisite",
+  "no_employment_profile",
+]);
+const payrollSelfApprovalResponseSchema = z.object({
+  state: payrollSelfApprovalStateSchema,
+  selectedLocalDate: z.string().date(),
+  approval: z.object({
+    currentState: z.string().min(1),
+    submittedAt: z.string().min(1).nullable(),
+    returnedComment: z.string().nullable(),
+    unresolvedBlockerCount: z.number().int(),
+    snapshot: z.object({
+      id: z.string().uuid().nullable(),
+      hash: snapshotHashSchema.nullable(),
+      isCurrent: z.boolean(),
+    }).strict(),
+    actions: z.object({
+      canSubmit: z.boolean(),
+    }).strict(),
+    compensation: z.object({
+      grossEarningsCents: z.number().int(),
+    }).strict().optional(),
+    history: z.array(z.object({
+      action: z.string().min(1),
+      occurredAt: z.string().min(1),
+      comment: z.string().nullable(),
+      reason: z.string().nullable(),
+      snapshotId: z.string().uuid(),
+      snapshotHash: snapshotHashSchema,
+    }).strict()),
+  }).strict().optional(),
 }).strict();
 const payrollReviewQueueItemSchema = z.object({
   employeeLabel: z.string().min(1),
@@ -269,7 +313,11 @@ const PAYROLL_ERROR_CLASSIFICATIONS = {
 } as const;
 
 type PayrollApprovalAction = z.infer<typeof payrollApprovalActionSchema>;
-type PayrollApprovalResponse = z.infer<typeof payrollApprovalResponseSchema>;
+type PayrollApprovalResponse =
+  | z.infer<typeof payrollApprovalResponseSchema>
+  | z.infer<typeof payrollSelfApprovalResponseSchema>
+  | z.infer<typeof payrollReviewQueueResponseSchema>
+  | z.infer<typeof payrollReviewDetailsResponseSchema>;
 type HandlerParams = {
   req: Request;
   userContext: UserContext;
@@ -377,7 +425,11 @@ const validateIdempotency = (req: Request, parsed: PayrollApprovalAction): { ide
     });
   }
 
-  if (parsed.action === "review_queue" || parsed.action === "review_details") {
+  if (
+    parsed.action === "self_approval"
+    || parsed.action === "review_queue"
+    || parsed.action === "review_details"
+  ) {
     return { idempotencyKey: "" };
   }
 
@@ -406,7 +458,9 @@ const validateApprovalResponse = (
   requestedKey: string,
 ): PayrollApprovalResponse | Response => {
   const schema =
-    action === "review_queue"
+    action === "self_approval"
+      ? payrollSelfApprovalResponseSchema
+      : action === "review_queue"
       ? payrollReviewQueueResponseSchema
       : action === "review_details"
       ? payrollReviewDetailsResponseSchema
@@ -422,10 +476,11 @@ const validateApprovalResponse = (
       classification: PAYROLL_ERROR_CLASSIFICATIONS.invalid_response,
     });
   }
-  if (action === "review_queue" || action === "review_details") {
+  if (action === "self_approval" || action === "review_queue" || action === "review_details") {
     return parsed.data as PayrollApprovalResponse;
   }
-  if ((parsed.data as PayrollApprovalResponse).idempotencyKey !== requestedKey) {
+  const writeResponse = parsed.data as PayrollApprovalTransition | PayrollBlockerResolution;
+  if (writeResponse.idempotencyKey !== requestedKey) {
     return protectedErrorResponse(req, 502, {
       success: false,
       requestId: req.headers.get("x-request-id")?.trim() || crypto.randomUUID(),
@@ -439,6 +494,15 @@ const validateApprovalResponse = (
 };
 
 const mapActionToRpc = (parsed: PayrollApprovalAction, idempotencyKey: string) => {
+  if (parsed.action === "self_approval") {
+    return {
+      functionName: "get_payroll_self_approval",
+      args: {
+        selected_local_date: parsed.selectedLocalDate,
+      },
+    };
+  }
+
   if (parsed.action === "review_queue") {
     return {
       functionName: "get_payroll_review_queue",
@@ -723,15 +787,20 @@ export async function handlePayrollApprovals({ req, userContext, db }: HandlerPa
     return validatedResponse;
   }
 
-  if (parsed.data.action === "review_queue" || parsed.data.action === "review_details") {
+  if (
+    parsed.data.action === "self_approval"
+    || parsed.data.action === "review_queue"
+    || parsed.data.action === "review_details"
+  ) {
     return jsonResponse(req, 200, validatedResponse as unknown as Record<string, unknown>);
   }
 
-  const replayed = validatedResponse.replayed ? "true" : "false";
+  const writeResponse = validatedResponse as PayrollApprovalTransition | PayrollBlockerResolution;
+  const replayed = writeResponse.replayed ? "true" : "false";
   return jsonResponse(req, 200, {
-    ...validatedResponse,
+    ...writeResponse,
   }, {
-    "Idempotency-Key": validatedResponse.idempotencyKey,
+    "Idempotency-Key": writeResponse.idempotencyKey,
     "Idempotent-Replay": replayed,
   });
 }

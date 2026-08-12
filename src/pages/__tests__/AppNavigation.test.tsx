@@ -110,6 +110,9 @@ vi.mock('../../pages/Settings', () => ({
 vi.mock('../../pages/Account', () => ({
   Account: () => <div>AccountPage</div>,
 }));
+vi.mock('../../pages/TimeReview', () => ({
+  TimeReview: () => <div>TimeReviewPage</div>,
+}));
 
 vi.mock('../../pages/SuperAdminFeatureFlags', () => ({
   SuperAdminFeatureFlags: () => <div>SuperAdminFeatureFlagsPage</div>,
@@ -397,6 +400,19 @@ describe('App navigation landing', () => {
       view.unmount();
     }
   });
+
+  it.each(['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as const)(
+    'allows %s to deep-link to time review',
+    async (role) => {
+      authRole = role;
+      window.history.pushState({}, '', '/time/review');
+      const view = renderApp();
+
+      expect(await screen.findByText('TimeReviewPage')).toBeInTheDocument();
+      expect(window.location.pathname).toBe('/time/review');
+      view.unmount();
+    },
+  );
 
   it.each([
     ['/super-admin/feature-flags', 'SuperAdminFeatureFlagsPage'],

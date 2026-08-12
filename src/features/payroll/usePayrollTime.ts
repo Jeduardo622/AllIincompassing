@@ -14,6 +14,7 @@ import {
   type PayrollTimeCorrectionPayload,
   type PayrollTimeEventPayload,
 } from "./api";
+import { invalidatePayrollApprovalDeriveContext } from "./usePayrollApprovals";
 import {
   createInMemoryPayrollOutboxStore,
   createIndexedDbPayrollOutboxStore,
@@ -264,7 +265,7 @@ export function usePayrollTimesheetPeriodReview(
         idempotencyKey,
       }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey });
+      await invalidatePayrollApprovalDeriveContext(queryClient, scope);
     },
     networkMode: "always",
   });

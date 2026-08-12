@@ -8,6 +8,7 @@ const mockUseAuth = vi.fn();
 const mockUseActiveOrganizationId = vi.fn();
 const mockUsePayrollTime = vi.fn();
 const mockUsePayrollTimesheetPeriodReview = vi.fn();
+const mockUsePayrollApprovals = vi.fn();
 
 vi.mock("../../lib/authContext", () => ({
   useAuth: () => mockUseAuth(),
@@ -20,6 +21,9 @@ vi.mock("../../lib/organization", () => ({
 vi.mock("../../features/payroll/usePayrollTime", () => ({
   usePayrollTime: (...args: unknown[]) => mockUsePayrollTime(...args),
   usePayrollTimesheetPeriodReview: (...args: unknown[]) => mockUsePayrollTimesheetPeriodReview(...args),
+}));
+vi.mock("../../features/payroll/usePayrollApprovals", () => ({
+  usePayrollApprovals: (...args: unknown[]) => mockUsePayrollApprovals(...args),
 }));
 
 import { Time } from "../Time";
@@ -194,6 +198,52 @@ const basePeriodReviewValue = {
   },
 };
 
+const baseApprovalValue = {
+  payrollSelfApprovalQuery: {
+    data: {
+      state: "ok" as const,
+      selectedLocalDate: "2026-08-11",
+      approval: {
+        currentState: "submitted",
+        submittedAt: "2026-08-11T18:30:00.000Z",
+        returnedComment: "Fix the missing meal punch.",
+        unresolvedBlockerCount: 1,
+        snapshot: {
+          id: "11111111-1111-1111-1111-111111111111",
+          hash: "a".repeat(64),
+          isCurrent: true,
+        },
+        actions: {
+          canSubmit: true,
+        },
+        compensation: {
+          grossEarningsCents: 24000,
+        },
+        history: [
+          {
+            action: "returned",
+            occurredAt: "2026-08-11T18:30:00.000Z",
+            comment: "Fix the missing meal punch.",
+            reason: null,
+            snapshotId: "11111111-1111-1111-1111-111111111111",
+            snapshotHash: "a".repeat(64),
+          },
+        ],
+      },
+    },
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  },
+  submitPayrollApprovalMutation: {
+    mutateAsync: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+  },
+};
+
 const renderTimePage = () =>
   render(
     <MemoryRouter initialEntries={["/time"]}>
@@ -207,6 +257,7 @@ describe("Time page", () => {
     mockUseActiveOrganizationId.mockReset();
     mockUsePayrollTime.mockReset();
     mockUsePayrollTimesheetPeriodReview.mockReset();
+    mockUsePayrollApprovals.mockReset();
     mockUseActiveOrganizationId.mockReturnValue("org-1");
     mockUseAuth.mockReturnValue({
       user: {
@@ -218,6 +269,7 @@ describe("Time page", () => {
     });
     mockUsePayrollTime.mockReturnValue(baseHookValue);
     mockUsePayrollTimesheetPeriodReview.mockReturnValue(basePeriodReviewValue);
+    mockUsePayrollApprovals.mockReturnValue(baseApprovalValue);
   });
 
   it("renders the explicit loading state", () => {
@@ -366,9 +418,39 @@ describe("Time page", () => {
     expect(screen.getByText(/current work location/i)).toBeInTheDocument();
     expect(screen.getByText(/^office$/i)).toBeInTheDocument();
     expect(screen.getByText(/payroll period review/i)).toBeInTheDocument();
-    expect(screen.getByText(/\$240.00/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/\$240.00/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/meal_missing/i)).toBeInTheDocument();
     expect(screen.queryByText(/\$20\.00 from/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/employee approval/i)).toBeInTheDocument();
+    expect(screen.getByText(/returned comment: fix the missing meal punch\./i)).toBeInTheDocument();
+  });
+
+  it("requires attestation before submitting employee approval and binds only the exact self snapshot", async () => {
+    const submitApproval = vi.fn().mockResolvedValue({ idempotencyKey: "approval-submit-key" });
+    mockUsePayrollApprovals.mockReturnValue({
+      ...baseApprovalValue,
+      submitPayrollApprovalMutation: {
+        mutateAsync: submitApproval,
+        isPending: false,
+        isError: false,
+        error: null,
+      },
+    });
+
+    renderTimePage();
+
+    const button = screen.getByRole("button", { name: /submit approval/i });
+    expect(button).toBeDisabled();
+    await userEvent.click(screen.getByRole("checkbox"));
+    expect(button).not.toBeDisabled();
+    await userEvent.click(button);
+
+    expect(submitApproval).toHaveBeenCalledWith(expect.objectContaining({
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "a".repeat(64),
+      attestation: true,
+    }));
+    expect(submitApproval.mock.calls[0]?.[0]).not.toHaveProperty("grossEarningsCents");
   });
 
   it("renders authoritative blocked derive exceptions returned by the mutation", async () => {

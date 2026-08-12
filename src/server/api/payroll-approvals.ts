@@ -45,7 +45,7 @@ const SUPPORTED_ACTIONS = new Set([
   "resolve_blocker",
 ]);
 
-const snapshotHashSchema = z.string().min(1);
+const snapshotHashSchema = z.string().regex(/^[0-9a-f]{64}$/);
 const transitionActionResultSchema = z.enum([
   "submitted",
   "manager_approved",
@@ -163,7 +163,7 @@ const payrollReviewQueueItemSchema = z.object({
   submittedAt: z.string().min(1).nullable(),
   snapshot: z.object({
     id: z.string().uuid().nullable(),
-    hash: z.string().min(1).nullable(),
+    hash: snapshotHashSchema.nullable(),
   }).strict(),
   classifiedSeconds: z.object({
     regular: z.number().int(),
@@ -812,6 +812,14 @@ export async function payrollApprovalsHandler(request: Request): Promise<Respons
       );
       if (successPayload instanceof Response) {
         return successPayload;
+      }
+      if (parsed.data.action === "review_queue" || parsed.data.action === "review_details") {
+        return jsonForRequest(
+          request,
+          successPayload as Record<string, unknown>,
+          200,
+          { ...traceHeaders, ...forwardedTraceHeaders },
+        );
       }
       return buildSuccessResponse(
         request,

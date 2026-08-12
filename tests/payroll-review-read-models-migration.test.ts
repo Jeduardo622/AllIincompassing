@@ -7,6 +7,8 @@ const migrationName = "20260812141324_payroll_review_read_models.sql";
 const migrationPath = path.join(process.cwd(), "supabase", "migrations", migrationName);
 const migrationExists = existsSync(migrationPath);
 const sql = migrationExists ? readFileSync(migrationPath, "utf8") : "";
+const functionDefinition = (name: string) =>
+  sql.match(new RegExp(`create or replace function ${name.replaceAll(".", "\\.")}[\\s\\S]*?\\n\\$\\$;`, "i"))?.[0] ?? "";
 
 describe("payroll review read models migration contract", () => {
   it("creates the generated migration file with the preserved governance header", () => {
@@ -44,31 +46,43 @@ describe("payroll review read models migration contract", () => {
   });
 
   it("binds manager review queue visibility to exact current assignment or explicit admin grant and strips non-payroll fields", () => {
-    expect(sql).toMatch(/app\.current_user_can_read_payroll_employee\(employment\.organization_id,\s*employment\.id\)/i);
-    expect(sql).toMatch(/time\.review_assigned|time\.approve_assigned/i);
-    expect(sql).toMatch(/time\.review_assigned|time\.approve_assigned/i);
-    expect(sql).toMatch(/payroll\.lock_period|payroll\.reopen_period|payroll\.resolve_exceptions|payroll\.view_compensation/i);
-    expect(sql).toMatch(/'unresolvedBlockerCount'/i);
-    expect(sql).toMatch(/'classifiedSeconds'/i);
-    expect(sql).toMatch(/'snapshot'[\s\S]*'id'[\s\S]*'hash'/i);
-    expect(sql).not.toMatch(/session_id/i);
-    expect(sql).not.toMatch(/client_id/i);
-    expect(sql).not.toMatch(/diagnosis/i);
-    expect(sql).not.toMatch(/authorization/i);
-    expect(sql).not.toMatch(/canonical_payload/i);
-    expect(sql).not.toMatch(/timesheet_snapshot_lines[\s\S]*get_payroll_review_queue/i);
+    const queue = functionDefinition("public.get_payroll_review_queue");
+    expect(queue).toMatch(/app\.current_user_can_read_payroll_employee\(employment\.organization_id,\s*employment\.id\)/i);
+    expect(queue).toMatch(/time\.review_assigned/i);
+    expect(queue).toMatch(/time\.approve_assigned/i);
+    expect(queue).toMatch(/payroll\.configure_employment/i);
+    expect(queue).toMatch(/payroll\.resolve_exceptions/i);
+    expect(queue).toMatch(/payroll\.lock_period/i);
+    expect(queue).toMatch(/payroll\.reopen_period/i);
+    expect(queue).toMatch(/payroll\.export_period/i);
+    expect(queue).toMatch(/payroll\.view_compensation/i);
+    expect(queue).toMatch(/app\.payroll_feature_enabled\(/i);
+    expect(queue).toMatch(/payroll_policy_versions/i);
+    expect(queue).toMatch(/'classifiedSeconds'/i);
+    expect(queue).toMatch(/'snapshot'[\s\S]*'id'[\s\S]*'hash'/i);
+    expect(queue).not.toMatch(/session_id/i);
+    expect(queue).not.toMatch(/client_id/i);
+    expect(queue).not.toMatch(/diagnosis/i);
+    expect(queue).not.toMatch(/authorization/i);
   });
 
-  it("gates compensation and canonical snapshot detail leakage in manager and admin review payloads", () => {
-    expect(sql).toMatch(/payroll\.view_compensation/i);
-    expect(sql).toMatch(/'compensation'/i);
-    expect(sql).not.toMatch(/hourly_rate_cents[\s\S]*get_payroll_review_queue/i);
-    expect(sql).not.toMatch(/hourly_rate_cents[\s\S]*get_payroll_review_details/i);
-    expect(sql).not.toMatch(/canonical_payload[\s\S]*get_payroll_review_details/i);
-    expect(sql).not.toMatch(/timesheet_snapshot_lines[\s\S]*canonical/i);
-    expect(sql).toMatch(/'approvalHistory'/i);
-    expect(sql).toMatch(/'blockers'/i);
-    expect(sql).toMatch(/'classifiedSeconds'/i);
-    expect(sql).toMatch(/'punches'/i);
+  it("reconstructs sanitized details from the immutable canonical snapshot and gates sensitive disclosures", () => {
+    const queue = functionDefinition("public.get_payroll_review_queue");
+    const details = functionDefinition("public.get_payroll_review_details");
+    expect(queue).toMatch(/app\.payroll_actor_has_capability\(v_actor_org,\s*'payroll\.view_compensation'\)/i);
+    expect(details).toMatch(/app\.payroll_actor_has_capability\(v_actor_org,\s*'payroll\.view_compensation'\)/i);
+    expect(details).toMatch(/v_snapshot\.canonical_payload\s*->\s*'period'/i);
+    expect(details).toMatch(/app\.current_user_can_manage_payroll_employee\(/i);
+    expect(details).not.toMatch(/from public\.employee_time_events/i);
+    expect(details).not.toMatch(/from public\.session_attendance_events/i);
+    expect(details).not.toMatch(/from public\.time_correction_requests/i);
+    expect(details).not.toMatch(/from public\.session_attendance_correction_requests/i);
+    expect(details).not.toMatch(/from public\.timekeeping_exceptions/i);
+    expect(details).not.toMatch(/hourly_rate_cents/i);
+    expect(details).not.toMatch(/'canonicalPayload'/i);
+    expect(details).toMatch(/'approvalHistory'/i);
+    expect(details).toMatch(/'blockers'/i);
+    expect(details).toMatch(/'classifiedSeconds'/i);
+    expect(details).toMatch(/'punches'/i);
   });
 });

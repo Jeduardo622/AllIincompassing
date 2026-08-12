@@ -333,6 +333,25 @@ Deno.test("review_details calls the exact read rpc with snapshot binding and no 
   assertEquals(response.headers.get("Idempotent-Replay"), null);
 });
 
+Deno.test("review_details rejects non-lowercase SHA-256 snapshot hashes before RPC execution", async () => {
+  let rpcCalled = false;
+  const response = await handlePayrollApprovals({
+    req: createRequest({
+      action: "review_details",
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "A".repeat(64),
+    }),
+    userContext: createUserContext("bcba"),
+    db: createRpcClient(() => {
+      rpcCalled = true;
+      return { data: null, error: null };
+    }),
+  });
+
+  assertEquals(response.status, 400);
+  assertEquals(rpcCalled, false);
+});
+
 Deno.test("resolve_blocker calls resolve_payroll_blocker with exact blocker payload only", async () => {
   const calls: RpcCall[] = [];
   const response = await handlePayrollApprovals({

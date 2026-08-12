@@ -376,19 +376,33 @@ describe("payroll timekeeping tenant and RLS contract", () => {
   });
 
   it("binds review reads to exact current assignment or explicit payroll grants without exposing non-payroll fields", () => {
-    expect(functionDefinition("public.get_payroll_review_queue")).toMatch(
+    const queueDefinition = functionDefinition("public.get_payroll_review_queue");
+    const detailsDefinition = functionDefinition("public.get_payroll_review_details");
+    expect(queueDefinition).toMatch(
       /app\.current_user_can_read_payroll_employee\(employment\.organization_id,\s*employment\.id\)/i,
     );
-    expect(functionDefinition("public.get_payroll_review_queue")).toMatch(/time\.review_assigned|time\.approve_assigned/i);
-    expect(functionDefinition("public.get_payroll_review_queue")).toMatch(/payroll\.lock_period|payroll\.reopen_period|payroll\.resolve_exceptions|payroll\.view_compensation/i);
-    expect(functionDefinition("public.get_payroll_review_queue")).not.toMatch(/session_id/i);
-    expect(functionDefinition("public.get_payroll_review_queue")).not.toMatch(/client_id/i);
-    expect(functionDefinition("public.get_payroll_review_queue")).not.toMatch(/canonical_payload/i);
-    expect(functionDefinition("public.get_payroll_review_details")).toMatch(/app\.timesheet_snapshot_is_current\(/i);
-    expect(functionDefinition("public.get_payroll_review_details")).not.toMatch(/session_id/i);
-    expect(functionDefinition("public.get_payroll_review_details")).not.toMatch(/client_id/i);
-    expect(functionDefinition("public.get_payroll_review_details")).not.toMatch(/canonical_payload/i);
-    expect(functionDefinition("public.get_payroll_review_details")).not.toMatch(/hourly_rate_cents/i);
+    expect(queueDefinition).toMatch(/time\.review_assigned/i);
+    expect(queueDefinition).toMatch(/time\.approve_assigned/i);
+    expect(queueDefinition).toMatch(/payroll\.configure_employment/i);
+    expect(queueDefinition).toMatch(/payroll\.lock_period/i);
+    expect(queueDefinition).toMatch(/payroll\.reopen_period/i);
+    expect(queueDefinition).toMatch(/payroll\.resolve_exceptions/i);
+    expect(queueDefinition).toMatch(/payroll\.export_period/i);
+    expect(queueDefinition).toMatch(/payroll\.view_compensation/i);
+    expect(queueDefinition).toMatch(/app\.payroll_feature_enabled\(/i);
+    expect(queueDefinition).not.toMatch(/session_id/i);
+    expect(queueDefinition).not.toMatch(/client_id/i);
+    expect(detailsDefinition).toMatch(/app\.timesheet_snapshot_is_current\(/i);
+    expect(detailsDefinition).toMatch(/v_snapshot\.canonical_payload\s*->\s*'period'/i);
+    expect(detailsDefinition).toMatch(/app\.current_user_can_manage_payroll_employee\(/i);
+    expect(detailsDefinition).not.toMatch(/from public\.employee_time_events/i);
+    expect(detailsDefinition).not.toMatch(/from public\.session_attendance_events/i);
+    expect(detailsDefinition).not.toMatch(/from public\.time_correction_requests/i);
+    expect(detailsDefinition).not.toMatch(/from public\.session_attendance_correction_requests/i);
+    expect(detailsDefinition).not.toMatch(/from public\.timekeeping_exceptions/i);
+    expect(detailsDefinition).not.toMatch(/session_id/i);
+    expect(detailsDefinition).not.toMatch(/client_id/i);
+    expect(detailsDefinition).not.toMatch(/hourly_rate_cents/i);
   });
 
   it("rejects overlapping active payroll employment across organizations", () => {

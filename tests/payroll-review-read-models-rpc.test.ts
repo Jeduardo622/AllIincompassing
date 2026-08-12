@@ -19,6 +19,8 @@ const IDS = {
   employmentB: "10000000-0000-4000-8000-000000000042",
   payGroupA: "90000000-0000-4000-8000-000000000002",
   payPeriodA: "90000000-0000-4000-8000-000000000003",
+  exceptionA: "90000000-0000-4000-8000-000000000004",
+  exceptionAfterSnapshotA: "90000000-0000-4000-8000-000000000005",
 } as const;
 
 const selectedLocalDate = "2026-08-13";
@@ -194,12 +196,14 @@ const insertTimeEvent = async (
   eventAt: string,
   actorUserId = IDS.employeeA,
 ) => {
-  await client.query(
+  const result = await client.query(
     `insert into public.employee_time_events (
        organization_id, employment_profile_id, event_type, event_at, actor_user_id, source_timezone, work_location
-     ) values ($1::uuid, $2::uuid, $3::public.payroll_event_type, $4::timestamptz, $5::uuid, 'America/Los_Angeles', 'office')`,
+     ) values ($1::uuid, $2::uuid, $3::public.payroll_event_type, $4::timestamptz, $5::uuid, 'America/Los_Angeles', 'office')
+     returning id`,
     [IDS.orgA, IDS.employmentA, eventType, eventAt, actorUserId],
   );
+  return result.rows[0].id as string;
 };
 
 const deriveSnapshot = async (client: Client, idempotencyKey: string, userId = IDS.employeeA) =>
@@ -425,7 +429,21 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll review read models rpc runtime c
       [IDS.orgA, IDS.managerA, IDS.adminA],
     );
 
-    await expect(getReviewDetails(admin, IDS.managerA, seeded.snapshotId, seeded.snapshotHash)).resolves.toMatchObject({
+    const directManagerGrantDetails = await getReviewDetails(
+      admin,
+      IDS.managerA,
+      seeded.snapshotId,
+      seeded.snapshotHash,
+    );
+    expect(directManagerGrantDetails.compensation).toBeUndefined();
+
+    await admin.query(
+      `insert into public.payroll_capability_grants (
+         organization_id, user_id, capability, effective_from, granted_by
+       ) values ($1::uuid, $2::uuid, 'payroll.view_compensation', '2026-08-01T00:00:00Z', $2::uuid)`,
+      [IDS.orgA, IDS.adminA],
+    );
+    await expect(getReviewDetails(admin, IDS.adminA, seeded.snapshotId, seeded.snapshotHash)).resolves.toMatchObject({
       state: "ok",
       compensation: expect.any(Object),
     });
@@ -492,5 +510,243 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll review read models rpc runtime c
     await deriveSnapshot(admin, "review-read-model-snapshot-v2");
 
     await expect(getReviewDetails(admin, IDS.adminA, seeded.snapshotId, seeded.snapshotHash)).rejects.toThrow();
+  });
+
+  it("returns immutable snapshot punches and blocker membership after live source rows change", async () => {
+    await insertTimeEvent(admin, "shift_started", "2026-08-11T16:00:00Z");
+    await insertTimeEvent(admin, "shift_ended", "2026-08-11T20:00:00Z");
+    const snapshot = await deriveSnapshot(admin, "review-immutable-snapshot");
+    await admin.query("set session_replication_role = replica");
+    let snapshotHash: string;
+    try {
+      snapshotHash = (
+        await admin.query(
+          `with immutable_fixture as (
+             select
+               snapshot_row.id,
+               snapshot_row.snapshot_version,
+               snapshot_row.calculation_revision,
+               jsonb_set(
+                 snapshot_row.canonical_payload,
+                 '{period,exceptions}',
+                 jsonb_build_array(jsonb_build_object(
+                   'id', $2::uuid,
+                   'exceptionCode', 'snapshot_exception',
+                   'details', jsonb_build_object('clientId', 'must-not-leak'),
+                   'createdAt', '2026-08-12T17:00:00Z'::timestamptz
+                 )),
+                 true
+               ) as canonical_payload,
+               snapshot_row.regular_seconds,
+               snapshot_row.overtime_seconds,
+               snapshot_row.double_time_seconds,
+               snapshot_row.meal_premium_cents,
+               snapshot_row.gross_earnings_cents
+             from public.timesheet_snapshots snapshot_row
+             where snapshot_row.organization_id = $1::uuid
+               and snapshot_row.id = $3::uuid
+           )
+           update public.timesheet_snapshots snapshot_row
+           set canonical_payload = immutable_fixture.canonical_payload,
+               canonical_snapshot_hash = app.payroll_hash_payload(
+                 app.timesheet_snapshot_canonical_binding_payload(
+                   immutable_fixture.snapshot_version,
+                   immutable_fixture.calculation_revision,
+                   immutable_fixture.canonical_payload,
+                   immutable_fixture.regular_seconds,
+                   immutable_fixture.overtime_seconds,
+                   immutable_fixture.double_time_seconds,
+                   immutable_fixture.meal_premium_cents,
+                   immutable_fixture.gross_earnings_cents
+                 )
+               )
+           from immutable_fixture
+           where snapshot_row.id = immutable_fixture.id
+           returning snapshot_row.canonical_snapshot_hash`,
+          [IDS.orgA, IDS.exceptionA, snapshot.snapshotId],
+        )
+      ).rows[0].canonical_snapshot_hash as string;
+    } finally {
+      await admin.query("set session_replication_role = origin");
+    }
+    await transitionApproval(
+      admin,
+      {
+        action: "submit",
+        snapshotId: snapshot.snapshotId,
+        snapshotHash,
+        attestation: true,
+      },
+      "review-immutable-submit",
+      IDS.employeeA,
+    );
+
+    await insertTimeEvent(admin, "shift_started", "2026-08-12T16:00:00Z");
+    await insertTimeEvent(admin, "shift_ended", "2026-08-12T20:00:00Z");
+    await admin.query(
+      `insert into public.timekeeping_exceptions (
+         id, organization_id, employment_profile_id, exception_code, details, created_at
+       ) values ($1::uuid, $2::uuid, $3::uuid, 'post_snapshot_exception', '{}'::jsonb, '2026-08-13T17:00:00Z')`,
+      [IDS.exceptionAfterSnapshotA, IDS.orgA, IDS.employmentA],
+    );
+
+    const reviewOnlyDetails = await getReviewDetails(
+      admin,
+      IDS.managerA,
+      snapshot.snapshotId as string,
+      snapshotHash,
+    );
+    expect(reviewOnlyDetails.punches).toHaveLength(2);
+    expect(reviewOnlyDetails.punches.map((punch: { occurredAt: string }) => punch.occurredAt)).toEqual([
+      "2026-08-11T16:00:00+00:00",
+      "2026-08-11T20:00:00+00:00",
+    ]);
+    expect(reviewOnlyDetails.unresolvedBlockerCount).toBe(1);
+    expect(reviewOnlyDetails.blockers).toEqual([]);
+
+    const manageDetails = await getReviewDetails(
+      admin,
+      IDS.adminA,
+      snapshot.snapshotId as string,
+      snapshotHash,
+    );
+    expect(manageDetails.unresolvedBlockerCount).toBe(1);
+    expect(manageDetails.blockers).toEqual([
+      expect.objectContaining({
+        blockerType: "timekeeping_exception",
+        blockerId: IDS.exceptionA,
+        state: "unresolved",
+      }),
+    ]);
+    expect(manageDetails.blockers).toHaveLength(manageDetails.unresolvedBlockerCount);
+    expect(JSON.stringify(manageDetails)).not.toContain("post_snapshot_exception");
+    expect(JSON.stringify(manageDetails)).not.toContain("clientId");
+
+    const queue = await getReviewQueue(admin, IDS.managerA);
+    expect(queue.queue[0].blockerCount).toBe(1);
+  });
+
+  it.each([
+    "payroll.lock_period",
+    "payroll.reopen_period",
+    "payroll.configure_employment",
+    "payroll.export_period",
+    "payroll.view_compensation",
+  ] as const)("admits an eligible org payroll actor with only %s", async (capability) => {
+    const seeded = await seedSubmittedSnapshot(admin);
+    await admin.query(
+      `delete from public.payroll_capability_grants
+       where organization_id = $1::uuid and user_id = $2::uuid`,
+      [IDS.orgA, IDS.adminA],
+    );
+    await admin.query(
+      `insert into public.payroll_capability_grants (
+         organization_id, user_id, capability, effective_from, granted_by
+       ) values ($1::uuid, $2::uuid, $3::public.payroll_capability, '2026-08-01T00:00:00Z', $2::uuid)`,
+      [IDS.orgA, IDS.adminA, capability],
+    );
+
+    const queue = await getReviewQueue(admin, IDS.adminA);
+    expect(queue).toMatchObject({
+      state: "ok",
+      capabilities: {
+        hasOrgPayrollAccess: true,
+        canViewCompensation: capability === "payroll.view_compensation",
+      },
+      queue: [expect.objectContaining({ snapshot: expect.objectContaining({ id: seeded.snapshotId }) })],
+    });
+  });
+
+  it("returns canonical feature and policy states for disabled, unsupported, and missing-policy periods", async () => {
+    await admin.query(
+      `update public.organization_feature_flags
+       set is_enabled = false
+       where organization_id = $1::uuid
+         and feature_flag_id = (select id from public.feature_flags where flag_key = 'payroll_timekeeping_v1' limit 1)`,
+      [IDS.orgA],
+    );
+    await expect(getReviewQueue(admin, IDS.managerA)).resolves.toMatchObject({
+      state: "feature_disabled",
+      queue: [],
+    });
+
+    await admin.query(
+      `update public.organization_feature_flags
+       set is_enabled = true
+       where organization_id = $1::uuid
+         and feature_flag_id = (select id from public.feature_flags where flag_key = 'payroll_timekeeping_v1' limit 1)`,
+      [IDS.orgA],
+    );
+    await admin.query(
+      `update public.pay_groups
+       set cadence = 'monthly'::public.pay_group_cadence
+       where organization_id = $1::uuid and id = $2::uuid`,
+      [IDS.orgA, IDS.payGroupA],
+    );
+    await expect(getReviewQueue(admin, IDS.managerA)).resolves.toMatchObject({
+      state: "unsupported_policy",
+      queue: [],
+    });
+
+    await admin.query(
+      `update public.pay_groups
+       set cadence = 'weekly'::public.pay_group_cadence
+       where organization_id = $1::uuid and id = $2::uuid`,
+      [IDS.orgA, IDS.payGroupA],
+    );
+    const activePolicyIds = (
+      await admin.query(
+        `select id
+         from public.payroll_policy_versions
+         where (organization_id is null or organization_id = $1::uuid)
+           and jurisdiction = 'CA'
+           and activation_status = 'active'`,
+        [IDS.orgA],
+      )
+    ).rows.map((row: { id: string }) => row.id);
+    await admin.query("set session_replication_role = replica");
+    try {
+      await admin.query(
+        `update public.payroll_policy_versions
+         set activation_status = 'inactive'
+         where id = any($1::uuid[])`,
+        [activePolicyIds],
+      );
+      await expect(getReviewQueue(admin, IDS.managerA)).resolves.toMatchObject({
+        state: "missing_prerequisite",
+        queue: [],
+      });
+    } finally {
+      await admin.query(
+        `update public.payroll_policy_versions
+         set activation_status = 'active'
+         where id = any($1::uuid[])`,
+        [activePolicyIds],
+      );
+      await admin.query("set session_replication_role = origin");
+    }
+  });
+
+  it("denies cross-organization queue rows and direct snapshot details at the review RPC boundary", async () => {
+    const seeded = await seedSubmittedSnapshot(admin);
+    await admin.query(
+      `insert into public.employee_manager_assignments (
+         organization_id, employment_profile_id, manager_user_id, effective_from
+       ) values ($1::uuid, $2::uuid, $3::uuid, '2026-08-01T00:00:00Z')`,
+      [IDS.orgB, IDS.employmentB, IDS.employeeB],
+    );
+    await admin.query(
+      `insert into public.payroll_capability_grants (
+         organization_id, user_id, capability, effective_from, granted_by
+       ) values ($1::uuid, $2::uuid, 'time.review_assigned', '2026-08-01T00:00:00Z', $2::uuid)`,
+      [IDS.orgB, IDS.employeeB],
+    );
+
+    const otherOrgQueue = await getReviewQueue(admin, IDS.employeeB);
+    expect(JSON.stringify(otherOrgQueue)).not.toContain(IDS.employmentA);
+    expect(JSON.stringify(otherOrgQueue)).not.toContain(seeded.snapshotId);
+    await expect(
+      getReviewDetails(admin, IDS.employeeB, seeded.snapshotId, seeded.snapshotHash),
+    ).rejects.toThrow(/snapshot hash mismatch|review access|organization scope/i);
   });
 });

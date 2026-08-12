@@ -915,7 +915,9 @@ describe("payroll api client", () => {
         },
         queue: [
           {
-            employmentProfileId: "employment-1",
+            employeeLabel: "Employee 1001",
+            employmentProfileId: "99999999-9999-4999-8999-999999999999",
+            payPeriodId: "88888888-8888-4888-8888-888888888888",
             periodStart: "2026-08-10",
             periodEnd: "2026-08-16",
             state: "submitted",
@@ -958,6 +960,51 @@ describe("payroll api client", () => {
       action: "review_queue",
       selectedLocalDate: "2026-08-12",
     });
+  });
+
+  it("rejects non-UUID review queue employment identifiers", async () => {
+    mockedCallApi.mockResolvedValueOnce(
+      jsonResponse({
+        state: "ok",
+        selectedLocalDate: "2026-08-12",
+        capabilities: {
+          canReviewAssigned: true,
+          canApproveAssigned: false,
+          canViewCompensation: false,
+          hasOrgPayrollAccess: false,
+        },
+        queue: [{
+          employeeLabel: "Employee 1001",
+          employmentProfileId: "employment-1",
+          payPeriodId: "88888888-8888-4888-8888-888888888888",
+          periodStart: "2026-08-10",
+          periodEnd: "2026-08-16",
+          state: "submitted",
+          blockerCount: 0,
+          submittedAt: null,
+          snapshot: { id: null, hash: null },
+          classifiedSeconds: { regular: 0, overtime: 0, doubleTime: 0 },
+        }],
+      }),
+    );
+
+    await expect(fetchPayrollReviewQueue({
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-12",
+    })).rejects.toMatchObject({ code: "invalid_response", status: 502 });
+  });
+
+  it("rejects review detail snapshot hashes outside strict lowercase SHA-256 form before network", async () => {
+    await expect(fetchPayrollReviewDetails({
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-12",
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "A".repeat(64),
+    })).rejects.toThrow();
+
+    expect(mockedCallApi).not.toHaveBeenCalled();
   });
 
   it("fetches review details with exact snapshot binding and no Idempotency-Key header", async () => {

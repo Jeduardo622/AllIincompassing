@@ -212,11 +212,12 @@ const payrollDayResponseSchema = z.object({
 const mutationSuccessSchema = z.object({
   idempotencyKey: z.string().min(1),
 }).passthrough();
+const payrollSnapshotHashSchema = z.string().regex(/^[0-9a-f]{64}$/);
 const payrollApprovalTransitionSchema = z.object({
   transitionId: z.string().uuid(),
   snapshotId: z.string().uuid(),
-  snapshotHash: z.string().min(1),
-  canonicalSnapshotHash: z.string().min(1),
+  snapshotHash: payrollSnapshotHashSchema,
+  canonicalSnapshotHash: payrollSnapshotHashSchema,
   action: payrollApprovalResponseActionSchema,
   previousTransitionId: z.string().uuid().nullable(),
   replayed: z.boolean(),
@@ -242,7 +243,7 @@ const payrollReviewCapabilitiesSchema = z.object({
 }).strict();
 const payrollReviewQueueItemSchema = z.object({
   employeeLabel: z.string().min(1),
-  employmentProfileId: z.string().min(1),
+  employmentProfileId: z.string().uuid(),
   payPeriodId: z.string().uuid(),
   periodStart: z.string().date(),
   periodEnd: z.string().date(),
@@ -251,7 +252,7 @@ const payrollReviewQueueItemSchema = z.object({
   submittedAt: z.string().min(1).nullable(),
   snapshot: z.object({
     id: z.string().uuid().nullable(),
-    hash: z.string().min(1).nullable(),
+    hash: payrollSnapshotHashSchema.nullable(),
   }).strict(),
   classifiedSeconds: z.object({
     regular: z.number().int(),
@@ -283,7 +284,7 @@ const payrollReviewQueueResponseSchema = z.object({
 const payrollReviewDetailsResponseSchema = z.object({
   state: z.literal("ok"),
   snapshotId: z.string().uuid(),
-  snapshotHash: z.string().min(1),
+  snapshotHash: payrollSnapshotHashSchema,
   periodStart: z.string().date(),
   periodEnd: z.string().date(),
   punches: z.array(z.object({
@@ -306,7 +307,7 @@ const payrollReviewDetailsResponseSchema = z.object({
     comment: z.string().nullable(),
     reason: z.string().nullable(),
     snapshotId: z.string().uuid(),
-    snapshotHash: z.string().min(1),
+    snapshotHash: payrollSnapshotHashSchema,
   }).strict()),
   blockers: z.array(z.object({
     blockerType: payrollBlockerTypeSchema,
@@ -887,7 +888,7 @@ export async function requestSessionAttendanceCorrection(
 
 const validateSnapshotBinding = (input: { snapshotId: string; snapshotHash: string }) => ({
   snapshotId: z.string().uuid().parse(input.snapshotId),
-  snapshotHash: z.string().min(1).parse(input.snapshotHash),
+  snapshotHash: payrollSnapshotHashSchema.parse(input.snapshotHash),
 });
 
 const confirmExactApprovalResponse = async <T extends { idempotencyKey: string }>(

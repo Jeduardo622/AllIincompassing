@@ -150,6 +150,113 @@ describe("payrollApprovalsHandler", () => {
     expect(response.headers.get("x-request-id")).toBe("edge-request-id");
   });
 
+  it("returns an edge-authority review queue without mutation idempotency headers", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
+    vi.mocked(proxyToEdgeAuthority).mockResolvedValue(
+      new Response(JSON.stringify({
+        state: "ok",
+        selectedLocalDate: "2026-08-12",
+        capabilities: {
+          canReviewAssigned: true,
+          canApproveAssigned: false,
+          canViewCompensation: false,
+          hasOrgPayrollAccess: false,
+        },
+        queue: [],
+      }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "x-request-id": "edge-review-queue",
+        },
+      }),
+    );
+
+    const response = await payrollApprovalsHandler(
+      new Request("http://localhost/api/payroll-approvals", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${createAuthToken()}`,
+          "x-request-id": "node-review-queue",
+        },
+        body: JSON.stringify({
+          action: "review_queue",
+          selectedLocalDate: "2026-08-12",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ state: "ok", queue: [] });
+    expect(response.headers.get("Idempotency-Key")).toBeNull();
+    expect(response.headers.get("Idempotent-Replay")).toBeNull();
+    expect(response.headers.get("x-request-id")).toBe("edge-review-queue");
+  });
+
+  it("returns edge-authority review details without mutation idempotency headers", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
+    vi.mocked(proxyToEdgeAuthority).mockResolvedValue(
+      new Response(JSON.stringify({
+        state: "ok",
+        snapshotId: "11111111-1111-1111-1111-111111111111",
+        snapshotHash: "a".repeat(64),
+        periodStart: "2026-08-10",
+        periodEnd: "2026-08-16",
+        punches: [],
+        classifiedSeconds: { regular: 0, overtime: 0, doubleTime: 0 },
+        approvalHistory: [],
+        blockers: [],
+        unresolvedBlockerCount: 0,
+      }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "x-request-id": "edge-review-details",
+        },
+      }),
+    );
+
+    const response = await payrollApprovalsHandler(
+      new Request("http://localhost/api/payroll-approvals", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken()}` },
+        body: JSON.stringify({
+          action: "review_details",
+          snapshotId: "11111111-1111-1111-1111-111111111111",
+          snapshotHash: "a".repeat(64),
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      state: "ok",
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+    });
+    expect(response.headers.get("Idempotency-Key")).toBeNull();
+    expect(response.headers.get("Idempotent-Replay")).toBeNull();
+    expect(response.headers.get("x-request-id")).toBe("edge-review-details");
+  });
+
+  it("rejects non-lowercase SHA-256 review snapshot hashes before edge forwarding", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
+
+    const response = await payrollApprovalsHandler(
+      new Request("http://localhost/api/payroll-approvals", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken()}` },
+        body: JSON.stringify({
+          action: "review_details",
+          snapshotId: "11111111-1111-1111-1111-111111111111",
+          snapshotHash: "A".repeat(64),
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(vi.mocked(proxyToEdgeAuthority)).not.toHaveBeenCalled();
+  });
+
   it("rejects recursive authority injection before any RPC call", async () => {
     vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
 

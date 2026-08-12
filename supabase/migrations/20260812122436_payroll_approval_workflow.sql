@@ -91,6 +91,8 @@ create trigger timesheet_snapshots_canonical_binding
   for each row
   execute function app.populate_timesheet_snapshot_canonical_binding();
 
+alter table public.timesheet_snapshots disable trigger timesheet_snapshots_append_only;
+
 update public.timesheet_snapshots snapshot_row
 set canonical_snapshot_hash = app.payroll_hash_payload(
       app.timesheet_snapshot_canonical_binding_payload(
@@ -117,6 +119,8 @@ where snapshot_row.canonical_snapshot_hash is null
         snapshot_row.gross_earnings_cents
       )
     );
+
+alter table public.timesheet_snapshots enable trigger timesheet_snapshots_append_only;
 
 create table if not exists public.timesheet_approvals (
   id uuid primary key default gen_random_uuid(),
@@ -200,6 +204,22 @@ create table if not exists public.payroll_blocker_resolutions (
 create index if not exists payroll_blocker_resolutions_org_employment_period_idx
   on public.payroll_blocker_resolutions (organization_id, employment_profile_id, pay_period_id, occurred_at desc, received_at desc, id desc);
 
+create index if not exists payroll_blocker_resolutions_current_state_idx
+  on public.payroll_blocker_resolutions (
+    organization_id,
+    employment_profile_id,
+    pay_period_id,
+    blocker_type,
+    coalesce(
+      time_correction_request_id,
+      session_attendance_correction_request_id,
+      timekeeping_exception_id
+    ),
+    occurred_at desc,
+    received_at desc,
+    id desc
+  );
+
 create or replace function app.payroll_approval_transition_allowed(
   p_previous_action text,
   p_next_action text
@@ -213,10 +233,29 @@ as $$
   select case
     when p_previous_action is null and p_next_action = 'submitted' then true
     when p_previous_action = 'submitted' and p_next_action in ('manager_approved', 'returned', 'approval_invalidated') then true
+    when p_previous_action = 'approval_invalidated' and p_next_action = 'submitted' then true
     when p_previous_action = 'returned' and p_next_action = 'submitted' then true
     when p_previous_action = 'manager_approved' and p_next_action in ('locked', 'approval_invalidated') then true
     when p_previous_action = 'locked' and p_next_action = 'reopened' then true
     when p_previous_action = 'reopened' and p_next_action = 'submitted' then true
+    else false
+  end;
+$$;
+
+create or replace function app.payroll_blocker_resolution_transition_allowed(
+  p_previous_action text,
+  p_next_action text
+)
+returns boolean
+language sql
+immutable
+security definer
+set search_path = ''
+as $$
+  select case
+    when p_previous_action is null and p_next_action = 'resolved' then true
+    when p_previous_action = 'resolved' and p_next_action = 'reopened' then true
+    when p_previous_action = 'reopened' and p_next_action = 'resolved' then true
     else false
   end;
 $$;
@@ -452,7 +491,7 @@ as $$
     join public.pay_periods period_row
       on period_row.organization_id = assignment_row.organization_id
      and period_row.pay_group_id = assignment_row.pay_group_id
-    join lateral (
+    left join lateral (
       select approval_row.action
       from public.timesheet_approvals approval_row
       where approval_row.organization_id = assignment_row.organization_id
@@ -469,7 +508,10 @@ as $$
         or (p_event_at at time zone group_row.timezone)::date <= assignment_row.effective_through
       )
       and (p_event_at at time zone group_row.timezone)::date between period_row.starts_on and period_row.ends_on
-      and approval_row.action = 'locked'
+      and (
+        approval_row.action = 'locked'
+        or period_row.exported_at is not null
+      )
   );
 $$;
 
@@ -486,6 +528,7 @@ declare
   v_actor uuid := auth.uid();
   v_actor_org uuid;
   v_action text;
+  v_requested_action text;
   v_snapshot_id uuid;
   v_snapshot_hash text;
   v_attestation boolean := false;
@@ -502,6 +545,7 @@ declare
   v_pay_group_cadence public.pay_group_cadence;
   v_transition_id uuid;
   v_unresolved_blockers integer := 0;
+  v_snapshot_is_current boolean := false;
   v_result jsonb;
 begin
   if v_actor is null then
@@ -609,6 +653,8 @@ begin
     raise exception using errcode = '42501', message = 'payroll approval workflow is feature_disabled';
   end if;
 
+  perform app.payroll_timesheet_derivation_lock(v_actor_org);
+
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended(
       'timesheet-approval-chain:' || v_actor_org::text || ':' || v_snapshot.employment_profile_id::text || ':' || v_snapshot.pay_period_id::text,
@@ -625,30 +671,17 @@ begin
   order by approval_row.occurred_at desc, approval_row.received_at desc, approval_row.id desc
   limit 1;
 
-  if v_action in ('manager_approve', 'return', 'lock')
-    and v_latest.id is not null
-    and v_latest.action in ('submitted', 'manager_approved')
-    and not app.timesheet_snapshot_is_current(
-      v_actor_org,
-      v_snapshot.employment_profile_id,
-      v_snapshot.pay_period_id,
-      v_snapshot.id,
-      v_snapshot_hash
-    )
-  then
-    v_new_action := 'approval_invalidated';
-  else
-    v_new_action := case v_action
-      when 'submit' then 'submitted'
-      when 'manager_approve' then 'manager_approved'
-      when 'return' then 'returned'
-      when 'lock' then 'locked'
-      when 'reopen' then 'reopened'
-      else null
-    end;
-  end if;
+  v_requested_action := case v_action
+    when 'submit' then 'submitted'
+    when 'manager_approve' then 'manager_approved'
+    when 'return' then 'returned'
+    when 'lock' then 'locked'
+    when 'reopen' then 'reopened'
+    else null
+  end;
+  v_new_action := v_requested_action;
 
-  if v_new_action = 'submitted' then
+  if v_requested_action = 'submitted' then
     if v_snapshot.lockable is not true then
       raise exception using errcode = '23514', message = 'current lockable snapshot is required';
     end if;
@@ -661,10 +694,7 @@ begin
     if v_attestation is not true then
       raise exception using errcode = '23514', message = 'attestation must be true';
     end if;
-    if not app.timesheet_snapshot_is_current(v_actor_org, v_snapshot.employment_profile_id, v_snapshot.pay_period_id, v_snapshot.id, v_snapshot_hash) then
-      raise exception using errcode = '23514', message = 'snapshot is no longer current';
-    end if;
-  elsif v_new_action in ('manager_approved', 'returned') then
+  elsif v_requested_action in ('manager_approved', 'returned') then
     if v_actor = v_employment.user_id then
       raise exception using errcode = '42501', message = 'self approval is not allowed';
     end if;
@@ -682,10 +712,13 @@ begin
     if app.payroll_actor_has_capability(v_actor_org, 'time.approve_assigned') is not true then
       raise exception using errcode = '42501', message = 'time.approve_assigned capability is required';
     end if;
-    if v_new_action = 'returned' and v_comment is null then
+    if v_requested_action = 'returned' and v_comment is null then
       raise exception using errcode = '23514', message = 'comment is required for return';
     end if;
-  elsif v_new_action = 'locked' then
+  elsif v_requested_action = 'locked' then
+    if v_actor = v_employment.user_id then
+      raise exception using errcode = '42501', message = 'self approval is not allowed';
+    end if;
     if app.payroll_actor_has_capability(v_actor_org, 'payroll.lock_period') is not true then
       raise exception using errcode = '42501', message = 'payroll.lock_period capability is required';
     end if;
@@ -697,13 +730,36 @@ begin
     if v_unresolved_blockers <> 0 then
       raise exception using errcode = '23514', message = 'blocking issues remain unresolved';
     end if;
-  elsif v_new_action = 'reopened' then
+  elsif v_requested_action = 'reopened' then
+    if v_actor = v_employment.user_id then
+      raise exception using errcode = '42501', message = 'self approval is not allowed';
+    end if;
     if app.payroll_actor_has_capability(v_actor_org, 'payroll.reopen_period') is not true then
       raise exception using errcode = '42501', message = 'payroll.reopen_period capability is required';
     end if;
     if v_reason is null then
       raise exception using errcode = '23514', message = 'reason is required for reopen';
     end if;
+  end if;
+
+  v_snapshot_is_current := app.timesheet_snapshot_is_current(
+    v_actor_org,
+    v_snapshot.employment_profile_id,
+    v_snapshot.pay_period_id,
+    v_snapshot.id,
+    v_snapshot_hash
+  );
+
+  if v_requested_action = 'submitted' and not v_snapshot_is_current then
+    raise exception using errcode = '23514', message = 'snapshot is no longer current';
+  end if;
+
+  if v_action in ('manager_approve', 'return', 'lock')
+    and v_latest.id is not null
+    and v_latest.action in ('submitted', 'manager_approved')
+    and not v_snapshot_is_current
+  then
+    v_new_action := 'approval_invalidated';
   end if;
 
   if not app.payroll_approval_transition_allowed(v_latest.action, v_new_action) then
@@ -744,16 +800,6 @@ begin
     v_now
   )
   returning id into v_transition_id;
-
-  update public.pay_periods
-  set locked_at = case
-      when v_new_action = 'locked' then v_now
-      when v_new_action = 'reopened' then null
-      else locked_at
-    end
-  where organization_id = v_actor_org
-    and id = v_snapshot.pay_period_id
-    and v_new_action in ('locked', 'reopened');
 
   v_result := jsonb_build_object(
     'transitionId', v_transition_id,
@@ -993,6 +1039,10 @@ begin
   order by resolution_row.occurred_at desc, resolution_row.received_at desc, resolution_row.id desc
   limit 1;
 
+  if not app.payroll_blocker_resolution_transition_allowed(v_previous.action, v_action) then
+    raise exception using errcode = '23514', message = 'invalid blocker resolution transition';
+  end if;
+
   insert into public.payroll_blocker_resolutions (
     organization_id,
     employment_profile_id,
@@ -1167,6 +1217,7 @@ grant select on public.payroll_blocker_resolutions to authenticated;
 revoke all on function app.timesheet_snapshot_canonical_binding_payload(integer, integer, jsonb, integer, integer, integer, integer, integer) from public, anon, authenticated, service_role;
 revoke all on function app.populate_timesheet_snapshot_canonical_binding() from public, anon, authenticated, service_role;
 revoke all on function app.payroll_approval_transition_allowed(text, text) from public, anon, authenticated, service_role;
+revoke all on function app.payroll_blocker_resolution_transition_allowed(text, text) from public, anon, authenticated, service_role;
 revoke all on function app.resolve_payroll_period_id(uuid, uuid, timestamptz) from public, anon, authenticated, service_role;
 revoke all on function app.payroll_unresolved_blocker_count(uuid, uuid, uuid) from public, anon, authenticated, service_role;
 revoke all on function app.timesheet_snapshot_is_current(uuid, uuid, uuid, uuid, text) from public, anon, authenticated, service_role;

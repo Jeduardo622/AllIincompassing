@@ -20,7 +20,9 @@ describe("payroll approval workflow migration contract", () => {
     expect(sql).toMatch(/canonical_snapshot_hash text[\s\S]*\^\[0-9a-f\]\{64\}\$/i);
     expect(sql).toMatch(/add column if not exists snapshot_version integer not null default 1/i);
     expect(sql).toMatch(/add column if not exists calculation_revision integer not null default 1/i);
+    expect(sql).toMatch(/alter table public\.timesheet_snapshots disable trigger timesheet_snapshots_append_only/i);
     expect(sql).toMatch(/update public\.timesheet_snapshots[\s\S]*canonical_snapshot_hash/i);
+    expect(sql).toMatch(/alter table public\.timesheet_snapshots enable trigger timesheet_snapshots_append_only/i);
     expect(sql).toMatch(/jsonb_build_object\([\s\S]*'calculationRevision'[\s\S]*'totals'[\s\S]*'canonicalPayload'/i);
     expect(sql).toMatch(/canonicalSnapshotHash/i);
   });
@@ -49,12 +51,15 @@ describe("payroll approval workflow migration contract", () => {
     expect(sql).toMatch(/create or replace function app\.payroll_approval_transition_allowed/i);
     expect(sql).toMatch(/'submitted'[\s\S]*'manager_approved'[\s\S]*'returned'[\s\S]*'locked'[\s\S]*'reopened'[\s\S]*'approval_invalidated'/i);
     expect(sql).toMatch(/no row\/draft -> submitted|when p_previous_action is null and p_next_action = 'submitted'/i);
+    expect(sql).toMatch(/when p_previous_action = 'approval_invalidated' and p_next_action = 'submitted'/i);
     expect(sql).toMatch(/create or replace view public\.timesheet_approval_current_states/i);
     expect(sql).toMatch(/create or replace view public\.payroll_blocker_resolution_current_states/i);
     expect(sql).toMatch(/time_correction_requests/i);
     expect(sql).toMatch(/session_attendance_correction_requests/i);
     expect(sql).toMatch(/timekeeping_exceptions/i);
-    expect(sql).toMatch(/resolved'[\s\S]*reopened/i);
+    expect(sql).toMatch(/when p_previous_action is null and p_next_action = 'resolved'/i);
+    expect(sql).toMatch(/when p_previous_action = 'resolved' and p_next_action = 'reopened'/i);
+    expect(sql).toMatch(/when p_previous_action = 'reopened' and p_next_action = 'resolved'/i);
   });
 
   it("adds authenticated-only actor-bound approval and blocker-resolution rpc surfaces", () => {
@@ -77,7 +82,9 @@ describe("payroll approval workflow migration contract", () => {
     expect(sql).toMatch(/current lockable snapshot/i);
     expect(sql).toMatch(/stale snapshot|snapshot is no longer current/i);
     expect(sql).toMatch(/manager_user_id = auth\.uid\(\)/i);
+    expect(sql).toMatch(/perform app\.payroll_timesheet_derivation_lock\(v_actor_org\)/i);
     expect(sql).toMatch(/actor_user_id <> snapshot_row\.created_by|v_actor <> v_snapshot\.created_by/i);
+    expect(sql).toMatch(/v_actor = v_employment\.user_id[\s\S]*self approval is not allowed/i);
     expect(sql).toMatch(/return comment is required|comment is required for return/i);
     expect(sql).toMatch(/reopen reason is required|reason is required for reopen/i);
     expect(sql).toMatch(/unresolved blocking issues|blocking issues remain unresolved/i);
@@ -85,12 +92,20 @@ describe("payroll approval workflow migration contract", () => {
     expect(sql).toMatch(/payload-conflicting replay|IDEMPOTENCY_CONFLICT/i);
   });
 
-  it("re-derives lock state from the latest approval transition instead of mutable pay period projections", () => {
+  it("re-derives lock state from the latest approval transition while preserving exported-period fail-closed protection", () => {
     expect(sql).toMatch(/create or replace function app\.payroll_event_is_locked\(/i);
     expect(sql).toMatch(/from public\.timesheet_approvals/i);
     expect(sql).toMatch(/order by approval_row\.occurred_at desc,\s*approval_row\.received_at desc,\s*approval_row\.id desc/i);
     expect(sql).toMatch(/approval_row\.action = 'locked'/i);
-    expect(sql).not.toMatch(/period_row\.locked_at is not null or period_row\.exported_at is not null/i);
+    expect(sql).toMatch(/period_row\.exported_at is not null/i);
+    expect(sql).not.toMatch(/period_row\.locked_at is not null/i);
+    expect(sql).not.toMatch(/update public\.pay_periods[\s\S]*locked_at/i);
+  });
+
+  it("adds the blocker current-state index shape needed for unresolved-count lookups", () => {
+    expect(sql).toMatch(
+      /create index if not exists payroll_blocker_resolutions_current_state_idx[\s\S]*organization_id,\s*employment_profile_id,\s*pay_period_id,\s*blocker_type,\s*coalesce\([\s\S]*occurred_at desc,\s*received_at desc,\s*id desc/i,
+    );
   });
 
   it("forces RLS and closes direct dml while keeping minimum read access scoped by employee, exact manager, or explicit payroll grant", () => {

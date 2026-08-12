@@ -330,7 +330,7 @@ describe("payroll timekeeping tenant and RLS contract", () => {
     expect(functionDefinition("app.payroll_event_is_locked")).toMatch(/from public\.timesheet_approvals/i);
     expect(functionDefinition("app.payroll_event_is_locked")).toMatch(/approval_row\.action = 'locked'/i);
     expect(functionDefinition("app.payroll_event_is_locked")).not.toMatch(/period_row\.locked_at is not null/i);
-    expect(functionDefinition("app.payroll_event_is_locked")).not.toMatch(/period_row\.exported_at is not null/i);
+    expect(functionDefinition("app.payroll_event_is_locked")).toMatch(/period_row\.exported_at is not null/i);
   });
 
   it("rejects overlapping active payroll employment across organizations", () => {

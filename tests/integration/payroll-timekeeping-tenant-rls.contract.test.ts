@@ -34,9 +34,19 @@ const sessionLifecycleAdditiveSql = readFileSync(
   path.join(process.cwd(), "supabase", "migrations", sessionLifecycleAdditiveMigrationName),
   "utf8",
 );
+const approvalMigrationName =
+  readdirSync(path.join(process.cwd(), "supabase", "migrations")).find((name) =>
+    name.endsWith("payroll_approval_workflow.sql"),
+  ) ?? "";
+const approvalSql = approvalMigrationName
+  ? readFileSync(
+      path.join(process.cwd(), "supabase", "migrations", approvalMigrationName),
+      "utf8",
+    )
+  : "";
 const sessionLifecycleSql = `${sessionLifecycleBaseSql}\n${sessionLifecycleAdditiveSql}`;
 const functionDefinition = (qualifiedName: string): string => {
-  const matches = `${sql}\n${captureSql}\n${sessionLifecycleSql}`.match(
+  const matches = `${sql}\n${captureSql}\n${sessionLifecycleSql}\n${approvalSql}`.match(
     new RegExp(
       `create or replace function ${qualifiedName.replace(".", "\\.")}\\([\\s\\S]*?\\n\\$\\$;`,
       "gi",
@@ -266,6 +276,61 @@ describe("payroll timekeeping tenant and RLS contract", () => {
     expect(sessionLifecycleSql).not.toMatch(
       /grant execute on function public\.record_session_attendance_event\(jsonb, text\) to authenticated,\s*service_role/i,
     );
+  });
+
+  it("keeps approval history and blocker resolutions rpc-only behind authenticated read policies", () => {
+    expect(approvalSql).toMatch(/alter table public\.timesheet_approvals enable row level security/i);
+    expect(approvalSql).toMatch(/alter table public\.payroll_blocker_resolutions enable row level security/i);
+    expect(approvalSql).toMatch(/create policy timesheet_approvals_authenticated_select/i);
+    expect(approvalSql).toMatch(/create policy payroll_blocker_resolutions_authenticated_select/i);
+    expect(approvalSql).toMatch(/revoke all on public\.timesheet_approvals from public, anon, authenticated/i);
+    expect(approvalSql).toMatch(/revoke all on public\.payroll_blocker_resolutions from public, anon, authenticated/i);
+    expect(approvalSql).toMatch(/grant select on public\.timesheet_approvals to authenticated/i);
+    expect(approvalSql).toMatch(/grant select on public\.payroll_blocker_resolutions to authenticated/i);
+    expect(approvalSql).not.toMatch(/grant insert on public\.timesheet_approvals to authenticated/i);
+    expect(approvalSql).not.toMatch(/grant update on public\.timesheet_approvals to authenticated/i);
+    expect(approvalSql).not.toMatch(/grant delete on public\.timesheet_approvals to authenticated/i);
+  });
+
+  it("keeps actor-bound approval and blocker-resolution rpc execution off service role", () => {
+    expect(approvalSql).toMatch(
+      /revoke all on function public\.transition_timesheet_approval\(jsonb, text\) from public, anon, service_role/i,
+    );
+    expect(approvalSql).toMatch(
+      /grant execute on function public\.transition_timesheet_approval\(jsonb, text\) to authenticated/i,
+    );
+    expect(approvalSql).not.toMatch(
+      /grant execute on function public\.transition_timesheet_approval\(jsonb, text\) to authenticated,\s*service_role/i,
+    );
+    expect(approvalSql).toMatch(
+      /revoke all on function public\.resolve_payroll_blocker\(jsonb, text\) from public, anon, service_role/i,
+    );
+    expect(approvalSql).toMatch(
+      /grant execute on function public\.resolve_payroll_blocker\(jsonb, text\) to authenticated/i,
+    );
+    expect(approvalSql).not.toMatch(
+      /grant execute on function public\.resolve_payroll_blocker\(jsonb, text\) to authenticated,\s*service_role/i,
+    );
+  });
+
+  it("scopes approval visibility to self, exact assigned managers, and explicit payroll grants without exposing compensation through manager review", () => {
+    const approvalPolicy = approvalSql.match(
+      /create policy timesheet_approvals_authenticated_select[\s\S]*?\n\s*\);/i,
+    )?.[0] ?? "";
+    expect(approvalPolicy).toMatch(/app\.current_user_can_read_payroll_employee\(organization_id,\s*employment_profile_id\)/i);
+    expect(approvalPolicy).toMatch(/employee_manager_assignments assignment_row/i);
+    expect(approvalPolicy).toMatch(/manager_user_id = auth\.uid\(\)/i);
+    expect(approvalPolicy).toMatch(/time\.review_assigned|time\.approve_assigned/i);
+    expect(approvalPolicy).toMatch(/payroll\.lock_period|payroll\.reopen_period|payroll\.resolve_exceptions/i);
+    expect(approvalPolicy).not.toMatch(/employee_rate_versions/i);
+    expect(approvalPolicy).not.toMatch(/payroll\.view_compensation/i);
+  });
+
+  it("moves pay-period lock authority to the latest approval transition chain", () => {
+    expect(functionDefinition("app.payroll_event_is_locked")).toMatch(/from public\.timesheet_approvals/i);
+    expect(functionDefinition("app.payroll_event_is_locked")).toMatch(/approval_row\.action = 'locked'/i);
+    expect(functionDefinition("app.payroll_event_is_locked")).not.toMatch(/period_row\.locked_at is not null/i);
+    expect(functionDefinition("app.payroll_event_is_locked")).not.toMatch(/period_row\.exported_at is not null/i);
   });
 
   it("rejects overlapping active payroll employment across organizations", () => {

@@ -1127,6 +1127,43 @@ describe("payroll api client", () => {
     });
   });
 
+  it("fails closed on review details compensation unless the caller has the capability", async () => {
+    const response = {
+      state: "ok",
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "a".repeat(64),
+      periodStart: "2026-08-10",
+      periodEnd: "2026-08-16",
+      approvalHistory: [],
+      punches: [],
+      blockers: [],
+      classifiedSeconds: { regular: 14400, overtime: 0, doubleTime: 0 },
+      unresolvedBlockerCount: 0,
+      compensation: { grossEarningsCents: 123456 },
+    };
+    mockedCallApi
+      .mockResolvedValueOnce(jsonResponse(response))
+      .mockResolvedValueOnce(jsonResponse(response));
+    const input = {
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-12",
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "a".repeat(64),
+    };
+
+    await expect(fetchPayrollReviewDetails(input)).rejects.toMatchObject({
+      code: "invalid_response",
+      status: 502,
+    });
+    await expect(fetchPayrollReviewDetails({
+      ...input,
+      canViewCompensation: true,
+    })).resolves.toMatchObject({
+      compensation: { grossEarningsCents: 123456 },
+    });
+  });
+
   it("sends manager return, lock, and reopen approval actions through the protected endpoint without authority fields", async () => {
     mockedCallApi.mockImplementation(async (_path, init) => {
       const key = (init?.headers as Headers).get("Idempotency-Key") ?? "";

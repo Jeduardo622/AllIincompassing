@@ -99,6 +99,7 @@ export function usePayrollApprovals(
       ...scope,
       snapshotId: options.details!.snapshotId,
       snapshotHash: options.details!.snapshotHash,
+      canViewCompensation: reviewQueue?.capabilities.canViewCompensation ?? false,
     }),
     enabled: detailsEnabled,
   });

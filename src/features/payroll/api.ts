@@ -1109,7 +1109,11 @@ export async function fetchPayrollReviewQueue(scope: PayrollScope): Promise<Payr
 }
 
 export async function fetchPayrollReviewDetails(
-  input: PayrollScope & { snapshotId: string; snapshotHash: string },
+  input: PayrollScope & {
+    snapshotId: string;
+    snapshotHash: string;
+    canViewCompensation?: boolean;
+  },
 ): Promise<PayrollReviewDetailsResponse> {
   const response = await callApi(PAYROLL_APPROVALS_ENDPOINT, {
     method: "POST",
@@ -1127,7 +1131,7 @@ export async function fetchPayrollReviewDetails(
   }
 
   const parsed = await parseJsonResponse(response.clone(), payrollReviewDetailsResponseSchema);
-  if (!parsed) {
+  if (!parsed || (parsed.compensation && input.canViewCompensation !== true)) {
     throw toNormalizedApiError(
       {
         code: "invalid_response",

@@ -207,7 +207,10 @@ const payrollReviewDetailsFixtureResponseSchema = z.object({
     id: z.string().uuid(),
     eventType: z.string().min(1),
     occurredAt: z.string().min(1),
-    timezone: z.string().min(1).nullable(),
+    timezone: z.string().min(1),
+    workLocation: z.string().nullable(),
+    workCategory: z.string().nullable(),
+    createdAt: z.string().min(1),
   }).strict()),
   classifiedSeconds: payrollReviewClassifiedSecondsSchema,
   approvalHistory: z.array(z.object({
@@ -219,8 +222,14 @@ const payrollReviewDetailsFixtureResponseSchema = z.object({
     snapshotHash: payrollSnapshotHashSchema,
   }).strict()),
   blockers: z.array(z.object({
-    blockerType: z.string().min(1),
+    blockerType: z.enum([
+      'time_correction_request',
+      'session_attendance_correction_request',
+      'timekeeping_exception',
+    ]),
+    blockerId: z.string().uuid(),
     state: z.string().min(1),
+    createdAt: z.string().min(1),
   }).strict()),
   unresolvedBlockerCount: z.number().int(),
   compensation: z.object({
@@ -566,6 +575,9 @@ const maybeFulfillScenarioRequest = async (
           eventType: 'shift_started',
           occurredAt: '2026-08-12T15:00:00.000Z',
           timezone: 'America/Los_Angeles',
+          workLocation: null,
+          workCategory: null,
+          createdAt: '2026-08-12T15:00:01.000Z',
         }],
         classifiedSeconds: {
           regular: 14400,
@@ -580,8 +592,13 @@ const maybeFulfillScenarioRequest = async (
           snapshotId: parsedBody.snapshotId,
           snapshotHash: parsedBody.snapshotHash,
         }],
-        blockers: [],
-        unresolvedBlockerCount: 0,
+        blockers: [{
+          blockerType: 'timekeeping_exception',
+          blockerId: '66666666-6666-4666-8666-666666666666',
+          state: 'open',
+          createdAt: '2026-08-12T17:00:00.000Z',
+        }],
+        unresolvedBlockerCount: 1,
       });
       if (!detailsResponse) {
         return false;

@@ -90,11 +90,32 @@ describe('responsive-ui-observer contract', () => {
       snapshotHash: 'a'.repeat(64),
       periodStart: '2026-08-10',
       periodEnd: '2026-08-16',
-      punches: [],
+      punches: [{
+        id: '77777777-7777-4777-8777-777777777777',
+        eventType: 'shift_started',
+        occurredAt: '2026-08-12T15:00:00.000Z',
+        timezone: 'America/Los_Angeles',
+        workLocation: null,
+        workCategory: null,
+        createdAt: '2026-08-12T15:00:01.000Z',
+      }],
       classifiedSeconds: { regular: 14400, overtime: 0, doubleTime: 0 },
-      approvalHistory: [],
-      blockers: [],
-      unresolvedBlockerCount: 0,
+      approvalHistory: [{
+        action: 'submitted',
+        occurredAt: '2026-08-12T18:00:00.000Z',
+        comment: null,
+        reason: null,
+        snapshotId: '11111111-1111-1111-1111-111111111111',
+        snapshotHash: 'a'.repeat(64),
+      }],
+      blockers: [{
+        blockerType: 'timekeeping_exception',
+        blockerId: '66666666-6666-4666-8666-666666666666',
+        state: 'open',
+        createdAt: '2026-08-12T17:00:00.000Z',
+      }],
+      unresolvedBlockerCount: 1,
+      compensation: { grossEarningsCents: 123456 },
     };
 
     expect(parsePayrollReviewQueueFixtureResponse(queueResponse)).toEqual(queueResponse);
@@ -106,6 +127,19 @@ describe('responsive-ui-observer contract', () => {
         id: detailsResponse.snapshotId,
         hash: detailsResponse.snapshotHash,
       },
+    })).toBeNull();
+    expect(parsePayrollReviewDetailsFixtureResponse({
+      ...detailsResponse,
+      punches: [{ ...detailsResponse.punches[0], timezone: null }],
+    })).toBeNull();
+    expect(parsePayrollReviewDetailsFixtureResponse({
+      ...detailsResponse,
+      blockers: [{
+        blockerType: 'timekeeping_exception',
+        id: '66666666-6666-4666-8666-666666666666',
+        state: 'open',
+        createdAt: '2026-08-12T17:00:00.000Z',
+      }],
     })).toBeNull();
   });
 

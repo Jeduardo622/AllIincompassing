@@ -12,6 +12,11 @@ import {
   parseObserverArgs,
   sanitizeObserverFailures,
 } from '../scripts/lib/responsive-ui-observer';
+import {
+  parsePayrollApprovalReadBody,
+  parsePayrollReviewDetailsFixtureResponse,
+  parsePayrollReviewQueueFixtureResponse,
+} from '../scripts/playwright-responsive-ui-observer';
 
 const baseUrl = 'http://127.0.0.1:4173';
 const routes = ['/desk/responsive-check', '/desk/responsive-summary'];
@@ -23,6 +28,87 @@ const readOnlyPolicy = {
 } as const;
 
 describe('responsive-ui-observer contract', () => {
+  it('accepts only the exact production payroll review read request shapes', () => {
+    expect(parsePayrollApprovalReadBody(JSON.stringify({
+      action: 'review_queue',
+      selectedLocalDate: '2026-08-12',
+    }))).toEqual({ action: 'review_queue', selectedLocalDate: '2026-08-12' });
+    expect(parsePayrollApprovalReadBody(JSON.stringify({
+      action: 'review_details',
+      snapshotId: '11111111-1111-1111-1111-111111111111',
+      snapshotHash: 'a'.repeat(64),
+    }))).toEqual({
+      action: 'review_details',
+      snapshotId: '11111111-1111-1111-1111-111111111111',
+      snapshotHash: 'a'.repeat(64),
+    });
+
+    expect(parsePayrollApprovalReadBody(JSON.stringify({
+      action: 'review_details',
+      selectedLocalDate: '2026-08-12',
+      snapshot: {
+        id: '11111111-1111-1111-1111-111111111111',
+        hash: 'a'.repeat(64),
+      },
+    }))).toBeNull();
+    expect(parsePayrollApprovalReadBody(JSON.stringify({
+      action: 'review_queue',
+      selectedLocalDate: '2026-08-12',
+      leaked: true,
+    }))).toBeNull();
+  });
+
+  it('accepts only strict canonical payroll review fixture responses', () => {
+    const queueResponse = {
+      state: 'ok',
+      selectedLocalDate: '2026-08-12',
+      capabilities: {
+        canReviewAssigned: true,
+        canApproveAssigned: true,
+        canViewCompensation: false,
+        hasOrgPayrollAccess: false,
+      },
+      queue: [{
+        employeeLabel: 'Employee 1001',
+        employmentProfileId: '99999999-9999-4999-8999-999999999999',
+        payPeriodId: '88888888-8888-4888-8888-888888888888',
+        periodStart: '2026-08-10',
+        periodEnd: '2026-08-16',
+        state: 'submitted',
+        blockerCount: 0,
+        submittedAt: '2026-08-12T18:00:00.000Z',
+        snapshot: {
+          id: '11111111-1111-1111-1111-111111111111',
+          hash: 'a'.repeat(64),
+        },
+        classifiedSeconds: { regular: 14400, overtime: 0, doubleTime: 0 },
+      }],
+    };
+    const detailsResponse = {
+      state: 'ok',
+      snapshotId: '11111111-1111-1111-1111-111111111111',
+      snapshotHash: 'a'.repeat(64),
+      periodStart: '2026-08-10',
+      periodEnd: '2026-08-16',
+      punches: [],
+      classifiedSeconds: { regular: 14400, overtime: 0, doubleTime: 0 },
+      approvalHistory: [],
+      blockers: [],
+      unresolvedBlockerCount: 0,
+    };
+
+    expect(parsePayrollReviewQueueFixtureResponse(queueResponse)).toEqual(queueResponse);
+    expect(parsePayrollReviewDetailsFixtureResponse(detailsResponse)).toEqual(detailsResponse);
+    expect(parsePayrollReviewQueueFixtureResponse({ ...queueResponse, leaked: true })).toBeNull();
+    expect(parsePayrollReviewDetailsFixtureResponse({
+      ...detailsResponse,
+      snapshot: {
+        id: detailsResponse.snapshotId,
+        hash: detailsResponse.snapshotHash,
+      },
+    })).toBeNull();
+  });
+
   it('keeps the CLI isolated from env files, hosted defaults, and mutable browser state', () => {
     const source = readFileSync(
       path.join(process.cwd(), 'scripts/playwright-responsive-ui-observer.ts'),

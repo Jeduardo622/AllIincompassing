@@ -57,16 +57,19 @@ export function TimeReview() {
   });
 
   useEffect(() => {
-    const head = payrollReviewQueueQuery.data?.queue.find((item) => item.snapshot.id && item.snapshot.hash) ?? null;
+    const validRows = payrollReviewQueueQuery.data?.queue.filter(
+      (item) => item.snapshot.id && item.snapshot.hash,
+    ) ?? [];
+    const head = validRows[0] ?? null;
     if (!head?.snapshot.id || !head.snapshot.hash) {
       setSelectedSnapshot(null);
       return;
     }
     setSelectedSnapshot((current) => {
-      if (
-        current?.snapshotId === head.snapshot.id
-        && current.snapshotHash === head.snapshot.hash
-      ) {
+      if (current && validRows.some((item) => (
+        item.snapshot.id === current.snapshotId
+        && item.snapshot.hash === current.snapshotHash
+      ))) {
         return current;
       }
       return {
@@ -113,7 +116,11 @@ export function TimeReview() {
   }
 
   const selectedDetails = payrollReviewDetailsQuery.data;
-  const canApprove = queue.capabilities.canApproveAssigned;
+  const selectedQueueItem = queue.queue.find((item) => (
+    item.snapshot.id === selectedSnapshot?.snapshotId
+    && item.snapshot.hash === selectedSnapshot?.snapshotHash
+  ));
+  const canApprove = queue.capabilities.canApproveAssigned && selectedQueueItem?.state === "submitted";
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -161,7 +168,7 @@ export function TimeReview() {
                   <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{selectedDetails.periodStart} through {selectedDetails.periodEnd}</p>
                   <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Unresolved blockers: {selectedDetails.unresolvedBlockerCount}</p>
                 </div>
-                {selectedDetails.compensation ? (
+                {queue.capabilities.canViewCompensation && selectedDetails.compensation ? (
                   <div className="rounded-xl border border-gray-100 px-3 py-2 text-sm dark:border-gray-800">
                     Gross: ${(selectedDetails.compensation.grossEarningsCents / 100).toFixed(2)}
                   </div>

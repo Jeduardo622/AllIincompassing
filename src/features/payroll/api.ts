@@ -57,15 +57,6 @@ const payrollReviewStateSchema = z.enum([
   "unsupported_jurisdiction",
   "missing_prerequisite",
 ]);
-const payrollSelfApprovalStateSchema = z.enum([
-  "ok",
-  "feature_disabled",
-  "unsupported_policy",
-  "unsupported_jurisdiction",
-  "missing_prerequisite",
-  "no_employment_profile",
-]);
-
 const timeEventPayloadSchema = z.object({
   occurredAt: z.string().min(1),
   timezone: z.string().min(1),
@@ -257,8 +248,8 @@ const payrollSelfApprovalHistoryItemSchema = z.object({
   snapshotId: z.string().uuid(),
   snapshotHash: payrollSnapshotHashSchema,
 }).strict();
-const payrollSelfApprovalResponseSchema = z.object({
-  state: payrollSelfApprovalStateSchema,
+const payrollSelfApprovalOkResponseSchema = z.object({
+  state: z.literal("ok"),
   selectedLocalDate: z.string().date(),
   approval: z.object({
     currentState: z.string().min(1),
@@ -277,8 +268,16 @@ const payrollSelfApprovalResponseSchema = z.object({
       grossEarningsCents: z.number().int(),
     }).strict().optional(),
     history: z.array(payrollSelfApprovalHistoryItemSchema),
-  }).strict().optional(),
+  }).strict(),
 }).strict();
+const payrollSelfApprovalResponseSchema = z.discriminatedUnion("state", [
+  payrollSelfApprovalOkResponseSchema,
+  z.object({ state: z.literal("feature_disabled") }).strict(),
+  z.object({ state: z.literal("unsupported_policy") }).strict(),
+  z.object({ state: z.literal("unsupported_jurisdiction") }).strict(),
+  z.object({ state: z.literal("missing_prerequisite") }).strict(),
+  z.object({ state: z.literal("no_employment_profile") }).strict(),
+]);
 const payrollReviewQueueItemSchema = z.object({
   employeeLabel: z.string().min(1),
   employmentProfileId: z.string().uuid(),

@@ -87,6 +87,7 @@ function Probe() {
 
 describe("usePayrollApprovals", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(fetchPayrollSelfApproval).mockResolvedValue({
       state: "ok",
       selectedLocalDate: "2026-08-12",
@@ -113,7 +114,21 @@ describe("usePayrollApprovals", () => {
         canViewCompensation: false,
         hasOrgPayrollAccess: false,
       },
-      queue: [],
+      queue: [{
+        employeeLabel: "Employee 1001",
+        employmentProfileId: "99999999-9999-4999-8999-999999999999",
+        payPeriodId: "88888888-8888-4888-8888-888888888888",
+        periodStart: "2026-08-10",
+        periodEnd: "2026-08-16",
+        state: "submitted",
+        blockerCount: 0,
+        submittedAt: "2026-08-12T18:00:00.000Z",
+        snapshot: {
+          id: "11111111-1111-1111-1111-111111111111",
+          hash: "a".repeat(64),
+        },
+        classifiedSeconds: { regular: 0, overtime: 0, doubleTime: 0 },
+      }],
     } as never);
     vi.mocked(fetchPayrollReviewDetails).mockResolvedValue({
       state: "ok",
@@ -154,5 +169,74 @@ describe("usePayrollApprovals", () => {
     expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: payrollSelfApprovalQueryKey("org-1", "user-1", "2026-08-12") }));
     expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: payrollReviewQueueQueryKey("org-1", "user-1", "2026-08-12") }));
     expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: payrollReviewDetailsQueryKey("org-1", "user-1", "11111111-1111-1111-1111-111111111111", "a".repeat(64)) }));
+  });
+
+  it.each([
+    [
+      "queue state is non-ok",
+      {
+        state: "feature_disabled",
+        selectedLocalDate: "2026-08-12",
+        capabilities: {
+          canReviewAssigned: true,
+          canApproveAssigned: true,
+          canViewCompensation: false,
+          hasOrgPayrollAccess: false,
+        },
+        queue: [{
+          snapshot: { id: "11111111-1111-1111-1111-111111111111", hash: "a".repeat(64) },
+        }],
+      },
+    ],
+    [
+      "review capabilities are absent",
+      {
+        state: "ok",
+        selectedLocalDate: "2026-08-12",
+        capabilities: {
+          canReviewAssigned: false,
+          canApproveAssigned: false,
+          canViewCompensation: false,
+          hasOrgPayrollAccess: false,
+        },
+        queue: [{
+          snapshot: { id: "11111111-1111-1111-1111-111111111111", hash: "a".repeat(64) },
+        }],
+      },
+    ],
+    [
+      "the exact selected row is absent",
+      {
+        state: "ok",
+        selectedLocalDate: "2026-08-12",
+        capabilities: {
+          canReviewAssigned: true,
+          canApproveAssigned: false,
+          canViewCompensation: false,
+          hasOrgPayrollAccess: false,
+        },
+        queue: [{
+          snapshot: { id: "22222222-2222-4222-8222-222222222222", hash: "b".repeat(64) },
+        }],
+      },
+    ],
+  ])("keeps review details disabled when %s", async (_reason, queueResponse) => {
+    vi.mocked(fetchPayrollReviewQueue).mockResolvedValueOnce(queueResponse as never);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    renderWithClient(<Probe />, client);
+
+    await waitFor(() => expect(client.getQueryState(
+      payrollReviewQueueQueryKey("org-1", "user-1", "2026-08-12"),
+    )?.status).toBe("success"));
+    expect(fetchPayrollReviewDetails).not.toHaveBeenCalled();
+    expect(client.getQueryState(
+      payrollReviewDetailsQueryKey(
+        "org-1",
+        "user-1",
+        "11111111-1111-1111-1111-111111111111",
+        "a".repeat(64),
+      ),
+    )?.fetchStatus).toBe("idle");
   });
 });

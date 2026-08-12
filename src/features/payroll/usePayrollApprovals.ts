@@ -81,6 +81,18 @@ export function usePayrollApprovals(
     enabled: options.queueEnabled ?? true,
   });
 
+  const reviewQueue = payrollReviewQueueQuery.data;
+  const requestedDetails = options.details;
+  const detailsEnabled = Boolean(
+    requestedDetails
+    && reviewQueue?.state === "ok"
+    && (reviewQueue.capabilities.canReviewAssigned || reviewQueue.capabilities.canApproveAssigned)
+    && reviewQueue.queue.some((item) => (
+      item.snapshot.id === requestedDetails.snapshotId
+      && item.snapshot.hash === requestedDetails.snapshotHash
+    )),
+  );
+
   const payrollReviewDetailsQuery = useQuery({
     queryKey: detailsKey ?? ["payroll-review-details", "disabled"],
     queryFn: () => fetchPayrollReviewDetails({
@@ -88,7 +100,7 @@ export function usePayrollApprovals(
       snapshotId: options.details!.snapshotId,
       snapshotHash: options.details!.snapshotHash,
     }),
-    enabled: Boolean(options.details),
+    enabled: detailsEnabled,
   });
 
   const submitPayrollApprovalMutation = useMutation({

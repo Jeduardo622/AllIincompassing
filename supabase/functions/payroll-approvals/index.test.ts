@@ -334,6 +334,50 @@ Deno.test("self_approval calls the exact read rpc without Idempotency-Key requir
   assertEquals(response.headers.get("Idempotent-Replay"), null);
 });
 
+for (const state of [
+  "feature_disabled",
+  "unsupported_policy",
+  "unsupported_jurisdiction",
+  "missing_prerequisite",
+  "no_employment_profile",
+] as const) {
+  Deno.test(`self_approval returns the exact state-only response for ${state}`, async () => {
+    const response = await handlePayrollApprovals({
+      req: createRequest({
+        action: "self_approval",
+        selectedLocalDate: "2026-08-12",
+      }),
+      userContext: createUserContext("bt"),
+      db: createRpcClient(() => ({ data: { state }, error: null })),
+    });
+
+    assertEquals(response.status, 200);
+    assertEquals(await response.json(), { state });
+    assertEquals(response.headers.get("Idempotency-Key"), null);
+    assertEquals(response.headers.get("Idempotent-Replay"), null);
+  });
+}
+
+Deno.test("self_approval fails closed when a state-only response leaks fields", async () => {
+  const response = await handlePayrollApprovals({
+    req: createRequest({
+      action: "self_approval",
+      selectedLocalDate: "2026-08-12",
+    }),
+    userContext: createUserContext("bt"),
+    db: createRpcClient(() => ({
+      data: {
+        state: "feature_disabled",
+        selectedLocalDate: "2026-08-12",
+      },
+      error: null,
+    })),
+  });
+
+  assertEquals(response.status, 502);
+  assertEquals((await response.json() as { code: string }).code, "invalid_response");
+});
+
 Deno.test("review_details calls the exact read rpc with snapshot binding and no mutation headers", async () => {
   const calls: RpcCall[] = [];
   const response = await handlePayrollApprovals({

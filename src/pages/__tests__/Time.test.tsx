@@ -425,6 +425,27 @@ describe("Time page", () => {
     expect(screen.getByText(/returned comment: fix the missing meal punch\./i)).toBeInTheDocument();
   });
 
+  it.each([
+    ["feature_disabled", "Payroll approval is not enabled."],
+    ["unsupported_policy", "Payroll approval is not supported for this employment policy."],
+    ["unsupported_jurisdiction", "Payroll approval is not supported for this employment policy."],
+    ["missing_prerequisite", "Payroll approval prerequisites are incomplete."],
+    ["no_employment_profile", "A payroll employment profile is required before self approval can render."],
+  ] as const)("renders the state-only self approval status for %s", (state, message) => {
+    mockUsePayrollApprovals.mockReturnValue({
+      ...baseApprovalValue,
+      payrollSelfApprovalQuery: {
+        ...baseApprovalValue.payrollSelfApprovalQuery,
+        data: { state },
+      },
+    });
+
+    renderTimePage();
+
+    expect(screen.getByText(message)).toBeInTheDocument();
+    expect(screen.queryByText(/invalid payroll approval response/i)).not.toBeInTheDocument();
+  });
+
   it("requires attestation before submitting employee approval and binds only the exact self snapshot", async () => {
     const submitApproval = vi.fn().mockResolvedValue({ idempotencyKey: "approval-submit-key" });
     mockUsePayrollApprovals.mockReturnValue({

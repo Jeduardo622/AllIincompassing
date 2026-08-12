@@ -946,6 +946,35 @@ describe("payroll api client", () => {
     });
   });
 
+  it.each([
+    "feature_disabled",
+    "unsupported_policy",
+    "unsupported_jurisdiction",
+    "missing_prerequisite",
+    "no_employment_profile",
+  ] as const)("accepts the exact state-only self approval response for %s", async (state) => {
+    mockedCallApi.mockResolvedValueOnce(jsonResponse({ state }));
+
+    await expect(fetchPayrollSelfApproval({
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-12",
+    })).resolves.toEqual({ state });
+  });
+
+  it("rejects leaked fields on a state-only self approval response", async () => {
+    mockedCallApi.mockResolvedValueOnce(jsonResponse({
+      state: "feature_disabled",
+      selectedLocalDate: "2026-08-12",
+    }));
+
+    await expect(fetchPayrollSelfApproval({
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-12",
+    })).rejects.toMatchObject({ code: "invalid_response", status: 502 });
+  });
+
   it("fetches the review queue without Idempotency-Key and fails closed on compensation leakage", async () => {
     mockedCallApi.mockResolvedValueOnce(
       jsonResponse({

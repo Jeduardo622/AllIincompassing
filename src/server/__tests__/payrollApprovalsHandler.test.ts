@@ -246,6 +246,60 @@ describe("payrollApprovalsHandler", () => {
     expect(response.headers.get("Idempotent-Replay")).toBeNull();
   });
 
+  it.each([
+    "feature_disabled",
+    "unsupported_policy",
+    "unsupported_jurisdiction",
+    "missing_prerequisite",
+    "no_employment_profile",
+  ] as const)("returns the exact state-only self approval response for %s", async (state) => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
+    vi.mocked(fetchJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { state },
+    });
+
+    const response = await payrollApprovalsHandler(
+      new Request("http://localhost/api/payroll-approvals", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken()}` },
+        body: JSON.stringify({
+          action: "self_approval",
+          selectedLocalDate: "2026-08-12",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ state });
+    expect(response.headers.get("Idempotency-Key")).toBeNull();
+    expect(response.headers.get("Idempotent-Replay")).toBeNull();
+  });
+
+  it("fails closed when a state-only self approval response leaks fields", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
+    vi.mocked(fetchJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        state: "feature_disabled",
+        selectedLocalDate: "2026-08-12",
+      },
+    });
+
+    const response = await payrollApprovalsHandler(
+      new Request("http://localhost/api/payroll-approvals", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken()}` },
+        body: JSON.stringify({ action: "self_approval", selectedLocalDate: "2026-08-12" }),
+      }),
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({ code: "invalid_response" });
+  });
+
   it("returns edge-authority review details without mutation idempotency headers", async () => {
     vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
     vi.mocked(proxyToEdgeAuthority).mockResolvedValue(

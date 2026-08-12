@@ -3,6 +3,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { z } from 'zod';
 
 import {
   OBSERVER_VIEWPORTS,
@@ -108,11 +109,8 @@ Promise.all([
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'review_details',
-        selectedLocalDate: '2026-08-12',
-        snapshot: {
-          id: queueItem.snapshot.id,
-          hash: queueItem.snapshot.hash,
-        },
+        snapshotId: queueItem.snapshot.id,
+        snapshotHash: queueItem.snapshot.hash,
       }),
     }).then((response) => response.json());
     if (details?.state !== 'ok') {
@@ -164,11 +162,77 @@ const parsePayrollTimeReadBody = (
   return { action: 'get_day', localDate };
 };
 
-const parsePayrollApprovalReadBody = (
+const payrollSnapshotHashSchema = z.string().regex(/^[a-f0-9]{64}$/);
+const payrollReviewCapabilitiesSchema = z.object({
+  canReviewAssigned: z.boolean(),
+  canApproveAssigned: z.boolean(),
+  canViewCompensation: z.boolean(),
+  hasOrgPayrollAccess: z.boolean(),
+}).strict();
+const payrollReviewClassifiedSecondsSchema = z.object({
+  regular: z.number().int(),
+  overtime: z.number().int(),
+  doubleTime: z.number().int(),
+}).strict();
+const payrollReviewQueueFixtureResponseSchema = z.object({
+  state: z.literal('ok'),
+  selectedLocalDate: z.string().date(),
+  capabilities: payrollReviewCapabilitiesSchema,
+  queue: z.array(z.object({
+    employeeLabel: z.string().min(1),
+    employmentProfileId: z.string().uuid(),
+    payPeriodId: z.string().uuid(),
+    periodStart: z.string().date(),
+    periodEnd: z.string().date(),
+    state: z.string().min(1),
+    blockerCount: z.number().int(),
+    submittedAt: z.string().min(1).nullable(),
+    snapshot: z.object({
+      id: z.string().uuid().nullable(),
+      hash: payrollSnapshotHashSchema.nullable(),
+    }).strict(),
+    classifiedSeconds: payrollReviewClassifiedSecondsSchema,
+    compensation: z.object({
+      grossEarningsCents: z.number().int(),
+    }).strict().optional(),
+  }).strict()),
+}).strict();
+const payrollReviewDetailsFixtureResponseSchema = z.object({
+  state: z.literal('ok'),
+  snapshotId: z.string().uuid(),
+  snapshotHash: payrollSnapshotHashSchema,
+  periodStart: z.string().date(),
+  periodEnd: z.string().date(),
+  punches: z.array(z.object({
+    id: z.string().uuid(),
+    eventType: z.string().min(1),
+    occurredAt: z.string().min(1),
+    timezone: z.string().min(1).nullable(),
+  }).strict()),
+  classifiedSeconds: payrollReviewClassifiedSecondsSchema,
+  approvalHistory: z.array(z.object({
+    action: z.string().min(1),
+    occurredAt: z.string().min(1),
+    comment: z.string().nullable(),
+    reason: z.string().nullable(),
+    snapshotId: z.string().uuid(),
+    snapshotHash: payrollSnapshotHashSchema,
+  }).strict()),
+  blockers: z.array(z.object({
+    blockerType: z.string().min(1),
+    state: z.string().min(1),
+  }).strict()),
+  unresolvedBlockerCount: z.number().int(),
+  compensation: z.object({
+    grossEarningsCents: z.number().int(),
+  }).strict().optional(),
+}).strict();
+
+export const parsePayrollApprovalReadBody = (
   requestBody: string | null,
 ):
   | { action: 'review_queue'; selectedLocalDate: string }
-  | { action: 'review_details'; selectedLocalDate: string; snapshot: { id: string; hash: string } }
+  | { action: 'review_details'; snapshotId: string; snapshotHash: string }
   | null => {
   if (typeof requestBody !== 'string') {
     return null;
@@ -185,47 +249,34 @@ const parsePayrollApprovalReadBody = (
     return null;
   }
 
-  const { action, selectedLocalDate, snapshot } = parsedBody as {
-    action?: unknown;
-    selectedLocalDate?: unknown;
-    snapshot?: unknown;
-  };
-
-  if (typeof selectedLocalDate !== 'string' || selectedLocalDate.length === 0) {
-    return null;
+  const queueRequest = z.object({
+    action: z.literal('review_queue'),
+    selectedLocalDate: z.string().date(),
+  }).strict().safeParse(parsedBody);
+  if (queueRequest.success) {
+    return queueRequest.data;
   }
 
-  if (action === 'review_queue') {
-    const entries = Object.entries(parsedBody);
-    if (entries.length !== 2 || !entries.every(([key]) => key === 'action' || key === 'selectedLocalDate')) {
-      return null;
-    }
-    return { action, selectedLocalDate };
-  }
-
-  if (action === 'review_details') {
-    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
-      return null;
-    }
-    const { id, hash } = snapshot as { id?: unknown; hash?: unknown };
-    if (typeof id !== 'string' || id.length === 0 || typeof hash !== 'string' || hash.length === 0) {
-      return null;
-    }
-    const entries = Object.entries(parsedBody);
-    if (
-      entries.length !== 3
-      || !entries.every(([key]) => key === 'action' || key === 'selectedLocalDate' || key === 'snapshot')
-    ) {
-      return null;
-    }
-    const snapshotEntries = Object.entries(snapshot);
-    if (snapshotEntries.length !== 2 || !snapshotEntries.every(([key]) => key === 'id' || key === 'hash')) {
-      return null;
-    }
-    return { action, selectedLocalDate, snapshot: { id, hash } };
+  const detailsRequest = z.object({
+    action: z.literal('review_details'),
+    snapshotId: z.string().uuid(),
+    snapshotHash: payrollSnapshotHashSchema,
+  }).strict().safeParse(parsedBody);
+  if (detailsRequest.success) {
+    return detailsRequest.data;
   }
 
   return null;
+};
+
+export const parsePayrollReviewQueueFixtureResponse = (payload: unknown) => {
+  const parsed = payrollReviewQueueFixtureResponseSchema.safeParse(payload);
+  return parsed.success ? parsed.data : null;
+};
+
+export const parsePayrollReviewDetailsFixtureResponse = (payload: unknown) => {
+  const parsed = payrollReviewDetailsFixtureResponseSchema.safeParse(payload);
+  return parsed.success ? parsed.data : null;
 };
 
 export const RESPONSIVE_CAPTURE_REDACTION_CSS = `
@@ -464,73 +515,81 @@ const maybeFulfillScenarioRequest = async (
       }
 
       if (parsedBody.action === 'review_queue') {
+        const queueResponse = parsePayrollReviewQueueFixtureResponse({
+          state: 'ok',
+          selectedLocalDate: parsedBody.selectedLocalDate,
+          capabilities: {
+            canReviewAssigned: true,
+            canApproveAssigned: true,
+            canViewCompensation: false,
+            hasOrgPayrollAccess: false,
+          },
+          queue: [{
+            employeeLabel: 'Employee 1001',
+            employmentProfileId: '99999999-9999-4999-8999-999999999999',
+            payPeriodId: '88888888-8888-4888-8888-888888888888',
+            periodStart: '2026-08-10',
+            periodEnd: '2026-08-16',
+            state: 'submitted',
+            blockerCount: 0,
+            submittedAt: '2026-08-12T18:00:00.000Z',
+            snapshot: {
+              id: '11111111-1111-1111-1111-111111111111',
+              hash: 'a'.repeat(64),
+            },
+            classifiedSeconds: {
+              regular: 14400,
+              overtime: 0,
+              doubleTime: 0,
+            },
+          }],
+        });
+        if (!queueResponse) {
+          return false;
+        }
         await routeHandler.fulfill({
           status: 200,
           contentType: 'application/json; charset=utf-8',
-          body: JSON.stringify({
-            state: 'ok',
-            selectedLocalDate: parsedBody.selectedLocalDate,
-            capabilities: {
-              canReviewAssigned: true,
-              canApproveAssigned: true,
-            },
-            queue: [
-              {
-                employee: {
-                  firstName: 'Alex',
-                  lastName: 'Reviewer',
-                },
-                status: 'employee_approved',
-                snapshot: {
-                  id: 'observer-review-snapshot',
-                  hash: 'observer-review-hash',
-                },
-              },
-            ],
-          }),
+          body: JSON.stringify(queueResponse),
         });
         return true;
       }
 
+      const detailsResponse = parsePayrollReviewDetailsFixtureResponse({
+        state: 'ok',
+        snapshotId: parsedBody.snapshotId,
+        snapshotHash: parsedBody.snapshotHash,
+        periodStart: '2026-08-10',
+        periodEnd: '2026-08-16',
+        punches: [{
+          id: '77777777-7777-4777-8777-777777777777',
+          eventType: 'shift_started',
+          occurredAt: '2026-08-12T15:00:00.000Z',
+          timezone: 'America/Los_Angeles',
+        }],
+        classifiedSeconds: {
+          regular: 14400,
+          overtime: 0,
+          doubleTime: 0,
+        },
+        approvalHistory: [{
+          action: 'submitted',
+          occurredAt: '2026-08-12T18:00:00.000Z',
+          comment: null,
+          reason: null,
+          snapshotId: parsedBody.snapshotId,
+          snapshotHash: parsedBody.snapshotHash,
+        }],
+        blockers: [],
+        unresolvedBlockerCount: 0,
+      });
+      if (!detailsResponse) {
+        return false;
+      }
       await routeHandler.fulfill({
         status: 200,
         contentType: 'application/json; charset=utf-8',
-        body: JSON.stringify({
-          state: 'ok',
-          employee: {
-            firstName: 'Alex',
-            lastName: 'Reviewer',
-          },
-          status: 'employee_approved',
-          snapshot: {
-            id: parsedBody.snapshot.id,
-            hash: parsedBody.snapshot.hash,
-            isCurrent: true,
-          },
-          totals: {
-            regularMinutes: 240,
-          },
-          compensation: {
-            grossPayCents: 12800,
-          },
-          punches: [
-            {
-              id: 'observer-punch-1',
-              kind: 'clock_in',
-              localOccurredAt: '2026-08-12T08:00:00-07:00',
-            },
-          ],
-          history: [
-            {
-              id: 'observer-history-1',
-              status: 'employee_approved',
-              actorLabel: 'Employee',
-              localCreatedAt: '2026-08-12T09:00:00-07:00',
-            },
-          ],
-          blockers: [],
-          unresolvedBlockerCount: 0,
-        }),
+        body: JSON.stringify(detailsResponse),
       });
       return true;
     }

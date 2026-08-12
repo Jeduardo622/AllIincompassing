@@ -144,7 +144,6 @@ begin
   if p_target_organization_id is null
     or p_employment_profile_id is null
     or p_pay_period_id is null
-    or p_source_actor_user_id is null
     or p_source_table is null
     or p_source_row_id is null
   then
@@ -173,14 +172,12 @@ begin
     return;
   end if;
 
+  if p_source_actor_user_id is null then
+    raise exception using errcode = '42501', message = 'authoritative actor is required for approval invalidation';
+  end if;
+
   v_payload := jsonb_build_object(
-    'sourceTable', p_source_table,
-    'sourceRowId', p_source_row_id,
-    'sourceActorUserId', p_source_actor_user_id,
-    'employmentProfileId', p_employment_profile_id,
-    'payPeriodId', p_pay_period_id,
-    'resolvedAction', 'approval_invalidated',
-    'sourcePayload', coalesce(p_source_payload, '{}'::jsonb)
+    'resolvedAction', 'approval_invalidated'
   );
   v_payload_hash := app.payroll_hash_payload(v_payload);
 
@@ -371,26 +368,29 @@ set search_path = ''
 as $$
 declare
   v_event_at timestamptz;
+  v_source_actor_user_id uuid;
   v_pay_period_id uuid;
 begin
   if new.source_session_attendance_event_id is not null then
-    select attendance_row.event_at
-    into v_event_at
+    select attendance_row.event_at, attendance_row.actor_user_id
+    into v_event_at, v_source_actor_user_id
     from public.session_attendance_events attendance_row
     where attendance_row.organization_id = new.organization_id
       and attendance_row.employment_profile_id = new.employment_profile_id
       and attendance_row.id = new.source_session_attendance_event_id
     limit 1;
+  else
+    v_event_at := new.created_at;
+    v_source_actor_user_id := auth.uid();
   end if;
 
-  v_event_at := coalesce(v_event_at, new.created_at);
   v_pay_period_id := app.resolve_payroll_period_id(new.organization_id, new.employment_profile_id, v_event_at);
 
   perform app.append_payroll_approval_invalidation(
     new.organization_id,
     new.employment_profile_id,
     v_pay_period_id,
-    auth.uid(),
+    v_source_actor_user_id,
     'timekeeping_exceptions',
     new.id,
     jsonb_build_object('exceptionCode', new.exception_code)
@@ -429,6 +429,19 @@ create trigger timekeeping_exceptions_append_payroll_approval_invalidation
   after insert on public.timekeeping_exceptions
   for each row
   execute function app.invalidate_payroll_approval_from_timekeeping_exceptions();
+
+drop policy if exists payroll_audit_events_authenticated_select on public.payroll_audit_events;
+create policy payroll_audit_events_authenticated_select
+  on public.payroll_audit_events
+  for select
+  to authenticated
+  using (
+    app.payroll_actor_has_capability(organization_id, 'payroll.resolve_exceptions')
+    or (
+      operation <> 'append_payroll_approval_invalidation'
+      and app.payroll_actor_has_capability(organization_id, 'payroll.export_period')
+    )
+  );
 
 revoke all on function app.append_payroll_approval_invalidation(uuid, uuid, uuid, uuid, text, uuid, jsonb) from public, anon, authenticated, service_role;
 revoke all on function app.invalidate_payroll_approval_from_employee_time_events() from public, anon, authenticated, service_role;

@@ -43,12 +43,16 @@ describe("payroll approval workflow repair migration contract", () => {
     expect(sql).toMatch(/pg_catalog\.pg_advisory_xact_lock/i);
     expect(sql).toMatch(/from public\.timesheet_approvals/i);
     expect(sql).toMatch(/app\.payroll_approval_transition_allowed\(v_latest\.action,\s*'approval_invalidated'\)/i);
+    expect(sql).toMatch(/authoritative actor is required for approval invalidation/i);
     expect(sql).toMatch(/insert into public\.timesheet_approvals/i);
     expect(sql).toMatch(/'approval_invalidated'/i);
     expect(sql).toMatch(/previous_transition_id/i);
     expect(sql).toMatch(/actor_user_id[\s\S]*p_source_actor_user_id/i);
     expect(sql).toMatch(/target_table[\s\S]*'timesheet_approvals'/i);
     expect(sql).toMatch(/resolvedAction',\s*'approval_invalidated'/i);
+    expect(sql).not.toMatch(/sourceRowId/i);
+    expect(sql).not.toMatch(/sourceActorUserId/i);
+    expect(sql).not.toMatch(/sourcePayload/i);
   });
 
   it("wires invalidation triggers to reviewable payroll append tables without widening tenant scope, RLS, or grants", () => {
@@ -64,6 +68,12 @@ describe("payroll approval workflow repair migration contract", () => {
     }
 
     expect(sql).toMatch(/organization_id = new\.organization_id/i);
+    expect(sql).toMatch(/select attendance_row\.event_at,\s*attendance_row\.actor_user_id/i);
+    expect(sql).toMatch(/source_session_attendance_event_id is not null/i);
+    expect(sql).toMatch(/v_source_actor_user_id := auth\.uid\(\)/i);
+    expect(sql).toMatch(/drop policy if exists payroll_audit_events_authenticated_select/i);
+    expect(sql).toMatch(/operation <> 'append_payroll_approval_invalidation'/i);
+    expect(sql).toMatch(/payroll\.resolve_exceptions/i);
     expect(sql).not.toMatch(/grant select on public\.timesheet_approvals to service_role/i);
     expect(sql).not.toMatch(/grant insert on public\.timesheet_approvals to authenticated/i);
     expect(sql).not.toMatch(/alter table public\.timesheet_approvals disable row level security/i);

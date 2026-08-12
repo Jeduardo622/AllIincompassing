@@ -1511,6 +1511,19 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll administration rpc runtime contr
       [IDS.orgB, IDS.employeeB, sensitiveRateCents],
     );
     await admin.query(
+      `insert into public.payroll_audit_events (
+         organization_id, actor_user_id, operation, target_table, target_row_id, payload
+       ) values (
+         $1::uuid,
+         $2::uuid,
+         'append_payroll_approval_invalidation',
+         'timesheet_approvals',
+         gen_random_uuid(),
+         jsonb_build_object('resolvedAction', 'approval_invalidated')
+       )`,
+      [IDS.orgA, IDS.employeeA],
+    );
+    await admin.query(
       `insert into public.payroll_mutation_receipts (
          organization_id, actor_user_id, operation, idempotency_key, payload_hash, result_payload
        ) values (
@@ -1532,9 +1545,9 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll administration rpc runtime contr
       withRole(admin, "authenticated", readerUserId, async () => ({
         auditEvents: (
           await admin.query(
-            `select organization_id, actor_user_id, payload
+            `select organization_id, actor_user_id, operation, payload
              from public.payroll_audit_events
-             order by organization_id, created_at, id`,
+             order by organization_id, operation, created_at, id`,
           )
         ).rows,
         mutationReceipts: (
@@ -1552,6 +1565,7 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll administration rpc runtime contr
         {
           organization_id: IDS.orgA,
           actor_user_id: IDS.adminA,
+          operation: "execute_payroll_administration",
           payload: expect.objectContaining({
             action: "add_rate_version",
             compensationRedacted: true,
@@ -1566,7 +1580,16 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll administration rpc runtime contr
       auditEvents: [
         {
           organization_id: IDS.orgA,
+          actor_user_id: IDS.employeeA,
+          operation: "append_payroll_approval_invalidation",
+          payload: expect.objectContaining({
+            resolvedAction: "approval_invalidated",
+          }),
+        },
+        {
+          organization_id: IDS.orgA,
           actor_user_id: IDS.adminA,
+          operation: "execute_payroll_administration",
           payload: expect.objectContaining({
             action: "add_rate_version",
             compensationRedacted: true,
@@ -1605,6 +1628,11 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll administration rpc runtime contr
         ),
       ).toBe(true);
     }
+    expect(
+      exportOnlyVisibility.auditEvents.every(
+        (row) => row.operation !== "append_payroll_approval_invalidation",
+      ),
+    ).toBe(true);
   });
 
   it("requires payroll.configure_employment for generate_periods reads and writes", async () => {

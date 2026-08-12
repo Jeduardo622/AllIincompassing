@@ -71,7 +71,14 @@ const attendanceCorrectionPayloadSchema = z.object({
   }).passthrough(),
 }).passthrough();
 
-const payrollSessionContextSchema = z.object({
+const payrollSessionContextFeatureDisabledSchema = z.object({
+  state: z.literal("feature_disabled"),
+  sessionId: z.string().uuid(),
+  organizationId: z.string().uuid(),
+}).strict();
+
+const payrollSessionContextOkSchema = z.object({
+  state: z.literal("ok"),
   sessionId: z.string().uuid(),
   organizationId: z.string().uuid(),
   employmentProfileId: z.string().uuid(),
@@ -81,6 +88,11 @@ const payrollSessionContextSchema = z.object({
   canonicalWorkLocation: workLocationSchema,
   activeShiftEventId: z.string().uuid().nullable(),
 }).strict();
+
+const payrollSessionContextResponseSchema = z.discriminatedUnion("state", [
+  payrollSessionContextFeatureDisabledSchema,
+  payrollSessionContextOkSchema,
+]);
 
 const payrollBootstrapSchema = z.object({
   organizationId: z.string().min(1),
@@ -190,7 +202,8 @@ export type PayrollSessionAttendanceEvent = z.infer<typeof sessionAttendanceEven
 export type PayrollTimeCorrectionRequest = z.infer<typeof timeCorrectionRequestSchema>;
 export type PayrollSessionAttendanceCorrectionRequest = z.infer<typeof sessionAttendanceCorrectionRequestSchema>;
 export type PayrollTimekeepingException = z.infer<typeof timekeepingExceptionSchema>;
-export type PayrollSessionContext = z.infer<typeof payrollSessionContextSchema>;
+export type PayrollSessionContext = z.infer<typeof payrollSessionContextOkSchema>;
+export type PayrollSessionContextResponse = z.infer<typeof payrollSessionContextResponseSchema>;
 export type PayrollDayResponse = {
   state: PayrollDayState;
   bootstrap?: PayrollBootstrap;
@@ -377,7 +390,22 @@ export async function fetchPayrollDay(scope: PayrollScope): Promise<PayrollDayRe
   };
 }
 
-export async function fetchSessionPayrollContext(sessionId: string): Promise<PayrollSessionContext> {
+type FetchSessionPayrollContextOptions = {
+  allowDisabled?: boolean;
+};
+
+export async function fetchSessionPayrollContext(
+  sessionId: string,
+  options: { allowDisabled: true },
+): Promise<PayrollSessionContextResponse>;
+export async function fetchSessionPayrollContext(
+  sessionId: string,
+  options?: FetchSessionPayrollContextOptions,
+): Promise<PayrollSessionContext>;
+export async function fetchSessionPayrollContext(
+  sessionId: string,
+  options?: FetchSessionPayrollContextOptions,
+): Promise<PayrollSessionContextResponse> {
   const response = await postPayrollAction({
     action: "get_session_context",
     sessionId: z.string().uuid().parse(sessionId),
@@ -387,8 +415,19 @@ export async function fetchSessionPayrollContext(sessionId: string): Promise<Pay
     throw await parseFailure(response, "Failed to fetch payroll session context.");
   }
 
-  const parsed = await parseJsonResponse(response.clone(), payrollSessionContextSchema);
+  const parsed = await parseJsonResponse(response.clone(), payrollSessionContextResponseSchema);
   if (!parsed) {
+    throw toNormalizedApiError(
+      {
+        code: "invalid_response",
+        error: "Invalid payroll session context response.",
+      },
+      502,
+      "Invalid payroll session context response.",
+    );
+  }
+
+  if (parsed.state === "feature_disabled" && options?.allowDisabled !== true) {
     throw toNormalizedApiError(
       {
         code: "invalid_response",

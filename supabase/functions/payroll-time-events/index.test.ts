@@ -190,6 +190,7 @@ Deno.test("get_session_context calls get_session_payroll_context and returns a s
       calls.push({ fn, args });
       return {
         data: {
+          state: "ok",
           sessionId: "77777777-7777-7777-7777-777777777777",
           organizationId: "88888888-8888-8888-8888-888888888888",
           employmentProfileId: "99999999-9999-9999-9999-999999999999",
@@ -212,6 +213,7 @@ Deno.test("get_session_context calls get_session_payroll_context and returns a s
     },
   ]);
   assertEquals(await response.json(), {
+    state: "ok",
     sessionId: "77777777-7777-7777-7777-777777777777",
     organizationId: "88888888-8888-8888-8888-888888888888",
     employmentProfileId: "99999999-9999-9999-9999-999999999999",
@@ -221,6 +223,55 @@ Deno.test("get_session_context calls get_session_payroll_context and returns a s
     canonicalWorkLocation: "client_site",
     activeShiftEventId: null,
   });
+});
+
+Deno.test("get_session_context passes through explicit feature_disabled responses", async () => {
+  const response = await handlePayrollTimeEvents({
+    req: createRequest({
+      action: "get_session_context",
+      sessionId: "77777777-7777-7777-7777-777777777777",
+    }),
+    userContext: createUserContext(),
+    db: createRpcClient(() => ({
+      data: {
+        state: "feature_disabled",
+        sessionId: "77777777-7777-7777-7777-777777777777",
+        organizationId: "88888888-8888-8888-8888-888888888888",
+      },
+      error: null,
+    })),
+  });
+
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), {
+    state: "feature_disabled",
+    sessionId: "77777777-7777-7777-7777-777777777777",
+    organizationId: "88888888-8888-8888-8888-888888888888",
+  });
+});
+
+Deno.test("get_session_context fails closed for hybrid disabled responses", async () => {
+  const response = await handlePayrollTimeEvents({
+    req: createRequest({
+      action: "get_session_context",
+      sessionId: "77777777-7777-7777-7777-777777777777",
+    }),
+    userContext: createUserContext(),
+    db: createRpcClient(() => ({
+      data: {
+        state: "feature_disabled",
+        sessionId: "77777777-7777-7777-7777-777777777777",
+        organizationId: "88888888-8888-8888-8888-888888888888",
+        employmentProfileId: "99999999-9999-9999-9999-999999999999",
+      },
+      error: null,
+    })),
+  });
+
+  const body = await response.json() as { code?: string; error?: string };
+  assertEquals(response.status, 502);
+  assertEquals(body.code, "invalid_response");
+  assertEquals(body.error, "Invalid payroll session context response.");
 });
 
 Deno.test("get_session_context rejects raw authority fields before schema stripping", async () => {

@@ -105,7 +105,14 @@ const attendanceCorrectionSchema = z.object({
   }).passthrough(),
 }).passthrough();
 
-const sessionPayrollContextResponseSchema = z.object({
+const sessionPayrollContextFeatureDisabledResponseSchema = z.object({
+  state: z.literal("feature_disabled"),
+  sessionId: z.string().uuid(),
+  organizationId: z.string().uuid(),
+}).strict();
+
+const sessionPayrollContextOkResponseSchema = z.object({
+  state: z.literal("ok"),
   sessionId: z.string().uuid(),
   organizationId: z.string().uuid(),
   employmentProfileId: z.string().uuid(),
@@ -115,6 +122,11 @@ const sessionPayrollContextResponseSchema = z.object({
   canonicalWorkLocation: workLocationSchema,
   activeShiftEventId: z.string().uuid().nullable(),
 }).strict();
+
+const sessionPayrollContextResponseSchema = z.discriminatedUnion("state", [
+  sessionPayrollContextFeatureDisabledResponseSchema,
+  sessionPayrollContextOkResponseSchema,
+]);
 
 const payrollActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("get_day"), localDate: z.string().date() }),
@@ -435,12 +447,34 @@ export async function payrollTimeEventsHandler(request: Request): Promise<Respon
     }
 
     if (getApiAuthorityMode() === "edge") {
+      const parsedForwardedAction = payloadParsed
+        ? payrollActionSchema.safeParse(payload)
+        : null;
       const forwarded = await proxyToEdgeAuthority(request, {
         functionName: "payroll-time-events",
         accessToken,
         method: "POST",
       });
       const text = await forwarded.text();
+      if (
+        forwarded.ok &&
+        parsedForwardedAction?.success &&
+        parsedForwardedAction.data.action === "get_session_context"
+      ) {
+        let responsePayload: unknown;
+        try {
+          responsePayload = JSON.parse(text);
+        } catch {
+          responsePayload = null;
+        }
+        const parsedContext = sessionPayrollContextResponseSchema.safeParse(responsePayload);
+        if (!parsedContext.success) {
+          return errorResponse(request, "invalid_response", "Invalid payroll session context response.", {
+            status: 502,
+            headers: traceHeaders,
+          });
+        }
+      }
       const responseHeaders = new Headers({
         ...corsHeadersForRequest(request),
         ...traceHeaders,

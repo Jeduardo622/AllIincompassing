@@ -206,6 +206,7 @@ describe("payroll api client", () => {
   it("fetches session payroll context with only sessionId and parses the exact nullable fields", async () => {
     mockedCallApi.mockResolvedValueOnce(
       jsonResponse({
+        state: "ok",
         sessionId: "77777777-7777-7777-7777-777777777777",
         organizationId: "88888888-8888-8888-8888-888888888888",
         employmentProfileId: "99999999-9999-9999-9999-999999999999",
@@ -220,6 +221,7 @@ describe("payroll api client", () => {
     await expect(
       fetchSessionPayrollContext("77777777-7777-7777-7777-777777777777"),
     ).resolves.toEqual({
+      state: "ok",
       sessionId: "77777777-7777-7777-7777-777777777777",
       organizationId: "88888888-8888-8888-8888-888888888888",
       employmentProfileId: "99999999-9999-9999-9999-999999999999",
@@ -245,17 +247,48 @@ describe("payroll api client", () => {
     expect(headers.get("Idempotency-Key")).toBeNull();
   });
 
+  it("passes through explicit feature_disabled session context responses only when requested", async () => {
+    mockedCallApi.mockResolvedValueOnce(
+      jsonResponse({
+        state: "feature_disabled",
+        sessionId: "77777777-7777-7777-7777-777777777777",
+        organizationId: "88888888-8888-8888-8888-888888888888",
+      }),
+    );
+
+    await expect(
+      fetchSessionPayrollContext("77777777-7777-7777-7777-777777777777", { allowDisabled: true }),
+    ).resolves.toEqual({
+      state: "feature_disabled",
+      sessionId: "77777777-7777-7777-7777-777777777777",
+      organizationId: "88888888-8888-8888-8888-888888888888",
+    });
+  });
+
+  it("fails closed on feature_disabled session context responses unless disabled pass-through is explicit", async () => {
+    mockedCallApi.mockResolvedValueOnce(
+      jsonResponse({
+        state: "feature_disabled",
+        sessionId: "77777777-7777-7777-7777-777777777777",
+        organizationId: "88888888-8888-8888-8888-888888888888",
+      }),
+    );
+
+    await expect(
+      fetchSessionPayrollContext("77777777-7777-7777-7777-777777777777"),
+    ).rejects.toMatchObject({
+      code: "invalid_response",
+      status: 502,
+    });
+  });
+
   it("fails closed when session payroll context response shape drifts", async () => {
     mockedCallApi.mockResolvedValueOnce(
       jsonResponse({
+        state: "feature_disabled",
         sessionId: "77777777-7777-7777-7777-777777777777",
         organizationId: "88888888-8888-8888-8888-888888888888",
-        employmentProfileId: "99999999-9999-9999-9999-999999999999",
         employmentTimezone: null,
-        actorIsAssignedEmployee: true,
-        canClockSelf: false,
-        canonicalWorkLocation: "office",
-        activeShiftEventId: null,
       }),
     );
 

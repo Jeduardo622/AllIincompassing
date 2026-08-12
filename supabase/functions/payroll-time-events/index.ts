@@ -107,7 +107,14 @@ const attendanceCorrectionSchema = z.object({
   }).passthrough(),
 }).passthrough();
 
-const sessionPayrollContextResponseSchema = z.object({
+const sessionPayrollContextFeatureDisabledResponseSchema = z.object({
+  state: z.literal("feature_disabled"),
+  sessionId: z.string().uuid(),
+  organizationId: z.string().uuid(),
+}).strict();
+
+const sessionPayrollContextOkResponseSchema = z.object({
+  state: z.literal("ok"),
   sessionId: z.string().uuid(),
   organizationId: z.string().uuid(),
   employmentProfileId: z.string().uuid(),
@@ -117,6 +124,11 @@ const sessionPayrollContextResponseSchema = z.object({
   canonicalWorkLocation: workLocationSchema,
   activeShiftEventId: z.string().uuid().nullable(),
 }).strict();
+
+const sessionPayrollContextResponseSchema = z.discriminatedUnion("state", [
+  sessionPayrollContextFeatureDisabledResponseSchema,
+  sessionPayrollContextOkResponseSchema,
+]);
 
 const payrollActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("get_day"), localDate: z.string().date() }),

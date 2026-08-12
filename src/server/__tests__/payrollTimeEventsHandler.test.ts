@@ -179,6 +179,38 @@ describe("payrollTimeEventsHandler", () => {
     expect(response.headers.get("x-agent-operation-id")).toBe("edge-agent");
   });
 
+  it("fails closed for hybrid disabled session context responses in edge mode", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
+    vi.mocked(proxyToEdgeAuthority).mockResolvedValue(
+      new Response(JSON.stringify({
+        state: "feature_disabled",
+        sessionId: "77777777-7777-7777-7777-777777777777",
+        organizationId: "88888888-8888-8888-8888-888888888888",
+        employmentTimezone: "America/Los_Angeles",
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const response = await payrollTimeEventsHandler(
+      new Request("http://localhost/api/payroll-time-events", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken()}` },
+        body: JSON.stringify({
+          action: "get_session_context",
+          sessionId: "77777777-7777-7777-7777-777777777777",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      code: "invalid_response",
+      message: "Invalid payroll session context response.",
+    }));
+  });
+
   it("does not use a service-role fallback in legacy mode and calls the protected RPC with the caller token only", async () => {
     vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
     vi.mocked(fetchJson).mockResolvedValue({
@@ -225,6 +257,7 @@ describe("payrollTimeEventsHandler", () => {
       ok: true,
       status: 200,
       data: {
+        state: "ok",
         sessionId: "77777777-7777-7777-7777-777777777777",
         organizationId: "88888888-8888-8888-8888-888888888888",
         employmentProfileId: "99999999-9999-9999-9999-999999999999",
@@ -264,6 +297,7 @@ describe("payrollTimeEventsHandler", () => {
       }),
     );
     expect(await response.json()).toEqual({
+      state: "ok",
       sessionId: "77777777-7777-7777-7777-777777777777",
       organizationId: "88888888-8888-8888-8888-888888888888",
       employmentProfileId: "99999999-9999-9999-9999-999999999999",
@@ -273,6 +307,72 @@ describe("payrollTimeEventsHandler", () => {
       canonicalWorkLocation: "office",
       activeShiftEventId: null,
     });
+  });
+
+  it("passes through explicit feature_disabled session context responses in legacy mode", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
+    vi.mocked(fetchJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        state: "feature_disabled",
+        sessionId: "77777777-7777-7777-7777-777777777777",
+        organizationId: "88888888-8888-8888-8888-888888888888",
+      },
+    });
+
+    const response = await payrollTimeEventsHandler(
+      new Request("http://localhost/api/payroll-time-events", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${createAuthToken()}`,
+        },
+        body: JSON.stringify({
+          action: "get_session_context",
+          sessionId: "77777777-7777-7777-7777-777777777777",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      state: "feature_disabled",
+      sessionId: "77777777-7777-7777-7777-777777777777",
+      organizationId: "88888888-8888-8888-8888-888888888888",
+    });
+  });
+
+  it("fails closed for hybrid disabled session context responses in legacy mode", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
+    vi.mocked(fetchJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        state: "feature_disabled",
+        sessionId: "77777777-7777-7777-7777-777777777777",
+        organizationId: "88888888-8888-8888-8888-888888888888",
+        employmentTimezone: "America/Los_Angeles",
+      },
+    });
+
+    const response = await payrollTimeEventsHandler(
+      new Request("http://localhost/api/payroll-time-events", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${createAuthToken()}`,
+        },
+        body: JSON.stringify({
+          action: "get_session_context",
+          sessionId: "77777777-7777-7777-7777-777777777777",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      code: "invalid_response",
+      message: "Invalid payroll session context response.",
+    }));
   });
 
   it("rejects get_session_context authority fields in legacy mode before any RPC call", async () => {

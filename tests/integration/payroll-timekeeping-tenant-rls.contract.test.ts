@@ -22,16 +22,19 @@ const captureSql = captureMigrationName
       "utf8",
     )
   : "";
-const sessionLifecycleMigrationName =
-  readdirSync(path.join(process.cwd(), "supabase", "migrations")).find((name) =>
-    name.endsWith("payroll_session_lifecycle_context.sql"),
-  ) ?? "";
-const sessionLifecycleSql = sessionLifecycleMigrationName
-  ? readFileSync(
-      path.join(process.cwd(), "supabase", "migrations", sessionLifecycleMigrationName),
-      "utf8",
-    )
-  : "";
+const sessionLifecycleBaseMigrationName =
+  "20260812103000_payroll_session_lifecycle_context.sql";
+const sessionLifecycleBaseSql = readFileSync(
+  path.join(process.cwd(), "supabase", "migrations", sessionLifecycleBaseMigrationName),
+  "utf8",
+);
+const sessionLifecycleAdditiveMigrationName =
+  "20260812113000_payroll_session_lifecycle_context_disabled_state.sql";
+const sessionLifecycleAdditiveSql = readFileSync(
+  path.join(process.cwd(), "supabase", "migrations", sessionLifecycleAdditiveMigrationName),
+  "utf8",
+);
+const sessionLifecycleSql = `${sessionLifecycleBaseSql}\n${sessionLifecycleAdditiveSql}`;
 const functionDefinition = (qualifiedName: string): string => {
   const matches = `${sql}\n${captureSql}\n${sessionLifecycleSql}`.match(
     new RegExp(
@@ -63,14 +66,20 @@ describe("payroll timekeeping tenant and RLS contract", () => {
     );
   });
 
-  it("adds the bounded Task 2E-A lifecycle migration without widening raw source-event access", () => {
-    expect(sessionLifecycleSql).toMatch(
+  it("keeps the bounded Task 2E lifecycle base migration and adds a scoped disabled-state override without widening raw source-event access", () => {
+    expect(sessionLifecycleBaseSql).toMatch(
       /@migration-dependencies:\s*20260811214856_payroll_timekeeping_capture_read_model\.sql/i,
     );
-    expect(sessionLifecycleSql).toMatch(
+    expect(sessionLifecycleBaseSql).toMatch(
       /create or replace function public\.get_session_payroll_context\(session_id uuid\)/i,
     );
-    expect(sessionLifecycleSql).toMatch(
+    expect(sessionLifecycleAdditiveSql).toMatch(
+      /@migration-dependencies:\s*20260812103000_payroll_session_lifecycle_context\.sql/i,
+    );
+    expect(sessionLifecycleAdditiveSql).toMatch(
+      /create or replace function public\.get_session_payroll_context\(session_id uuid\)/i,
+    );
+    expect(sessionLifecycleAdditiveSql).toMatch(
       /grant execute on function public\.get_session_payroll_context\(uuid\) to authenticated/i,
     );
     expect(sessionLifecycleSql).not.toMatch(
@@ -201,14 +210,22 @@ describe("payroll timekeeping tenant and RLS contract", () => {
     expect(contextDefinition).toMatch(/auth\.uid\(\)/i);
     expect(contextDefinition).toMatch(/app\.resolve_user_organization_id/i);
     expect(contextDefinition).toMatch(/session_attendance\.record_assigned/i);
+    expect(contextDefinition).toMatch(/from public\.feature_flags flag/i);
+    expect(contextDefinition).toMatch(/left join public\.organization_feature_flags org_override/i);
     expect(contextDefinition).not.toMatch(/user_therapist_links/i);
+    expect(contextDefinition).not.toMatch(/app\.payroll_feature_enabled/i);
     expect(contextDefinition).toMatch(/location_type/i);
     expect(contextDefinition).toMatch(/'other'/i);
+    expect(contextDefinition).toMatch(/'state',\s*'feature_disabled'/i);
+    expect(contextDefinition).toMatch(/'state',\s*'ok'/i);
+    expect(contextDefinition).toMatch(/unsupported payroll jurisdiction/i);
+    expect(contextDefinition).toMatch(/active payroll policy is required/i);
     expect(contextDefinition).not.toMatch(/profile\.role/i);
     expect(contextDefinition).not.toMatch(/event_payload/i);
 
     const definition = functionDefinition("public.record_session_attendance_event");
     expect(definition).not.toMatch(/public\.get_session_payroll_context/i);
+    expect(definition).toMatch(/app\.payroll_feature_enabled\(v_actor_org,\s*v_employment\.home_jurisdiction,\s*null\)/i);
     expect(definition).not.toMatch(/event_payload ->> 'timezone'/i);
     expect(definition).not.toMatch(/event_payload ->> 'workLocation'/i);
     expect(definition).not.toMatch(/v_event_data ->> 'employeeTimeEventId'/i);

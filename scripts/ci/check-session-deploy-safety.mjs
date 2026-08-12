@@ -504,6 +504,62 @@ const requireJob = (jobs, name, violations) => {
   return job;
 };
 
+const APPROVED_UPSTASH_SECRET_REFERENCE_LINES = [
+  "UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}",
+  "UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}",
+];
+
+const expressionContainsWholeSecretsContext = (expression) => {
+  const normalized = expression.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  if (/\bfromjson\s*\(\s*tojson\s*\(\s*secrets\s*\)\s*\)/i.test(normalized)) {
+    return true;
+  }
+  if (/\btojson\s*\(\s*secrets\s*\)/i.test(normalized)) {
+    return true;
+  }
+
+  for (const match of normalized.matchAll(/\bsecrets\b/gi)) {
+    const suffix = normalized.slice(match.index + "secrets".length);
+    const next = suffix.match(/^\s*(.)/)?.[1] ?? "";
+    if (next !== ".") {
+      return true;
+    }
+
+    const property = suffix.slice(suffix.indexOf(".") + 1).trimStart();
+    if (!/^[A-Za-z_][A-Za-z0-9_-]*/.test(property)) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+const workflowUsesWholeSecretsContext = (workflowContent) => {
+  const lines = workflowContent
+    .split(/\r?\n/)
+    .map((line) => stripComment(line))
+    .filter((line) => !APPROVED_UPSTASH_SECRET_REFERENCE_LINES.includes(line.trim()));
+
+  for (const line of lines) {
+    for (const expression of line.matchAll(/\$\{\{([\s\S]*?)\}\}/g)) {
+      if (expressionContainsWholeSecretsContext(expression[1] ?? "")) {
+        return true;
+      }
+    }
+
+    const inlineIf = line.match(/^\s*if:\s*(.+)$/);
+    if (inlineIf && expressionContainsWholeSecretsContext(inlineIf[1])) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
 export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
   const violations = [];
   if (!/workflow_dispatch:\s*\n\s+inputs:\s*\n\s+activate_payroll_timesheets:\s*\n\s+description:[^\n]+\n\s+required:\s*true\s*\n\s+type:\s*boolean\s*\n\s+default:\s*false/.test(ciWorkflow)) {
@@ -852,18 +908,25 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
     const secretVerifyStep = deployPayrollAdministration.steps[secretVerifyIndex];
     if (
       syncIndex <= firstAttestationIndex ||
+      prereqIndex <= firstAttestationIndex ||
+      syncIndex <= prereqIndex ||
       !syncStep ||
       !sameRecord(syncStep.env, PAYROLL_ADMINISTRATION_SECRET_SYNC_ENV) ||
       !sameSequence(executableLines(syncStep.run), PAYROLL_ADMINISTRATION_SECRET_SYNC_LINES) ||
       !secretVerifyStep ||
       secretVerifyIndex <= prereqIndex ||
       secretVerifyIndex >= deployIndex ||
+      !sameRecord(prereqStep.env, {
+        SUPABASE_URL: "${{ secrets.SUPABASE_URL }}",
+        SUPABASE_PROJECT_REF: "${{ secrets.SUPABASE_PROJECT_REF }}",
+        SUPABASE_ACCESS_TOKEN: "${{ secrets.SUPABASE_ACCESS_TOKEN }}",
+      }) ||
       !sameRecord(secretVerifyStep.env, {
         SUPABASE_PROJECT_REF: "${{ secrets.SUPABASE_PROJECT_REF }}",
         SUPABASE_ACCESS_TOKEN: "${{ secrets.SUPABASE_ACCESS_TOKEN }}",
       })
     ) {
-      violations.push("deploy_payroll_administration must sync and verify the two required remote Edge secrets before deploy");
+      violations.push("deploy_payroll_administration must validate target consistency before remote secret sync, then sync and verify the two required remote Edge secrets before deploy");
     }
 
     const upstashSecretReferenceLines = ciWorkflow
@@ -872,12 +935,11 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
       .filter((line) =>
         /\bsecrets\b[^\r\n]*(?:UPSTASH_REDIS_REST_URL|UPSTASH_REDIS_REST_TOKEN)/.test(line),
       );
-    const allowedUpstashSecretReferenceLines = [
-      "UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}",
-      "UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}",
-    ];
-    if (!sameSet(upstashSecretReferenceLines, allowedUpstashSecretReferenceLines)) {
+    if (!sameSet(upstashSecretReferenceLines, APPROVED_UPSTASH_SECRET_REFERENCE_LINES)) {
       violations.push("Upstash GitHub secrets may be referenced only by the exact approved payroll-administration sync bindings");
+    }
+    if (workflowUsesWholeSecretsContext(ciWorkflow)) {
+      violations.push("CI workflow must not reference the whole GitHub secrets context");
     }
 
     const finalAttestationIndex = deployPayrollAdministration.steps.findIndex(

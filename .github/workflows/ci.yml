@@ -458,6 +458,13 @@ jobs:
             exit 1
           fi
 
+      - name: Validate payroll-administration deploy prerequisites
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/ci/check-edge-deploy-prerequisites.mjs payroll-administration
+
       - name: Sync payroll-administration Upstash Edge secrets
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
@@ -474,13 +481,6 @@ jobs:
             "UPSTASH_REDIS_REST_URL=${UPSTASH_REDIS_REST_URL}" \
             "UPSTASH_REDIS_REST_TOKEN=${UPSTASH_REDIS_REST_TOKEN}" \
             --project-ref "${SUPABASE_PROJECT_REF}"
-
-      - name: Validate payroll-administration deploy prerequisites
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: node scripts/ci/check-edge-deploy-prerequisites.mjs payroll-administration
 
       - name: Verify payroll-administration remote Edge secret names
         env:

@@ -127,6 +127,7 @@ const ciWorkflow = ({
   deployPayrollAdministrationRestriction = "github.event_name == 'workflow_dispatch' && inputs.activate_payroll_administration == true && github.ref == 'refs/heads/main'",
   deployPayrollAdministrationBeforeFirstAttestation = "",
   deployPayrollAdministrationFirstAttestation = PAYROLL_ADMINISTRATION_FIRST_ATTESTATION,
+  deployPayrollAdministrationAfterFirstAttestation = "",
   deployPayrollAdministrationSecretSync = PAYROLL_ADMINISTRATION_SECRET_SYNC,
   deployPayrollAdministrationPrereqRun = "node scripts/ci/check-edge-deploy-prerequisites.mjs payroll-administration",
   deployPayrollAdministrationSecretVerify = PAYROLL_ADMINISTRATION_SECRET_VERIFY,
@@ -308,9 +309,14 @@ ${deployPayrollNeeds.map((need) => `      - ${need}`).join("\n")}
     steps:
 ${deployPayrollAdministrationBeforeFirstAttestation}
 ${deployPayrollAdministrationFirstAttestation}
-${deployPayrollAdministrationSecretSync}
+${deployPayrollAdministrationAfterFirstAttestation}
       - name: Validate payroll-administration deploy prerequisites
+        env:
+          SUPABASE_URL: \${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: \${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: ${deployPayrollAdministrationPrereqRun}
+${deployPayrollAdministrationSecretSync}
 ${deployPayrollAdministrationSecretVerify}
 ${deployPayrollAdministrationFinalAttestation}
 ${deployPayrollAdministrationBeforeDeploy}
@@ -1341,6 +1347,23 @@ describe("check-session-deploy-safety", () => {
     expect(result.stderr).toContain("Upstash GitHub secrets may be referenced only by the exact approved payroll-administration sync bindings");
   });
 
+  test.each([
+    `      - run: echo "\${{ secrets }}"`,
+    `      - run: echo "\${{ toJSON(secrets) }}"`,
+    `      - run: echo "\${{ toJson(secrets) }}"`,
+    `      - run: echo "\${{ fromJSON(toJSON(secrets)) }}"`,
+    `      - run: echo "\${{ secrets['UPSTASH_REDIS_REST_TOKEN'] }}"`,
+    `      - run: echo "\${{ secrets.* }}"`,
+    `      - run: echo blocked
+        if: secrets != ''`,
+  ])("rejects whole GitHub secrets context access patterns", (policyExtra) => {
+    const fixtureRoot = makeFixture({ ci: { policyExtra } });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("CI workflow must not reference the whole GitHub secrets context");
+  });
+
   test("rejects duplicate Upstash secret bindings", () => {
     const fixtureRoot = makeFixture({
       ci: {
@@ -1366,7 +1389,21 @@ describe("check-session-deploy-safety", () => {
     const result = runCheck(fixtureRoot);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("deploy_payroll_administration must sync and verify the two required remote Edge secrets before deploy");
+    expect(result.stderr).toContain("deploy_payroll_administration must validate target consistency before remote secret sync, then sync and verify the two required remote Edge secrets before deploy");
+  });
+
+  test("rejects payroll-administration remote secret sync before target validation", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollAdministrationAfterFirstAttestation: `${PAYROLL_ADMINISTRATION_SECRET_SYNC}
+`,
+        deployPayrollAdministrationSecretSync: "",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_administration must validate target consistency before remote secret sync, then sync and verify the two required remote Edge secrets before deploy");
   });
 
   test("rejects extra payroll-administration deploy and prerequisite commands", () => {

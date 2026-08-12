@@ -8946,6 +8946,7 @@ export type Database = {
           exception_code: string
           id: string
           organization_id: string
+          source_session_attendance_event_id: string | null
         }
         Insert: {
           created_at?: string
@@ -8954,6 +8955,7 @@ export type Database = {
           exception_code: string
           id?: string
           organization_id: string
+          source_session_attendance_event_id?: string | null
         }
         Update: {
           created_at?: string
@@ -8962,6 +8964,7 @@ export type Database = {
           exception_code?: string
           id?: string
           organization_id?: string
+          source_session_attendance_event_id?: string | null
         }
         Relationships: [
           {
@@ -8977,6 +8980,426 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timekeeping_exceptions_source_session_attendance_event_fkey"
+            columns: ["source_session_attendance_event_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "session_attendance_events"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      timesheet_meal_resolutions: {
+        Row: {
+          created_at: string
+          deadline_at: string
+          employment_profile_id: string
+          id: string
+          meal_end_event_id: string | null
+          meal_ordinal: number
+          meal_start_event_id: string | null
+          organization_id: string
+          pay_period_id: string
+          resolution_code: string
+          resolution_reason: string | null
+          resolved_at: string
+          resolved_by: string
+          shift_start_event_id: string
+        }
+        Insert: {
+          created_at?: string
+          deadline_at: string
+          employment_profile_id: string
+          id?: string
+          meal_end_event_id?: string | null
+          meal_ordinal: number
+          meal_start_event_id?: string | null
+          organization_id: string
+          pay_period_id: string
+          resolution_code: string
+          resolution_reason?: string | null
+          resolved_at?: string
+          resolved_by: string
+          shift_start_event_id: string
+        }
+        Update: {
+          created_at?: string
+          deadline_at?: string
+          employment_profile_id?: string
+          id?: string
+          meal_end_event_id?: string | null
+          meal_ordinal?: number
+          meal_start_event_id?: string | null
+          organization_id?: string
+          pay_period_id?: string
+          resolution_code?: string
+          resolution_reason?: string | null
+          resolved_at?: string
+          resolved_by?: string
+          shift_start_event_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "timesheet_meal_resolutions_employment_profile_id_organizat_fkey"
+            columns: ["employment_profile_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employment_profiles"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "timesheet_meal_resolutions_meal_end_event_id_organization__fkey"
+            columns: [
+              "meal_end_event_id",
+              "organization_id",
+              "employment_profile_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "employee_time_events"
+            referencedColumns: [
+              "id",
+              "organization_id",
+              "employment_profile_id",
+            ]
+          },
+          {
+            foreignKeyName: "timesheet_meal_resolutions_meal_start_event_id_organizatio_fkey"
+            columns: [
+              "meal_start_event_id",
+              "organization_id",
+              "employment_profile_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "employee_time_events"
+            referencedColumns: [
+              "id",
+              "organization_id",
+              "employment_profile_id",
+            ]
+          },
+          {
+            foreignKeyName: "timesheet_meal_resolutions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timesheet_meal_resolutions_pay_period_id_organization_id_fkey"
+            columns: ["pay_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "pay_periods"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "timesheet_meal_resolutions_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timesheet_meal_resolutions_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "timesheet_meal_resolutions_shift_start_event_id_organizati_fkey"
+            columns: [
+              "shift_start_event_id",
+              "organization_id",
+              "employment_profile_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "employee_time_events"
+            referencedColumns: [
+              "id",
+              "organization_id",
+              "employment_profile_id",
+            ]
+          },
+        ]
+      }
+      timesheet_snapshot_current_heads: {
+        Row: {
+          created_at: string
+          created_by: string
+          employment_profile_id: string
+          id: string
+          organization_id: string
+          pay_period_id: string
+          prior_snapshot_id: string | null
+          snapshot_id: string
+          source_hash: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          employment_profile_id: string
+          id?: string
+          organization_id: string
+          pay_period_id: string
+          prior_snapshot_id?: string | null
+          snapshot_id: string
+          source_hash: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          employment_profile_id?: string
+          id?: string
+          organization_id?: string
+          pay_period_id?: string
+          prior_snapshot_id?: string | null
+          snapshot_id?: string
+          source_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "timesheet_snapshot_current_he_employment_profile_id_organi_fkey"
+            columns: ["employment_profile_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employment_profiles"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "timesheet_snapshot_current_he_pay_period_id_organization_i_fkey"
+            columns: ["pay_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "pay_periods"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "timesheet_snapshot_current_he_prior_snapshot_id_organizati_fkey"
+            columns: [
+              "prior_snapshot_id",
+              "organization_id",
+              "employment_profile_id",
+              "pay_period_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "timesheet_snapshots"
+            referencedColumns: [
+              "id",
+              "organization_id",
+              "employment_profile_id",
+              "pay_period_id",
+            ]
+          },
+          {
+            foreignKeyName: "timesheet_snapshot_current_he_snapshot_id_organization_id__fkey"
+            columns: [
+              "snapshot_id",
+              "organization_id",
+              "employment_profile_id",
+              "pay_period_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "timesheet_snapshots"
+            referencedColumns: [
+              "id",
+              "organization_id",
+              "employment_profile_id",
+              "pay_period_id",
+            ]
+          },
+          {
+            foreignKeyName: "timesheet_snapshot_current_heads_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timesheet_snapshot_current_heads_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "timesheet_snapshot_current_heads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      timesheet_snapshot_lines: {
+        Row: {
+          created_at: string
+          employment_profile_id: string
+          id: string
+          line_code: string
+          line_payload: Json
+          line_type: string
+          organization_id: string
+          pay_period_id: string
+          snapshot_id: string
+        }
+        Insert: {
+          created_at?: string
+          employment_profile_id: string
+          id?: string
+          line_code: string
+          line_payload?: Json
+          line_type: string
+          organization_id: string
+          pay_period_id: string
+          snapshot_id: string
+        }
+        Update: {
+          created_at?: string
+          employment_profile_id?: string
+          id?: string
+          line_code?: string
+          line_payload?: Json
+          line_type?: string
+          organization_id?: string
+          pay_period_id?: string
+          snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "timesheet_snapshot_lines_employment_profile_id_organizatio_fkey"
+            columns: ["employment_profile_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employment_profiles"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "timesheet_snapshot_lines_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timesheet_snapshot_lines_pay_period_id_organization_id_fkey"
+            columns: ["pay_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "pay_periods"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "timesheet_snapshot_lines_snapshot_id_organization_id_emplo_fkey"
+            columns: [
+              "snapshot_id",
+              "organization_id",
+              "employment_profile_id",
+              "pay_period_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "timesheet_snapshots"
+            referencedColumns: [
+              "id",
+              "organization_id",
+              "employment_profile_id",
+              "pay_period_id",
+            ]
+          },
+        ]
+      }
+      timesheet_snapshots: {
+        Row: {
+          canonical_payload: Json
+          created_at: string
+          created_by: string
+          double_time_seconds: number
+          employment_profile_id: string
+          gross_earnings_cents: number
+          id: string
+          lockable: boolean
+          meal_premium_cents: number
+          organization_id: string
+          overtime_seconds: number
+          pay_period_id: string
+          policy_version_id: string
+          regular_seconds: number
+          source_hash: string
+          source_high_water: Json
+        }
+        Insert: {
+          canonical_payload?: Json
+          created_at?: string
+          created_by: string
+          double_time_seconds?: number
+          employment_profile_id: string
+          gross_earnings_cents?: number
+          id?: string
+          lockable?: boolean
+          meal_premium_cents?: number
+          organization_id: string
+          overtime_seconds?: number
+          pay_period_id: string
+          policy_version_id: string
+          regular_seconds?: number
+          source_hash: string
+          source_high_water?: Json
+        }
+        Update: {
+          canonical_payload?: Json
+          created_at?: string
+          created_by?: string
+          double_time_seconds?: number
+          employment_profile_id?: string
+          gross_earnings_cents?: number
+          id?: string
+          lockable?: boolean
+          meal_premium_cents?: number
+          organization_id?: string
+          overtime_seconds?: number
+          pay_period_id?: string
+          policy_version_id?: string
+          regular_seconds?: number
+          source_hash?: string
+          source_high_water?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "timesheet_snapshots_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timesheet_snapshots_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "timesheet_snapshots_employment_profile_id_organization_id_fkey"
+            columns: ["employment_profile_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employment_profiles"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "timesheet_snapshots_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timesheet_snapshots_pay_period_id_organization_id_fkey"
+            columns: ["pay_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "pay_periods"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "timesheet_snapshots_policy_version_id_organization_id_fkey"
+            columns: ["policy_version_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_policy_versions"
+            referencedColumns: ["id", "organization_id"]
           },
         ]
       }
@@ -10023,6 +10446,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      derive_timesheet_snapshot: {
+        Args: { p_idempotency_key: string; selected_local_date: string }
+        Returns: Json
+      }
       detect_scheduling_conflicts: {
         Args: {
           p_end_date: string
@@ -10456,6 +10883,11 @@ export type Database = {
         Args: { p_metadata: Json }
         Returns: string
       }
+      get_payroll_day: { Args: { local_date: string }; Returns: Json }
+      get_payroll_timesheet_period: {
+        Args: { selected_local_date: string }
+        Returns: Json
+      }
       get_pending_supervision_review_packets: {
         Args: never
         Returns: {
@@ -10574,6 +11006,10 @@ export type Database = {
           signed_at: string
           therapist_name: string
         }[]
+      }
+      get_session_payroll_context: {
+        Args: { session_id: string }
+        Returns: Json
       }
       get_sessions_optimized: {
         Args: {
@@ -11834,3 +12270,4 @@ export const Constants = {
     },
   },
 } as const
+

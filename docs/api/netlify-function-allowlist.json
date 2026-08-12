@@ -18,6 +18,8 @@
   "boundaryExceptions": [
     "admin-invite-email.ts",
     "assessment-documents-extract-background.ts",
+    "payroll-time-events.ts",
+    "payroll-timesheets.ts",
     "sessions-complete.ts",
     "sessions-week-forward.ts",
     "session-notes-upsert.ts"

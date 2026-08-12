@@ -11,6 +11,7 @@ import {
 const expectedPaths = [
   '/',
   '/schedule',
+  '/time',
   '/clients',
   '/clients/new',
   '/clients/:clientId',
@@ -110,6 +111,17 @@ describe('route guard access controls', () => {
     expect(hasRoleAccess('/schedule', 'midtier')).toBe(true);
     expect(hasRoleAccess('/schedule', 'admin_schedule')).toBe(true);
     expect(hasRoleAccess('/schedule', 'admin')).toBe(true);
+  });
+
+  it('permits the time route shell for the broad staff role set only', () => {
+    expect(hasRoleAccess('/time', 'client')).toBe(false);
+    expect(hasRoleAccess('/time', 'bt')).toBe(true);
+    expect(hasRoleAccess('/time', 'therapist')).toBe(true);
+    expect(hasRoleAccess('/time', 'midtier')).toBe(true);
+    expect(hasRoleAccess('/time', 'admin_schedule')).toBe(true);
+    expect(hasRoleAccess('/time', 'admin')).toBe(true);
+    expect(hasRoleAccess('/time', 'bcba')).toBe(true);
+    expect(hasRoleAccess('/time', 'super_admin')).toBe(true);
   });
 
   it('allows canonical BT users to access fill-docs after therapist role normalization', () => {

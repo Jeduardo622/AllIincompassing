@@ -89,6 +89,33 @@ describe('responsive-ui-observer contract', () => {
       }
     });
 
+    it('accepts only the fixed synthetic payroll-time scenario on /time', () => {
+      expect(parseObserverArgs([
+        'node',
+        'scripts/playwright-responsive-ui-observer.ts',
+        `--base-url=${baseUrl}`,
+        '--route=/time',
+        '--scenario=payroll-time',
+      ])).toEqual({
+        baseUrl,
+        routes: ['/time'],
+        scenario: 'payroll-time',
+      });
+
+      for (const invalidArgs of [
+        ['--route=/schedule', '--scenario=payroll-time'],
+        ['--route=/time', '--route=/desk', '--scenario=payroll-time'],
+        ['--route=/time', '--scenario=payroll-time', '--scenario=payroll-time'],
+      ]) {
+        expect(() => parseObserverArgs([
+          'node',
+          'scripts/playwright-responsive-ui-observer.ts',
+          `--base-url=${baseUrl}`,
+          ...invalidArgs,
+        ])).toThrow();
+      }
+    });
+
     it('rejects a missing route flag', () => {
       expect(() =>
         parseObserverArgs([
@@ -278,6 +305,27 @@ describe('responsive-ui-observer contract', () => {
       expect(evidenceCard).toMatchObject({ scenarioId: 'schedule-overlap' });
       expect(JSON.stringify(evidenceCard)).not.toContain('observer-admin');
       expect(JSON.stringify(evidenceCard)).not.toContain('stub-observer');
+    });
+
+    it('records fixed payroll-time provenance without exposing payroll payload details', () => {
+      const evidenceCard = buildEvidenceCard({
+        route: '/time',
+        viewportName: 'mobile',
+        result: 'pass',
+        failures: [],
+        metrics: {
+          horizontalOverflow: false,
+          clippedFixedControls: [],
+          visibleTouchTargets: [{ width: 48, height: 48 }],
+        },
+        screenshotHash: `sha256:${'3'.repeat(64)}`,
+        evidenceHash: `sha256:${'4'.repeat(64)}`,
+        scenario: 'payroll-time',
+      } as any);
+
+      expect(evidenceCard).toMatchObject({ scenarioId: 'payroll-time' });
+      expect(JSON.stringify(evidenceCard)).not.toContain('employmentProfileId');
+      expect(JSON.stringify(evidenceCard)).not.toContain('sessionAttendance');
     });
 
     it('derives deterministic route slugs and paths while excluding raw payloads', () => {

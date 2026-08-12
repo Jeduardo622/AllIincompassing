@@ -88,6 +88,7 @@ const run = async () => {
   );
 
   const legacy = new Set(policy.legacyCompatibilityFunctions ?? []);
+  const boundaryExceptions = new Set(policy.boundaryExceptions ?? []);
   const exceptions = Array.isArray(exceptionsDoc.exceptions) ? exceptionsDoc.exceptions : [];
   const exceptionsByFile = new Map(
     exceptions
@@ -137,15 +138,32 @@ const run = async () => {
     }
   }
 
+  for (const fileName of boundaryExceptions) {
+    if (!byFile.has(fileName)) {
+      errors.push(`Missing convergence tracker entry for boundary exception ${fileName}.`);
+    }
+    if (legacy.has(fileName)) {
+      errors.push(`${fileName} cannot be classified as both a boundary exception and a legacy compatibility function.`);
+    }
+  }
+
   for (const [fileName, entry] of byFile.entries()) {
-    if (!legacy.has(fileName) && entry.status !== "retired") {
+    const isLegacy = legacy.has(fileName);
+    const isBoundaryException = boundaryExceptions.has(fileName);
+
+    if (!isLegacy && !isBoundaryException && entry.status !== "retired") {
       errors.push(
-        `Convergence tracker lists ${fileName} as active (${entry.status}) but it is not in legacyCompatibilityFunctions.`,
+        `Convergence tracker lists ${fileName} as active (${entry.status}) but it is not in legacyCompatibilityFunctions or boundaryExceptions.`,
       );
     }
-    if (entry.status === "retired" && legacy.has(fileName)) {
+    if (entry.status === "retired" && isLegacy) {
       errors.push(
         `Convergence tracker marks ${fileName} as retired, but it is still present in legacyCompatibilityFunctions.`,
+      );
+    }
+    if (entry.status === "retired" && isBoundaryException) {
+      errors.push(
+        `Convergence tracker marks ${fileName} as retired, but it is still present in boundaryExceptions.`,
       );
     }
     if (entry.status === "retired") {
@@ -174,8 +192,9 @@ const run = async () => {
 
     if (entry.status !== "retired") {
       const exception = exceptionsByFile.get(fileName);
+      const trackedLabel = isBoundaryException ? "boundary exception" : "legacy shim";
       if (!exception) {
-        errors.push(`Active legacy shim ${fileName} is missing a runtime exception entry in docs/api/runtime-exceptions.json.`);
+        errors.push(`Active ${trackedLabel} ${fileName} is missing a runtime exception entry in docs/api/runtime-exceptions.json.`);
       } else {
         if (!exception.owner || typeof exception.owner !== "string") {
           errors.push(`Runtime exception for ${fileName} is missing owner.`);
@@ -238,7 +257,7 @@ const run = async () => {
 
   const retired = entries.filter((entry) => entry.status === "retired").length;
   console.log(
-    `API convergence check passed (${entries.length} tracked entries, ${retired} retired, ${legacy.size} legacy compatibility shims).`,
+    `API convergence check passed (${entries.length} tracked entries, ${retired} retired, ${legacy.size} legacy compatibility shims, ${boundaryExceptions.size} boundary exceptions).`,
   );
 };
 

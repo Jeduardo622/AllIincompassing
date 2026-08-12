@@ -14,7 +14,7 @@ export type ObserverArgs = {
   scenario?: ObserverScenario;
 };
 
-export type ObserverScenario = 'schedule-overlap';
+export type ObserverScenario = 'schedule-overlap' | 'payroll-time';
 
 export type LayoutTouchTarget = {
   width: number;
@@ -58,6 +58,7 @@ export const OBSERVER_POLICY: ObserverPolicy = {
 };
 
 const SCHEDULE_OVERLAP_SCENARIO: ObserverScenario = 'schedule-overlap';
+const PAYROLL_TIME_SCENARIO: ObserverScenario = 'payroll-time';
 
 const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
@@ -183,10 +184,10 @@ export const parseObserverArgs = (argv: string[]): ObserverArgs => {
         throw new Error('Scenario may be provided only once.');
       }
       const candidate = arg.slice('--scenario='.length);
-      if (candidate !== SCHEDULE_OVERLAP_SCENARIO) {
+      if (candidate !== SCHEDULE_OVERLAP_SCENARIO && candidate !== PAYROLL_TIME_SCENARIO) {
         throw new Error(`Unknown observer scenario: ${candidate}`);
       }
-      scenario = SCHEDULE_OVERLAP_SCENARIO;
+      scenario = candidate;
       continue;
     }
     throw new Error(`Unknown observer argument: ${arg}`);
@@ -201,6 +202,11 @@ export const parseObserverArgs = (argv: string[]): ObserverArgs => {
   if (scenario === SCHEDULE_OVERLAP_SCENARIO) {
     if (routes.length !== 1 || routes[0] !== '/schedule') {
       throw new Error('The schedule-overlap scenario requires exactly one --route=/schedule.');
+    }
+  }
+  if (scenario === PAYROLL_TIME_SCENARIO) {
+    if (routes.length !== 1 || routes[0] !== '/time') {
+      throw new Error('The payroll-time scenario requires exactly one --route=/time.');
     }
   }
 
@@ -236,6 +242,7 @@ export const sanitizeObserverFailures = (messages: string[]): string[] => {
     'scenario-trigger-missing',
     'scenario-dialog-missing',
     'unexpected-scenario-request',
+    'scenario-bootstrap-missing',
   ]);
 
   for (const message of messages) {

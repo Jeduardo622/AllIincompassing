@@ -3,6 +3,7 @@ type RouteModulePreloader = () => Promise<unknown>;
 const routeModulePreloaders: Record<string, RouteModulePreloader> = {
   '/': () => import('../pages/Dashboard'),
   '/schedule': () => import('../pages/Schedule'),
+  '/time': () => import('../pages/Time'),
   '/messages': () => import('../pages/messages/MessagesInbox'),
   '/clients': () => import('../pages/Clients'),
   '/therapists': () => import('../pages/Therapists'),

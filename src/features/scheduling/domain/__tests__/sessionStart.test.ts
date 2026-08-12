@@ -67,6 +67,23 @@ describe("startSessionFromModal", () => {
     })).resolves.toBeUndefined();
   });
 
+  it("surfaces already-started as an explicit low-level result for orchestration callers", async () => {
+    callApiMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({
+        code: "conflict",
+        message: "Session already started",
+        rpcCode: "ALREADY_STARTED",
+      }), { status: 409 }),
+    );
+
+    const { startSessionApiRequest } = await import("../sessionStart");
+    await expect(startSessionApiRequest({
+      sessionId: "11111111-1111-1111-1111-111111111111",
+      programId: "22222222-2222-2222-2222-222222222222",
+      goalId: "33333333-3333-3333-3333-333333333333",
+    })).resolves.toEqual({ outcome: "already_started" });
+  });
+
   it("keeps non-idempotent session conflicts visible", async () => {
     callApiMock.mockResolvedValueOnce(
       new Response(JSON.stringify({

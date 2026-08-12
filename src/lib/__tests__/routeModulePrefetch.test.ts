@@ -4,15 +4,20 @@ import { createRouteModulePrefetcher } from '../routeModulePrefetch';
 describe('createRouteModulePrefetcher', () => {
   it('prefetches each registered route module at most once after a successful load', async () => {
     const scheduleLoader = vi.fn().mockResolvedValue({});
+    const timeLoader = vi.fn().mockResolvedValue({});
     const preloadRouteModule = createRouteModulePrefetcher({
       '/schedule': scheduleLoader,
+      '/time': timeLoader,
     });
 
     preloadRouteModule('/schedule');
     preloadRouteModule('/schedule');
+    preloadRouteModule('/time');
+    preloadRouteModule('/time');
     await Promise.resolve();
 
     expect(scheduleLoader).toHaveBeenCalledTimes(1);
+    expect(timeLoader).toHaveBeenCalledTimes(1);
   });
 
   it('allows retrying a route preload after a failed import', async () => {

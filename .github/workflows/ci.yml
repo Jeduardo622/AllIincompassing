@@ -8,6 +8,11 @@ on:
         required: true
         type: boolean
         default: false
+      activate_payroll_approvals:
+        description: Explicitly activate the reviewed payroll-approvals Edge function
+        required: true
+        type: boolean
+        default: false
       activate_payroll_administration:
         description: Explicitly activate the reviewed payroll-administration Edge function
         required: true
@@ -218,7 +223,7 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           CI_SUPABASE_AUTH_PARITY_REQUIRED: "true"
           CI_EDGE_ROUTE_PARITY_REQUIRED: "true"
-          SUPABASE_FUNCTION_PARITY_SCOPE: "sessions-book,sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf,session-notes-pdf-status,session-notes-pdf-download,programs,goals,goal-targets,program-notes,payroll-timesheets,payroll-administration"
+          SUPABASE_FUNCTION_PARITY_SCOPE: "sessions-book,sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf,session-notes-pdf-status,session-notes-pdf-download,programs,goals,goal-targets,program-notes,payroll-timesheets,payroll-administration,payroll-approvals"
           CI_RLS_OVERLAP_REQUIRED: ${{ secrets.SUPABASE_DB_URL != '' && 'true' || 'false' }}
           CI_REQUIRED_CHECKS: "ci-gate"
           API_AUTHORITY_MODE: "edge"
@@ -251,7 +256,7 @@ jobs:
     needs:
       - policy
       - change_scope
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.activate_payroll_timesheets == true || inputs.activate_payroll_administration == true))
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.activate_payroll_timesheets == true || inputs.activate_payroll_administration == true || inputs.activate_payroll_approvals == true))
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -418,6 +423,73 @@ jobs:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: node scripts/ci/deploy-payroll-timesheets-function.mjs
+
+  deploy_payroll_approvals:
+    name: deploy-payroll-approvals
+    runs-on: ubuntu-latest
+    needs:
+      - policy
+      - tenant_safety
+      - runtime_migration_parity
+      - lint_typecheck
+      - unit_tests
+      - build
+    if: github.event_name == 'workflow_dispatch' && inputs.activate_payroll_approvals == true && github.ref == 'refs/heads/main'
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Attest payroll-approvals current main before credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_WORKFLOW_SHA: ${{ github.sha }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          main_ref_record="$(gh api --method GET "repos/${GH_REPOSITORY}/git/ref/heads/main" --jq '[.ref, .object.sha] | @tsv')"
+          IFS=$'\t' read -r live_main_ref live_main_sha <<< "${main_ref_record}"
+          if [ "${live_main_ref}" != "refs/heads/main" ] || [ -z "${live_main_sha}" ] || [ "${live_main_sha}" != "${EXPECTED_WORKFLOW_SHA}" ]; then
+            echo "::error::Refusing payroll-approvals deployment because workflow SHA is not immutable current main." >&2
+            exit 1
+          fi
+
+      - name: Validate payroll-approvals deploy prerequisites
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/ci/check-edge-deploy-prerequisites.mjs payroll-approvals
+
+      - name: Re-attest payroll-approvals current main immediately before deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_WORKFLOW_SHA: ${{ github.sha }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          main_ref_record="$(gh api --method GET "repos/${GH_REPOSITORY}/git/ref/heads/main" --jq '[.ref, .object.sha] | @tsv')"
+          IFS=$'\t' read -r live_main_ref live_main_sha <<< "${main_ref_record}"
+          if [ "${live_main_ref}" != "refs/heads/main" ] || [ -z "${live_main_sha}" ] || [ "${live_main_sha}" != "${EXPECTED_WORKFLOW_SHA}" ]; then
+            echo "::error::Refusing payroll-approvals deployment because workflow SHA is not immutable current main." >&2
+            exit 1
+          fi
+
+      - name: Deploy payroll-approvals edge function
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/ci/deploy-payroll-approvals-function.mjs
 
   deploy_payroll_administration:
     name: deploy-payroll-administration
@@ -1204,6 +1276,7 @@ jobs:
       - deploy_session_edge
       - deploy_ai_agent_edge
       - deploy_payroll_timesheets
+      - deploy_payroll_approvals
       - deploy_payroll_administration
       - lint_typecheck
       - unit_tests
@@ -1219,6 +1292,7 @@ jobs:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_REF: ${{ github.ref }}
           ACTIVATE_PAYROLL_TIMESHEETS: ${{ inputs.activate_payroll_timesheets || false }}
+          ACTIVATE_PAYROLL_APPROVALS: ${{ inputs.activate_payroll_approvals || false }}
           ACTIVATE_PAYROLL_ADMINISTRATION: ${{ inputs.activate_payroll_administration || false }}
           DOCS_ONLY: ${{ needs.change_scope.outputs.docs_only }}
           AI_AGENT_CHANGED: ${{ needs.change_scope.outputs.ai_agent_changed }}
@@ -1230,6 +1304,7 @@ jobs:
           DEPLOY_SESSION_EDGE_RESULT: ${{ needs.deploy_session_edge.result }}
           DEPLOY_AI_AGENT_EDGE_RESULT: ${{ needs.deploy_ai_agent_edge.result }}
           DEPLOY_PAYROLL_TIMESHEETS_RESULT: ${{ needs.deploy_payroll_timesheets.result }}
+          DEPLOY_PAYROLL_APPROVALS_RESULT: ${{ needs.deploy_payroll_approvals.result }}
           DEPLOY_PAYROLL_ADMINISTRATION_RESULT: ${{ needs.deploy_payroll_administration.result }}
           LINT_RESULT: ${{ needs.lint_typecheck.result }}
           UNIT_RESULT: ${{ needs.unit_tests.result }}
@@ -1254,7 +1329,7 @@ jobs:
           failed=()
           [ "${POLICY_RESULT}" = "success" ] || failed+=("policy=${POLICY_RESULT}")
           [ "${TENANT_SAFETY_RESULT}" = "success" ] || failed+=("tenant-safety=${TENANT_SAFETY_RESULT}")
-          if { [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF}" = "refs/heads/main" ]; } || { [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && { [ "${ACTIVATE_PAYROLL_TIMESHEETS}" = "true" ] || [ "${ACTIVATE_PAYROLL_ADMINISTRATION}" = "true" ]; }; }; then
+          if { [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF}" = "refs/heads/main" ]; } || { [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && { [ "${ACTIVATE_PAYROLL_TIMESHEETS}" = "true" ] || [ "${ACTIVATE_PAYROLL_ADMINISTRATION}" = "true" ] || [ "${ACTIVATE_PAYROLL_APPROVALS}" = "true" ]; }; }; then
             [ "${RUNTIME_PARITY_RESULT}" = "success" ] || failed+=("runtime-migration-parity=${RUNTIME_PARITY_RESULT}")
           fi
           [ "${START_SESSION_RUNTIME_CONTRACT_RESULT}" = "success" ] || failed+=("start-session-runtime-contract=${START_SESSION_RUNTIME_CONTRACT_RESULT}")
@@ -1266,6 +1341,9 @@ jobs:
           fi
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "${ACTIVATE_PAYROLL_TIMESHEETS}" = "true" ] && [ "${DEPLOY_PAYROLL_TIMESHEETS_RESULT}" != "success" ]; then
             failed+=("deploy-payroll-timesheets=${DEPLOY_PAYROLL_TIMESHEETS_RESULT}")
+          fi
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "${ACTIVATE_PAYROLL_APPROVALS}" = "true" ] && [ "${DEPLOY_PAYROLL_APPROVALS_RESULT}" != "success" ]; then
+            failed+=("deploy-payroll-approvals=${DEPLOY_PAYROLL_APPROVALS_RESULT}")
           fi
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "${ACTIVATE_PAYROLL_ADMINISTRATION}" = "true" ] && [ "${DEPLOY_PAYROLL_ADMINISTRATION_RESULT}" != "success" ]; then
             failed+=("deploy-payroll-administration=${DEPLOY_PAYROLL_ADMINISTRATION_RESULT}")

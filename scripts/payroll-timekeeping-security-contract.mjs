@@ -44,11 +44,15 @@ const IDS = {
   schedulerA: "10000000-0000-4000-8000-000000000013",
   managerA: "10000000-0000-4000-8000-000000000014",
   payrollAdminA: "10000000-0000-4000-8000-000000000015",
+  priorEmployeeA: "10000000-0000-4000-8000-000000000016",
+  linkOnlyA: "10000000-0000-4000-8000-000000000017",
   clientA: "10000000-0000-4000-8000-000000000021",
   clientB: "10000000-0000-4000-8000-000000000022",
   sessionA: "10000000-0000-4000-8000-000000000031",
   sessionB: "10000000-0000-4000-8000-000000000032",
   delegatedSessionA: "10000000-0000-4000-8000-000000000033",
+  reassignedSessionA: "10000000-0000-4000-8000-000000000034",
+  linkOnlySessionA: "10000000-0000-4000-8000-000000000035",
   employmentA: "10000000-0000-4000-8000-000000000041",
   employmentB: "10000000-0000-4000-8000-000000000042",
   employmentAHistorical: "10000000-0000-4000-8000-000000000043",
@@ -103,6 +107,7 @@ const expectReject = async (callback, pattern, label) => {
 };
 
 const cleanup = async (client) => {
+  await client.query("rollback");
   await client.query("begin");
   try {
     await client.query("set local session_replication_role = replica");
@@ -113,7 +118,13 @@ const cleanup = async (client) => {
       IDS.schedulerA,
       IDS.managerA,
       IDS.payrollAdminA,
+      IDS.priorEmployeeA,
+      IDS.linkOnlyA,
     ];
+    await client.query(
+      "delete from public.user_therapist_links where user_id = any($1::uuid[])",
+      [users],
+    );
     for (const table of [
       "timekeeping_exceptions",
       "session_attendance_correction_requests",
@@ -333,6 +344,74 @@ const main = async () => {
       "feature-disabled attendance event",
     );
     await setFeature(admin, true);
+
+    await expectReject(
+      () =>
+        recordAttendance(
+          admin,
+          IDS.userA,
+          attendancePayload(
+            "session_started",
+            "2026-06-16T18:30:00Z",
+            IDS.reassignedSessionA,
+          ),
+          "current-assignee-historical-attendance-denied",
+        ),
+      /42501|record_assigned|out of scope/i,
+      "current assignee cannot write prior employment attendance",
+    );
+
+    const historicalSelfAttendanceStart = await recordAttendance(
+      admin,
+      IDS.priorEmployeeA,
+      attendancePayload(
+        "session_started",
+        "2026-06-16T19:00:00Z",
+        IDS.reassignedSessionA,
+      ),
+      "historical-self-attendance-start",
+    );
+    assert(
+      historicalSelfAttendanceStart.employee_time_event_id === null &&
+        historicalSelfAttendanceStart.exception_id,
+      "Prior event-time employee self attendance did not create the unlinked start exception.",
+    );
+    const historicalSelfAttendanceEnd = await recordAttendance(
+      admin,
+      IDS.priorEmployeeA,
+      attendancePayload(
+        "session_ended",
+        "2026-06-16T20:00:00Z",
+        IDS.reassignedSessionA,
+      ),
+      "historical-self-attendance-end",
+    );
+    assert(
+      historicalSelfAttendanceEnd.employee_time_event_id === null &&
+        historicalSelfAttendanceEnd.exception_id === null,
+      "Prior event-time employee end did not reuse the unlinked start state without a second exception.",
+    );
+
+    await expectReject(
+      () => getSessionPayrollContext(admin, IDS.linkOnlyA, IDS.linkOnlySessionA),
+      /42501|record_assigned|out of scope/i,
+      "therapist-link-only actor context denied",
+    );
+    await expectReject(
+      () =>
+        recordAttendance(
+          admin,
+          IDS.linkOnlyA,
+          attendancePayload(
+            "session_started",
+            "2026-08-12T16:05:00Z",
+            IDS.linkOnlySessionA,
+          ),
+          "link-only-attendance-denied",
+        ),
+      /42501|record_assigned|out of scope/i,
+      "therapist-link-only actor attendance denied",
+    );
 
     const preShiftContext = await getSessionPayrollContext(admin, IDS.userA, IDS.sessionA);
     assert(
@@ -779,7 +858,7 @@ const main = async () => {
       historicalCorrection.request_id,
       "Historical correction after employment rollover/termination was not appended.",
     );
-    const attendanceCorrection = await withRole(admin, "authenticated", IDS.userA, async () =>
+    const attendanceCorrection = await withRole(admin, "authenticated", IDS.priorEmployeeA, async () =>
       (
         await admin.query(
           "select public.request_session_attendance_correction($1::jsonb, $2::text) as result",

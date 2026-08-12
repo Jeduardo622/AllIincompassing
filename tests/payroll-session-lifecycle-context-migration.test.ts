@@ -45,9 +45,8 @@ describe("payroll session lifecycle context migration contract", () => {
     expect(definition).toMatch(/set search_path = ''/i);
     expect(definition).toMatch(/auth\.uid\(\)/i);
     expect(definition).toMatch(/app\.resolve_user_organization_id/i);
-    expect(definition).toMatch(/current_user_is_super_admin/i);
-    expect(definition).toMatch(/current_user_has_exact_role_for_org/i);
-    expect(definition).toMatch(/user_therapist_links/i);
+    expect(definition).toMatch(/session_attendance\.record_assigned/i);
+    expect(definition).not.toMatch(/user_therapist_links/i);
     expect(definition).toMatch(/time\.clock_self/i);
     expect(definition).toMatch(/actorIsAssignedEmployee/i);
     expect(definition).toMatch(/canClockSelf/i);
@@ -74,13 +73,12 @@ describe("payroll session lifecycle context migration contract", () => {
 
   it("replaces attendance recording with server-derived authority and shift linkage", () => {
     const definition = functionDefinition("public.record_session_attendance_event");
-    expect(definition).toMatch(/public\.get_session_payroll_context/i);
+    expect(definition).not.toMatch(/public\.get_session_payroll_context/i);
     expect(definition).toMatch(/return v_receipt\.result_payload/i);
     expect(definition).toMatch(/v_receipt\.payload_hash <> v_payload_hash/i);
-    expect(definition).toMatch(/actorIsAssignedEmployee/i);
-    expect(definition).toMatch(/canClockSelf/i);
-    expect(definition).toMatch(/canonicalWorkLocation/i);
-    expect(definition).toMatch(/activeShiftEventId/i);
+    expect(definition).toMatch(/v_employment\.user_id = v_actor/i);
+    expect(definition).toMatch(/session_attendance\.record_assigned/i);
+    expect(definition).toMatch(/time\.clock_self/i);
     expect(definition).toMatch(/openSessionStartedEventId/i);
     expect(definition).toMatch(/insert into public\.session_attendance_events/i);
     expect(definition).toMatch(/event_type = 'session_started' and v_linked_employee_time_event_id is null/i);

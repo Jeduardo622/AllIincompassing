@@ -17,9 +17,6 @@ declare
   v_actor uuid := auth.uid();
   v_actor_org uuid;
   v_session record;
-  v_is_super_admin boolean := false;
-  v_has_schedule_authority boolean := false;
-  v_has_linked_therapist_authority boolean := false;
   v_employment_count bigint;
   v_employment public.employment_profiles%rowtype;
   v_actor_is_assigned_employee boolean := false;
@@ -85,41 +82,18 @@ begin
   order by employment.active_from desc
   limit 1;
 
-  select coalesce(public.current_user_is_super_admin(), false)
-  into v_is_super_admin;
-
-  select coalesce(
-    app.current_user_has_exact_role_for_org(
-      v_actor_org,
-      array['admin', 'admin_schedule']::text[]
-    ),
-    false
-  )
-  into v_has_schedule_authority;
-
-  select exists (
-    select 1
-    from public.user_therapist_links linked_therapist
-    where linked_therapist.user_id = v_actor
-      and linked_therapist.therapist_id = v_session.therapist_id
-  )
-  into v_has_linked_therapist_authority;
-
   v_actor_is_assigned_employee := v_employment.user_id = v_actor;
   v_can_clock_self := (
     v_actor_is_assigned_employee
     and app.payroll_actor_has_capability(v_actor_org, 'time.clock_self')
   );
 
-  if not (
-    v_actor_is_assigned_employee
-    or v_is_super_admin
-    or (
-      v_has_schedule_authority
-      and app.payroll_actor_has_capability(v_actor_org, 'session_attendance.record_assigned')
+  if not v_actor_is_assigned_employee
+    and not app.payroll_actor_has_capability(
+      v_actor_org,
+      'session_attendance.record_assigned'
     )
-    or v_has_linked_therapist_authority
-  ) then
+  then
     raise exception using errcode = '42501', message = 'session attendance actor is out of scope';
   end if;
 
@@ -198,13 +172,12 @@ declare
   v_idempotency_key text;
   v_payload_idempotency_key text;
   v_metadata jsonb := '{}'::jsonb;
-  v_context jsonb;
-  v_context_actor_is_assigned_employee boolean := false;
-  v_context_can_clock_self boolean := false;
-  v_context_canonical_work_location public.work_location := 'other';
-  v_context_active_shift_event_id uuid;
+  v_session record;
   v_employment_count bigint;
   v_employment public.employment_profiles%rowtype;
+  v_actor_is_assigned_employee boolean := false;
+  v_can_clock_self boolean := false;
+  v_canonical_work_location public.work_location := 'other';
   v_linked_employee_time_event_id uuid;
   v_linked_shift_work_location public.work_location;
   v_open_session_started_event public.session_attendance_events%rowtype;
@@ -292,27 +265,26 @@ begin
     raise exception using errcode = '42501', message = 'organization scope mismatch';
   end if;
 
-  v_context := public.get_session_payroll_context(v_session_id);
-  v_context_actor_is_assigned_employee := coalesce(
-    (v_context ->> 'actorIsAssignedEmployee')::boolean,
-    false
-  );
-  v_context_can_clock_self := coalesce((v_context ->> 'canClockSelf')::boolean, false);
-  v_context_canonical_work_location := coalesce(
-    nullif(v_context ->> 'canonicalWorkLocation', '')::public.work_location,
-    'other'::public.work_location
-  );
-  v_context_active_shift_event_id := nullif(v_context ->> 'activeShiftEventId', '')::uuid;
+  select
+    session_row.id,
+    session_row.organization_id,
+    session_row.therapist_id,
+    session_row.location_type
+  into v_session
+  from public.sessions session_row
+  where session_row.id = v_session_id
+    and session_row.organization_id = v_actor_org
+  limit 1;
+
+  if v_session.id is null or v_session.therapist_id is null then
+    raise exception using errcode = '42501', message = 'session is out of scope';
+  end if;
 
   select count(*)
   into v_employment_count
-  from public.sessions session_row
-  join public.employment_profiles employment
-    on employment.organization_id = session_row.organization_id
-   and employment.therapist_id = session_row.therapist_id
-  where session_row.id = v_session_id
-    and session_row.organization_id = v_actor_org
-    and session_row.therapist_id is not null
+  from public.employment_profiles employment
+  where employment.organization_id = v_actor_org
+    and employment.therapist_id = v_session.therapist_id
     and employment.active_from <= ((v_event_at at time zone employment.timezone)::date)
     and (
       employment.active_through is null
@@ -327,13 +299,9 @@ begin
 
   select employment.*
   into v_employment
-  from public.sessions session_row
-  join public.employment_profiles employment
-    on employment.organization_id = session_row.organization_id
-   and employment.therapist_id = session_row.therapist_id
-  where session_row.id = v_session_id
-    and session_row.organization_id = v_actor_org
-    and session_row.therapist_id is not null
+  from public.employment_profiles employment
+  where employment.organization_id = v_actor_org
+    and employment.therapist_id = v_session.therapist_id
     and employment.active_from <= ((v_event_at at time zone employment.timezone)::date)
     and (
       employment.active_through is null
@@ -342,9 +310,38 @@ begin
   order by employment.active_from desc
   limit 1;
 
-  if v_context_actor_is_assigned_employee and not v_context_can_clock_self then
+  v_actor_is_assigned_employee := v_employment.user_id = v_actor;
+  v_can_clock_self := (
+    v_actor_is_assigned_employee
+    and app.payroll_actor_has_capability(v_actor_org, 'time.clock_self')
+  );
+
+  if v_actor_is_assigned_employee then
+    if not v_can_clock_self then
+      raise exception using errcode = '42501', message = 'employee is out of scope';
+    end if;
+  elsif not app.payroll_actor_has_capability(
+    v_actor_org,
+    'session_attendance.record_assigned'
+  ) then
     raise exception using errcode = '42501', message = 'employee is out of scope';
   end if;
+
+  v_canonical_work_location := case
+    when v_session.location_type is null or btrim(v_session.location_type) = '' then 'other'::public.work_location
+    when lower(v_session.location_type) like '%office%'
+      or lower(v_session.location_type) like '%clinic%' then 'office'::public.work_location
+    when lower(v_session.location_type) like '%home%'
+      or lower(v_session.location_type) like '%telehealth%'
+      or lower(v_session.location_type) like '%remote%' then 'home'::public.work_location
+    when lower(v_session.location_type) like '%community%' then 'community'::public.work_location
+    when lower(v_session.location_type) like '%school%'
+      or lower(v_session.location_type) like '%campus%'
+      or lower(v_session.location_type) like '%client%'
+      or lower(v_session.location_type) like '%site%'
+      or lower(v_session.location_type) like '%daycare%' then 'client_site'::public.work_location
+    else 'other'::public.work_location
+  end;
 
   if not app.payroll_feature_enabled(v_actor_org, v_employment.home_jurisdiction, null) then
     raise exception using errcode = '42501', message = 'payroll timekeeping feature is disabled';
@@ -495,7 +492,7 @@ begin
     v_event_at,
     v_actor,
     v_employment.timezone,
-    coalesce(v_linked_shift_work_location, v_context_canonical_work_location),
+    coalesce(v_linked_shift_work_location, v_canonical_work_location),
     null,
     v_metadata
   )
@@ -526,12 +523,12 @@ begin
   v_audit_payload := jsonb_build_object(
     'requestedPayload', v_request_payload,
     'effectiveContext', jsonb_build_object(
-      'actorIsAssignedEmployee', v_context_actor_is_assigned_employee,
-      'canClockSelf', v_context_can_clock_self,
+      'actorIsAssignedEmployee', v_actor_is_assigned_employee,
+      'canClockSelf', v_can_clock_self,
       'employmentProfileId', v_employment.id,
       'employmentTimezone', v_employment.timezone,
       'canonicalWorkLocation', v_event.work_location,
-      'activeShiftEventId', coalesce(v_linked_employee_time_event_id, v_context_active_shift_event_id),
+      'activeShiftEventId', v_linked_employee_time_event_id,
       'openSessionStartedEventId', v_open_session_started_event.id
     )
   );

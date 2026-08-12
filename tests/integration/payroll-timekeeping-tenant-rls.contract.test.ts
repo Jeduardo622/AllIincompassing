@@ -191,23 +191,24 @@ describe("payroll timekeeping tenant and RLS contract", () => {
       /role_row\.name in \('admin', 'super_admin', 'admin_schedule'\)/i,
     );
     const definition = functionDefinition("public.record_session_attendance_event");
-    expect(definition).toMatch(/public\.get_session_payroll_context/i);
+    expect(definition).not.toMatch(/public\.get_session_payroll_context/i);
+    expect(definition).toMatch(/v_employment\.user_id = v_actor/i);
+    expect(definition).toMatch(/session_attendance\.record_assigned/i);
   });
 
   it("keeps session attendance authority server-derived and authenticated-only", () => {
     const contextDefinition = functionDefinition("public.get_session_payroll_context");
     expect(contextDefinition).toMatch(/auth\.uid\(\)/i);
     expect(contextDefinition).toMatch(/app\.resolve_user_organization_id/i);
-    expect(contextDefinition).toMatch(/current_user_is_super_admin/i);
-    expect(contextDefinition).toMatch(/current_user_has_exact_role_for_org/i);
-    expect(contextDefinition).toMatch(/user_therapist_links/i);
+    expect(contextDefinition).toMatch(/session_attendance\.record_assigned/i);
+    expect(contextDefinition).not.toMatch(/user_therapist_links/i);
     expect(contextDefinition).toMatch(/location_type/i);
     expect(contextDefinition).toMatch(/'other'/i);
     expect(contextDefinition).not.toMatch(/profile\.role/i);
     expect(contextDefinition).not.toMatch(/event_payload/i);
 
     const definition = functionDefinition("public.record_session_attendance_event");
-    expect(definition).toMatch(/public\.get_session_payroll_context/i);
+    expect(definition).not.toMatch(/public\.get_session_payroll_context/i);
     expect(definition).not.toMatch(/event_payload ->> 'timezone'/i);
     expect(definition).not.toMatch(/event_payload ->> 'workLocation'/i);
     expect(definition).not.toMatch(/v_event_data ->> 'employeeTimeEventId'/i);

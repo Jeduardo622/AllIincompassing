@@ -119,3 +119,34 @@ Results:
 - `verification summary`: `present`
 - `pr handoff`: ready for human review after push/PR in the parent workflow
 
+## Fix Round 1
+
+Commit base: `62bd627e`
+
+Reviewer findings addressed:
+
+- `record_session_attendance_event` no longer calls the current-time session context RPC. It resolves the org-scoped session and exactly one assigned employment at `occurredAt`, then permits self attendance only when that employment belongs to `auth.uid()` and the actor has `time.clock_self`; all non-self writes require `session_attendance.record_assigned`.
+- `get_session_payroll_context` no longer treats `user_therapist_links`, profile role, or schedule-role checks as payroll authority. Current assigned employees may read their immediate prompt context; every non-self caller must have `session_attendance.record_assigned`.
+- Exact-loopback fixtures now model one therapist reassigned from a terminated historical employee to a different current employee. The prior event-time employee succeeds, the current employee is denied for the prior event, a same-org therapist-link-only actor is denied for context and write, and the existing scheduler-capability actor succeeds.
+- Existing executable assertions continue to prove active-shift start linkage, session-end reuse of the open start link, one outside-shift exception only for a true unlinked start, and no delegated payroll shift mutation.
+
+TDD RED evidence:
+
+- Focused static contract: `4` expected failures detected the stale `get_session_payroll_context` write dependency and `user_therapist_links` authority.
+- Exact-loopback contract against the unchanged migration rejected the historical prior employee with `42501 session attendance actor is out of scope` from `get_session_payroll_context`.
+- Exact-loopback contract against the unchanged migration allowed the current assignee's prior-employment write, producing `current assignee cannot write prior employment attendance: expected rejection`.
+- Exact-loopback contract against the unchanged migration allowed the therapist-link-only context, producing `therapist-link-only actor context denied: expected rejection`.
+
+Fix-round verification:
+
+- `npm test -- --run tests/payroll-session-lifecycle-context-migration.test.ts tests/integration/payroll-timekeeping-tenant-rls.contract.test.ts tests/payroll-timekeeping-security-runner.test.ts` -> pass, `3` files / `24` tests.
+- `npx supabase db reset --local --yes` -> pass; replayed through `20260812103000_payroll_session_lifecycle_context.sql` on local Docker Supabase.
+- `PAYROLL_LOCAL_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres node scripts/payroll-timekeeping-security-contract.mjs` -> pass, synthetic exact-loopback contract.
+- `npm run typegen:local` -> pass; no generated type diff because RPC signatures are unchanged.
+- `npm run ci:check-focused` -> pass; protected DB-backed checks requiring `SUPABASE_DB_URL` remained explicitly skipped by the policy runner.
+- `npm run typecheck` -> pass.
+- `npm run validate:tenant` -> pass.
+- `npm run build` -> pass.
+- `npx supabase db advisors --local` -> exit `0`; filtered follow-up found no advisor findings for `get_session_payroll_context` or `record_session_attendance_event`. Repository-wide pre-existing advisor warnings remain outside this bounded slice.
+
+Fix-round verification result: `pass`. Human review remains mandatory because migration/RPC authority is a critical-lane protected surface.

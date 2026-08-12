@@ -15,7 +15,9 @@ values
   ('00000000-0000-0000-0000-000000000000', '10000000-0000-4000-8000-000000000012', 'authenticated', 'authenticated', 'payroll-contract-b@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"10000000-0000-4000-8000-000000000002"}'::jsonb),
   ('00000000-0000-0000-0000-000000000000', '10000000-0000-4000-8000-000000000013', 'authenticated', 'authenticated', 'payroll-scheduler-a@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"10000000-0000-4000-8000-000000000001"}'::jsonb),
   ('00000000-0000-0000-0000-000000000000', '10000000-0000-4000-8000-000000000014', 'authenticated', 'authenticated', 'payroll-manager-a@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"10000000-0000-4000-8000-000000000001"}'::jsonb),
-  ('00000000-0000-0000-0000-000000000000', '10000000-0000-4000-8000-000000000015', 'authenticated', 'authenticated', 'payroll-admin-a@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"10000000-0000-4000-8000-000000000001"}'::jsonb);
+  ('00000000-0000-0000-0000-000000000000', '10000000-0000-4000-8000-000000000015', 'authenticated', 'authenticated', 'payroll-admin-a@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"10000000-0000-4000-8000-000000000001"}'::jsonb),
+  ('00000000-0000-0000-0000-000000000000', '10000000-0000-4000-8000-000000000016', 'authenticated', 'authenticated', 'payroll-prior-employee-a@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"10000000-0000-4000-8000-000000000001"}'::jsonb),
+  ('00000000-0000-0000-0000-000000000000', '10000000-0000-4000-8000-000000000017', 'authenticated', 'authenticated', 'payroll-link-only-a@example.invalid', 'x', now(), now(), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"organization_id":"10000000-0000-4000-8000-000000000001"}'::jsonb);
 
 select set_config('app.bypass_profile_role_guard', 'on', true);
 update public.profiles
@@ -25,12 +27,15 @@ set first_name = 'Payroll',
       when '10000000-0000-4000-8000-000000000012'::uuid then 'Employee B'
       when '10000000-0000-4000-8000-000000000013'::uuid then 'Scheduler A'
       when '10000000-0000-4000-8000-000000000014'::uuid then 'Manager A'
-      else 'Payroll Admin A'
+      when '10000000-0000-4000-8000-000000000015'::uuid then 'Payroll Admin A'
+      when '10000000-0000-4000-8000-000000000016'::uuid then 'Prior Employee A'
+      else 'Link Only A'
     end,
     role = case id
       when '10000000-0000-4000-8000-000000000013'::uuid then 'admin_schedule'::public.role_type
       when '10000000-0000-4000-8000-000000000014'::uuid then 'bcba'::public.role_type
       when '10000000-0000-4000-8000-000000000015'::uuid then 'admin'::public.role_type
+      when '10000000-0000-4000-8000-000000000017'::uuid then 'bcba'::public.role_type
       else 'bt'::public.role_type
     end,
     organization_id = case id
@@ -44,7 +49,9 @@ where id in (
   '10000000-0000-4000-8000-000000000012',
   '10000000-0000-4000-8000-000000000013',
   '10000000-0000-4000-8000-000000000014',
-  '10000000-0000-4000-8000-000000000015'
+  '10000000-0000-4000-8000-000000000015',
+  '10000000-0000-4000-8000-000000000016',
+  '10000000-0000-4000-8000-000000000017'
 );
 select set_config('app.bypass_profile_role_guard', 'off', true);
 
@@ -56,7 +63,9 @@ from (
     ('10000000-0000-4000-8000-000000000012'::uuid, 'bt'),
     ('10000000-0000-4000-8000-000000000013'::uuid, 'admin_schedule'),
     ('10000000-0000-4000-8000-000000000014'::uuid, 'bcba'),
-    ('10000000-0000-4000-8000-000000000015'::uuid, 'admin')
+    ('10000000-0000-4000-8000-000000000015'::uuid, 'admin'),
+    ('10000000-0000-4000-8000-000000000016'::uuid, 'bt'),
+    ('10000000-0000-4000-8000-000000000017'::uuid, 'bcba')
 ) fixture(user_id, role_name)
 join public.roles role_row on role_row.name = fixture.role_name;
 
@@ -74,7 +83,9 @@ insert into public.sessions (id, client_id, therapist_id, start_time, end_time, 
 values
   ('10000000-0000-4000-8000-000000000031', '10000000-0000-4000-8000-000000000021', '10000000-0000-4000-8000-000000000011', '2026-08-11T16:00:00Z', '2026-08-11T18:00:00Z', 'scheduled', 'clinic', '10000000-0000-4000-8000-000000000001'),
   ('10000000-0000-4000-8000-000000000032', '10000000-0000-4000-8000-000000000022', '10000000-0000-4000-8000-000000000012', '2026-08-11T16:00:00Z', '2026-08-11T18:00:00Z', 'scheduled', 'remote home visit', '10000000-0000-4000-8000-000000000002'),
-  ('10000000-0000-4000-8000-000000000033', '10000000-0000-4000-8000-000000000021', '10000000-0000-4000-8000-000000000011', '2026-06-15T19:00:00Z', '2026-06-15T20:00:00Z', 'scheduled', 'school campus', '10000000-0000-4000-8000-000000000001');
+  ('10000000-0000-4000-8000-000000000033', '10000000-0000-4000-8000-000000000021', '10000000-0000-4000-8000-000000000011', '2026-06-15T19:00:00Z', '2026-06-15T20:00:00Z', 'scheduled', 'school campus', '10000000-0000-4000-8000-000000000001'),
+  ('10000000-0000-4000-8000-000000000034', '10000000-0000-4000-8000-000000000021', '10000000-0000-4000-8000-000000000011', '2026-06-16T19:00:00Z', '2026-06-16T20:00:00Z', 'scheduled', 'community center', '10000000-0000-4000-8000-000000000001'),
+  ('10000000-0000-4000-8000-000000000035', '10000000-0000-4000-8000-000000000021', '10000000-0000-4000-8000-000000000011', '2026-08-12T16:00:00Z', '2026-08-12T18:00:00Z', 'scheduled', 'clinic', '10000000-0000-4000-8000-000000000001');
 
 insert into public.employment_profiles (
   id, organization_id, user_id, employee_number, payroll_employee_id,
@@ -83,8 +94,14 @@ insert into public.employment_profiles (
 values
   ('10000000-0000-4000-8000-000000000041', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000011', 'SYN-A-CURRENT', 'PAY-A-CURRENT', 'nonexempt', 'CA', 'America/Los_Angeles', '2026-07-01', null, '10000000-0000-4000-8000-000000000011'),
   ('10000000-0000-4000-8000-000000000042', '10000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000012', 'SYN-B-HIST', 'PAY-B-HIST', 'nonexempt', 'CA', 'America/Los_Angeles', '2026-01-01', '2026-06-30', '10000000-0000-4000-8000-000000000012'),
-  ('10000000-0000-4000-8000-000000000043', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000011', 'SYN-A-HIST', 'PAY-A-HIST', 'nonexempt', 'CA', 'America/Los_Angeles', '2026-01-01', '2026-06-30', '10000000-0000-4000-8000-000000000011'),
+  ('10000000-0000-4000-8000-000000000043', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000016', 'SYN-A-HIST', 'PAY-A-HIST', 'nonexempt', 'CA', 'America/Los_Angeles', '2026-01-01', '2026-06-30', '10000000-0000-4000-8000-000000000011'),
   ('10000000-0000-4000-8000-000000000044', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000014', 'SYN-MGR', 'PAY-MGR', 'nonexempt', 'CA', 'America/Los_Angeles', '2026-01-01', null, null);
+
+insert into public.user_therapist_links (user_id, therapist_id)
+values (
+  '10000000-0000-4000-8000-000000000017',
+  '10000000-0000-4000-8000-000000000011'
+);
 
 insert into public.employee_rate_versions (
   organization_id, employment_profile_id, hourly_rate_cents,

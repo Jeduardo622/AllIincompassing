@@ -1024,7 +1024,10 @@ export const Schedule = React.memo(() => {
       parts.push("Week-forward on");
     }
     if (therapistScopedView) {
-      parts.push("All therapists");
+      const scopedTherapistName = selectedTherapist
+        ? (visibleTherapists.find((x) => x.id === selectedTherapist)?.full_name ?? "Assigned therapist")
+        : "Assigned therapist";
+      parts.push(scopedTherapistName);
       parts.push(
         selectedClient
           ? (visibleClients.find((x) => x.id === selectedClient)?.full_name ?? "Client")
@@ -2206,11 +2209,7 @@ export const Schedule = React.memo(() => {
     let cancelled = false;
     void (async () => {
       const { data, error } = await supabase
-        .from("sessions")
-        .select("*")
-        .eq("id", sessionId)
-        .eq("organization_id", activeOrganizationId)
-        .maybeSingle();
+        .rpc("get_schedule_session_by_id", { p_session_id: sessionId });
       if (cancelled) {
         return;
       }

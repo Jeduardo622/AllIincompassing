@@ -904,6 +904,7 @@ export const server = setupServer(
 
     return HttpResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }),
+  http.post('*/rest/v1/rpc/get_schedule_session_by_id', () => HttpResponse.json(null)),
   http.post('*/rest/v1/rpc/get_dropdown_data', async ({ request }) => {
     const token = getBearerToken(request.headers);
 

@@ -119,6 +119,13 @@ describe('responsive-ui-observer contract', () => {
     };
 
     expect(parsePayrollReviewQueueFixtureResponse(queueResponse)).toEqual(queueResponse);
+    expect(parsePayrollReviewQueueFixtureResponse({
+      ...queueResponse,
+      queue: [{
+        ...queueResponse.queue[0],
+        compensation: { grossEarningsCents: 123456 },
+      }],
+    })).toBeNull();
     expect(parsePayrollReviewDetailsFixtureResponse(detailsResponse)).toEqual(detailsResponse);
     expect(parsePayrollReviewQueueFixtureResponse({ ...queueResponse, leaked: true })).toBeNull();
     expect(parsePayrollReviewDetailsFixtureResponse({

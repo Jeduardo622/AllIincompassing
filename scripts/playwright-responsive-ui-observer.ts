@@ -196,7 +196,19 @@ const payrollReviewQueueFixtureResponseSchema = z.object({
       grossEarningsCents: z.number().int(),
     }).strict().optional(),
   }).strict()),
-}).strict();
+}).strict().superRefine((value, ctx) => {
+  if (!value.capabilities.canViewCompensation) {
+    value.queue.forEach((item, index) => {
+      if (item.compensation) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Compensation requires payroll.view_compensation.',
+          path: ['queue', index, 'compensation'],
+        });
+      }
+    });
+  }
+});
 const payrollReviewDetailsFixtureResponseSchema = z.object({
   state: z.literal('ok'),
   snapshotId: z.string().uuid(),

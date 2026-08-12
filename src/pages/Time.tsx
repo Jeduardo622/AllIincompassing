@@ -140,15 +140,18 @@ const buildIdempotencyKey = (prefix: string): string =>
 
 const ActionButton = ({
   label,
+  ariaLabel,
   onClick,
   disabled,
 }: {
   label: string;
+  ariaLabel?: string;
   onClick: () => void | Promise<void>;
   disabled?: boolean;
 }) => (
   <button
     type="button"
+    aria-label={ariaLabel}
     onClick={() => void onClick()}
     disabled={disabled}
     className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
@@ -165,7 +168,6 @@ export function Time() {
   const { user, loading, profileLoading } = useAuth();
   const organizationId = useActiveOrganizationId();
   const [requestedLocalDate, setRequestedLocalDate] = useState(() => formatLocalDate(new Date()));
-  const now = new Date().toISOString();
 
   const scope = useMemo(() => ({
     organizationId: organizationId ?? 'NO_ORG',
@@ -189,7 +191,11 @@ export function Time() {
   }, [payrollDayQuery.data?.bootstrap?.localDate, requestedLocalDate]);
 
   const pendingEvents = useMemo(
-    () => (outboxQuery.data ?? []).filter((event) => event.state === 'pending' || event.state === 'needs_attention'),
+    () => (outboxQuery.data ?? []).filter((event) => event.state === 'pending'),
+    [outboxQuery.data],
+  );
+  const attentionEvents = useMemo(
+    () => (outboxQuery.data ?? []).filter((event) => event.state === 'needs_attention'),
     [outboxQuery.data],
   );
   const timeline = useMemo(
@@ -304,16 +310,44 @@ export function Time() {
     workCategory?: PayrollTimeEventPayload["data"]["workCategory"],
     workLocation: PayrollTimeEventPayload["workLocation"] = (shiftState.currentWorkLocation as PayrollTimeEventPayload["workLocation"]) ?? 'office',
   ) => {
+    const occurredAt = new Date().toISOString();
+    const idempotencyKey = buildIdempotencyKey(eventType);
     await recordTimeEventMutation.mutateAsync({
       ...scope,
-      idempotencyKey: buildIdempotencyKey(eventType),
+      idempotencyKey,
       event: {
-        occurredAt: now,
+        occurredAt,
         timezone: payrollDay.bootstrap.employmentTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
         workLocation,
         data: {
           eventType,
           ...(workCategory ? { workCategory } : {}),
+        },
+      },
+    });
+  };
+
+  const submitTimeCorrection = async (originalEventId: string) => {
+    await requestTimeCorrectionMutation.mutateAsync({
+      ...scope,
+      idempotencyKey: buildIdempotencyKey('time-correction'),
+      correction: {
+        data: {
+          originalEventId,
+          reasonCode: 'employee_review',
+        },
+      },
+    });
+  };
+
+  const submitSessionAttendanceCorrection = async (sessionAttendanceEventId: string) => {
+    await requestSessionAttendanceCorrectionMutation.mutateAsync({
+      ...scope,
+      idempotencyKey: buildIdempotencyKey('attendance-correction'),
+      correction: {
+        data: {
+          sessionAttendanceEventId,
+          reasonCode: 'employee_review',
         },
       },
     });
@@ -375,26 +409,6 @@ export function Time() {
           <ActionButton label="End meal" disabled={!canClockSelf || !shiftState.mealActive} onClick={() => submitTimeEvent('meal_ended')} />
           <ActionButton label="Switch to direct_service" disabled={!canClockSelf} onClick={() => submitTimeEvent('work_category_changed', 'direct_service')} />
           <ActionButton label="Switch to administration" disabled={!canClockSelf} onClick={() => submitTimeEvent('work_category_changed', 'administration')} />
-          <ActionButton label="Request payroll correction" disabled={!canRequestCorrectionSelf || payrollDay.day.employeeTimeEvents.length === 0} onClick={() => requestTimeCorrectionMutation.mutateAsync({
-            ...scope,
-            idempotencyKey: buildIdempotencyKey('time-correction'),
-            correction: {
-              data: {
-                originalEventId: payrollDay.day.employeeTimeEvents[0].id,
-                reasonCode: 'employee_review',
-              },
-            },
-          })} />
-          <ActionButton label="Request session attendance correction" disabled={!canRequestCorrectionSelf || payrollDay.day.sessionAttendanceEvents.length === 0} onClick={() => requestSessionAttendanceCorrectionMutation.mutateAsync({
-            ...scope,
-            idempotencyKey: buildIdempotencyKey('attendance-correction'),
-            correction: {
-              data: {
-                sessionAttendanceEventId: payrollDay.day.sessionAttendanceEvents[0].id,
-                reasonCode: 'employee_review',
-              },
-            },
-          })} />
         </div>
       </section>
 
@@ -404,9 +418,26 @@ export function Time() {
           <ul className="mt-4 space-y-3">
             {timeline.filter((entry) => !entry.pending).map((entry) => (
               <li key={entry.id} className="rounded-xl border border-gray-100 px-3 py-2 dark:border-gray-800">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="font-medium text-gray-900 dark:text-white">{entry.label}</span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">{formatTimestamp(entry.when)}</span>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-white">{entry.label}</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{formatTimestamp(entry.when)}</p>
+                  </div>
+                  {entry.kind === 'employee_time' ? (
+                    <ActionButton
+                      label="Request payroll correction"
+                      ariaLabel={`Request payroll correction for ${entry.label}`}
+                      disabled={!canRequestCorrectionSelf || requestTimeCorrectionMutation.isPending}
+                      onClick={() => submitTimeCorrection(entry.id)}
+                    />
+                  ) : (
+                    <ActionButton
+                      label="Request attendance correction"
+                      ariaLabel={`Request session attendance correction for ${entry.label}`}
+                      disabled={!canRequestCorrectionSelf || requestSessionAttendanceCorrectionMutation.isPending}
+                      onClick={() => submitSessionAttendanceCorrection(entry.id)}
+                    />
+                  )}
                 </div>
               </li>
             ))}
@@ -431,6 +462,22 @@ export function Time() {
           </ul>
         </section>
       </div>
+
+      {attentionEvents.length > 0 ? (
+        <section className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm dark:border-red-900/60 dark:bg-red-950/40">
+          <h2 className="text-lg font-semibold text-red-900 dark:text-red-100">Needs attention</h2>
+          <ul className="mt-4 space-y-3">
+            {attentionEvents.map((event) => (
+              <li key={event.idempotencyKey} className="rounded-xl border border-red-200 bg-white/70 px-3 py-2 dark:border-red-900/60 dark:bg-red-950/50">
+                <p className="font-medium text-red-900 dark:text-red-100">Payroll event could not be submitted</p>
+                <p className="mt-1 text-xs text-red-700 dark:text-red-200">
+                  Code: {event.safeCode ?? 'submission_error'}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-dark-lighter">

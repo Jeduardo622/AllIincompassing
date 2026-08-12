@@ -1,6 +1,6 @@
 import React from "react";
 import { MemoryRouter } from "react-router-dom";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -296,6 +296,156 @@ describe("Time page", () => {
     expect(screen.getByText(/^direct_service$/i)).toBeInTheDocument();
     expect(screen.getByText(/current work location/i)).toBeInTheDocument();
     expect(screen.getByText(/^office$/i)).toBeInTheDocument();
+  });
+
+  it("keeps needs-attention rows out of derived state and pending confirmation", () => {
+    mockUsePayrollTime.mockReturnValue({
+      ...baseHookValue,
+      payrollDayQuery: {
+        ...baseHookValue.payrollDayQuery,
+        data: {
+          ...basePayrollDay,
+          day: {
+            ...basePayrollDay.day,
+            employeeTimeEvents: [
+              ...basePayrollDay.day.employeeTimeEvents,
+              {
+                ...basePayrollDay.day.employeeTimeEvents[0],
+                id: "55555555-5555-4555-8555-555555555555",
+                eventType: "meal_started",
+                eventAt: "2026-08-11T17:00:00.000Z",
+              },
+            ],
+          },
+        },
+      },
+      outboxQuery: {
+        data: [
+          {
+            storageKey: '["org-1","user-1","failed-shift-end"]',
+            organizationId: "org-1",
+            userId: "user-1",
+            localDate: "2026-08-11",
+            idempotencyKey: "failed-shift-end",
+            action: "record_time_event",
+            occurredAt: "2026-08-11T18:00:00.000Z",
+            enqueueSequence: 1,
+            enqueuedAt: "2026-08-11T18:00:01.000Z",
+            state: "needs_attention",
+            safeCode: "state_conflict",
+            payload: {
+              occurredAt: "2026-08-11T18:00:00.000Z",
+              timezone: "America/Los_Angeles",
+              workLocation: "home",
+              data: {
+                eventType: "shift_ended",
+                workCategory: "administration",
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    renderTimePage();
+
+    const activeShiftCard = screen.getByText(/^active shift$/i).parentElement?.parentElement;
+    expect(activeShiftCard).not.toBeNull();
+    expect(within(activeShiftCard as HTMLElement).getByText(/aug 11, 2026, 9:00 am/i)).toBeInTheDocument();
+    expect(screen.getByText(/^running$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^direct_service$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^office$/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /needs attention/i })).toBeInTheDocument();
+    expect(screen.getByText(/state_conflict/i)).toBeInTheDocument();
+    expect(screen.queryByText(/pending confirmation/i)).not.toBeInTheDocument();
+  });
+
+  it("creates distinct action identity and timestamps at each click", async () => {
+    vi.useFakeTimers();
+    try {
+      const recordTimeEvent = vi.fn().mockResolvedValue({ idempotencyKey: "confirmed" });
+      mockUsePayrollTime.mockReturnValue({
+        ...baseHookValue,
+        recordTimeEventMutation: {
+          mutateAsync: recordTimeEvent,
+          isPending: false,
+        },
+      });
+      vi.setSystemTime(new Date("2026-08-11T18:00:00.000Z"));
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+
+      renderTimePage();
+
+      vi.setSystemTime(new Date("2026-08-11T18:05:00.000Z"));
+      await user.click(screen.getByRole("button", { name: /^start meal$/i }));
+      vi.setSystemTime(new Date("2026-08-11T18:06:00.000Z"));
+      await user.click(screen.getByRole("button", { name: /switch to administration/i }));
+
+      const firstInput = recordTimeEvent.mock.calls[0]?.[0];
+      const secondInput = recordTimeEvent.mock.calls[1]?.[0];
+      expect(firstInput.event.occurredAt).toBe("2026-08-11T18:05:00.000Z");
+      expect(secondInput.event.occurredAt).toBe("2026-08-11T18:06:00.000Z");
+      expect(firstInput.idempotencyKey).not.toBe(secondInput.idempotencyKey);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("submits corrections for the explicitly chosen employee and attendance records", async () => {
+    const requestTimeCorrection = vi.fn().mockResolvedValue({ idempotencyKey: "time-correction" });
+    const requestAttendanceCorrection = vi.fn().mockResolvedValue({ idempotencyKey: "attendance-correction" });
+    const chosenEmployeeEventId = "22222222-2222-4222-8222-222222222222";
+    const chosenAttendanceEventId = "33333333-3333-4333-8333-333333333333";
+    mockUsePayrollTime.mockReturnValue({
+      ...baseHookValue,
+      payrollDayQuery: {
+        ...baseHookValue.payrollDayQuery,
+        data: {
+          ...basePayrollDay,
+          day: {
+            ...basePayrollDay.day,
+            employeeTimeEvents: [
+              ...basePayrollDay.day.employeeTimeEvents,
+              {
+                ...basePayrollDay.day.employeeTimeEvents[0],
+                id: chosenEmployeeEventId,
+                eventType: "meal_started",
+                eventAt: "2026-08-11T16:30:00.000Z",
+              },
+            ],
+            sessionAttendanceEvents: [
+              ...basePayrollDay.day.sessionAttendanceEvents,
+              {
+                ...basePayrollDay.day.sessionAttendanceEvents[0],
+                id: chosenAttendanceEventId,
+                sessionId: "44444444-4444-4444-8444-444444444444",
+                employeeTimeEventId: chosenEmployeeEventId,
+                eventType: "session_ended",
+                eventAt: "2026-08-11T16:45:00.000Z",
+              },
+            ],
+          },
+        },
+      },
+      requestTimeCorrectionMutation: {
+        mutateAsync: requestTimeCorrection,
+        isPending: false,
+      },
+      requestSessionAttendanceCorrectionMutation: {
+        mutateAsync: requestAttendanceCorrection,
+        isPending: false,
+      },
+    });
+
+    renderTimePage();
+
+    await userEvent.click(screen.getByRole("button", { name: /request payroll correction for meal started/i }));
+    await userEvent.click(screen.getByRole("button", { name: /request session attendance correction for session ended/i }));
+
+    expect(requestTimeCorrection.mock.calls[0]?.[0].correction.data.originalEventId).toBe(chosenEmployeeEventId);
+    expect(requestAttendanceCorrection.mock.calls[0]?.[0].correction.data.sessionAttendanceEventId).toBe(chosenAttendanceEventId);
+    expect(screen.getByRole("heading", { name: /payroll correction history/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /session attendance correction history/i })).toBeInTheDocument();
   });
 
   it("uses the bootstrap local date after the protected authority reports a different employment-local day", async () => {

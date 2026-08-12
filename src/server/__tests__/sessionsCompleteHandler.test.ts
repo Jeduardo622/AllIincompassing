@@ -475,7 +475,7 @@ describe("sessionsCompleteHandler", () => {
     }));
   });
 
-  it("runtime REST fallback allows linked therapist users to complete sessions assigned to their therapist row id", async () => {
+  it("runtime REST fallback uses caller-scoped headers for linked therapist completion", async () => {
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-key");
     const fetchMock = makeFallbackFetchMock({
       roleName: "no-grant",
@@ -503,12 +503,40 @@ describe("sessionsCompleteHandler", () => {
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/rest/v1/user_therapist_links"))).toBe(true);
     const linkCall = fetchMock.mock.calls.find(([input]) => String(input).includes("/rest/v1/user_therapist_links"));
     expect(linkCall?.[1]?.headers).toEqual(expect.objectContaining({
-      apikey: "service-key",
-      Authorization: "Bearer service-key",
+      apikey: "anon-key",
+      Authorization: "Bearer token-123",
     }));
     expect(getFetchBody(fetchMock, "/rest/v1/rpc/record_session_audit")).toEqual(expect.objectContaining({
       p_actor_id: "auth-user-1",
     }));
+  });
+
+  it.each([401, 503])("runtime REST fallback returns 502 when therapist link lookup fails with %i", async (status) => {
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-key");
+    makeFallbackFetchMock({
+      roleName: "therapist",
+      authUserId: "auth-user-1",
+      session: {
+        id: sessionId,
+        status: "scheduled",
+        therapist_id: "therapist-row-1",
+        goal_id: "goal-primary",
+        start_time: "2026-03-31T09:00:00Z",
+        end_time: "2026-03-31T10:00:00Z",
+      },
+      userTherapistLinksStatus: status,
+    });
+
+    const response = await __TESTING__.completeSessionViaRuntimeRest({
+      request: new Request("http://localhost/api/sessions-complete", { method: "POST" }),
+      payload: { session_id: sessionId, outcome: "completed", notes: null },
+      accessToken: "token-123",
+      traceHeaders: {},
+    });
+    const body = await response.json() as { code: string };
+
+    expect(response.status).toBe(502);
+    expect(body.code).toBe("upstream_error");
   });
 
   it("runtime REST fallback still denies unlinked therapist users", async () => {

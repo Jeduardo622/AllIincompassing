@@ -93,3 +93,59 @@
 ## Handoff Summary
 
 The BT Start Session action is restored only for a valid assigned scheduled appointment and remains incapable of editing scheduling or treatment-plan metadata. Scheduled edits now replace stale goal links atomically, while legitimate multi-program goal sets remain canonical and exact at BT start. Local focused, policy, tenant, build, coverage, route, migration, and behavioral SQL checks pass; fresh protected CI and human review are the remaining merge gates.
+
+## Caller-Scoped Link Follow-Up (2026-08-12)
+
+### Routing And Scope
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- issue: [WIN-219](https://linear.app/winningedgeai/issue/WIN-219/restore-start-session-for-scheduled-bt-appointments)
+- branch: `codex/bt-session-link-auth-fix`
+- task intent: stop the app-side session start and completion fallback handlers from preferring a rejected Netlify service credential over the authenticated BT's RLS-scoped therapist-link read
+- production files: `src/server/api/sessions-start.ts`, `src/server/api/sessions-complete.ts`
+- test files: `src/server/__tests__/sessionsStartHandler.test.ts`, `src/server/__tests__/sessionsCompleteHandler.test.ts`
+- non-goals: no edge-function, migration, RLS, role-resolution, session-lifecycle, UI, or credential changes
+- stop condition: any required change outside the two app-side handlers and their focused tests must be re-routed
+
+### Change Summary
+
+- The live Netlify failure executed the app-side legacy start handler: its authenticated org/session reads succeeded, its exact `user_therapist_links` REST read returned `401`, and the Supabase `sessions-start` edge function was not invoked.
+- Both app-side therapist-link checks now use the authenticated caller headers. The user ID remains token-derived, and the therapist ID remains derived from the already org-scoped session row.
+- A successful lookup with no matching row remains a true `403 Forbidden` authorization denial.
+- Any non-OK therapist-link lookup is now reported as `502 upstream_error` instead of being flattened into a false `403`.
+- The change removes the completion fallback's now-unused Netlify service-role header builder and does not alter the Supabase edge authority paths.
+
+### Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: server/API, authz, tenant-scoped session lifecycle
+- required checks: focused handler tests, edge/RLS contract tests, `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run ci:verify-coverage`, `npm run build`, `npm run validate:tenant`, `npm run test:routes:tier0`, `npm run ci:playwright`
+- executed checks:
+  - focused handler tests: pass (`46/46`)
+  - edge/session/RLS contracts: pass (`41/41`)
+  - `npm run ci:check-focused`: pass; connection-backed checks skipped because no database URL was configured
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run build`: pass
+  - `npm run validate:tenant`: pass
+  - `npm run ci:verify-coverage`: pass (`92.81%` line coverage; required `86%`)
+  - `npm run test:routes:tier0`: pass (`220/220`)
+  - `npm run test:ci`: all assertions executed successfully (`4229` passed, `5` skipped), but the command exited nonzero after Vitest reported one worker `onTaskUpdate` timeout; an initial run also exceeded the default Node heap
+- blocked checks:
+  - `npm run ci:playwright`: blocked at preflight because local admin/superadmin smoke credentials are unavailable; no hosted mutation ran
+  - `npm run verify:local`: not separately repeatable as a pass because it includes the same nonzero `test:ci` runner condition and credential-independent subset already executed individually
+- result: `pass-with-blocked-checks`; exact-head CI must resolve the Vitest runner result and execute the protected Playwright gate
+- residual risk: hosted behavior still depends on the self-read migration being applied and requires a real linked-BT start/complete smoke after deployment
+
+### Delegated Review And PR Hygiene
+
+- specification, architecture, and implementation engineering: completed for the bounded two-handler slice
+- code review: approved the handler parity and fail-closed response contract after reconciling the live Netlify legacy-path trace; edge-function expansion remains outside this incident scope
+- security review: approved; caller and therapist identities remain server-derived, tenant scoping remains before link lookup, and service-key exposure is reduced
+- test review: approved the focused `403`, caller-header, and `401`/`503` to `502` coverage; exact-head CI must resolve the full-suite runner timeout
+- single-purpose diff: yes
+- generated artifact drift: none
+- protected-path drift: limited to the two declared `src/server/**` handlers
+- pr-ready: yes for critical-lane human review; exact-head CI must resolve the blocked checks before merge

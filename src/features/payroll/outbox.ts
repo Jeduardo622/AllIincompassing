@@ -149,6 +149,9 @@ const buildInvalidRetainedPayloadError = (): Error => Object.assign(
   { code: INVALID_RETAINED_PAYLOAD_SAFE_CODE },
 );
 
+const buildDuplicateRetainedAttendanceError = (): Error =>
+  new Error("Multiple retained payroll attendance events matched the requested scope.");
+
 const normalizeStoredEvent = (event: PendingPayrollEvent): PendingPayrollEvent => {
   const normalized = {
     ...event,
@@ -452,7 +455,7 @@ export async function findRetainedSessionAttendanceEvent(
   input: FindRetainedSessionAttendanceEventInput,
 ): Promise<PendingPayrollEvent | null> {
   const events = await listPayrollOutboxEvents(input.store, input);
-  const retained = events.find((event) => {
+  const retained = events.filter((event) => {
     if (!isRetainedSessionAttendanceEvent(event)) {
       return false;
     }
@@ -464,7 +467,11 @@ export async function findRetainedSessionAttendanceEvent(
     }
   });
 
-  return retained ?? null;
+  if (retained.length > 1) {
+    throw buildDuplicateRetainedAttendanceError();
+  }
+
+  return retained[0] ?? null;
 }
 
 export async function enqueuePayrollOutboxEvent(

@@ -5,6 +5,7 @@ import {
   createIndexedDbPayrollOutboxStore,
   drainPayrollOutbox,
   enqueuePayrollOutboxEvent,
+  findRetainedSessionAttendanceEvent,
   listPayrollOutboxEvents,
   reconfirmRetainedPayrollOutboxEvent,
   recoverPayrollOutbox,
@@ -616,6 +617,54 @@ describe("payroll outbox", () => {
         retainForClinical: true,
       }),
     ]);
+  });
+
+  it("fails closed when more than one retained attendance row matches the same scope, session, and event type", async () => {
+    const matchingRetainedRow = {
+      action: "record_session_attendance" as const,
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-11",
+      occurredAt: "2026-08-11T16:05:00.000Z",
+      payload: {
+        occurredAt: "2026-08-11T16:05:00.000Z",
+        timezone: "America/Los_Angeles",
+        workLocation: "client_site",
+        data: {
+          eventType: "session_started" as const,
+          sessionId: "11111111-1111-1111-1111-111111111111",
+        },
+      },
+      state: "confirmed_pending_clinical" as const,
+      safeCode: null,
+      retainForClinical: true,
+    };
+    const store = createInMemoryPayrollOutboxStore([
+      {
+        ...matchingRetainedRow,
+        storageKey: '["org-1","user-1","duplicate-retained-key-1"]',
+        idempotencyKey: "duplicate-retained-key-1",
+        enqueueSequence: 1,
+        enqueuedAt: "2026-08-11T16:05:01.000Z",
+      },
+      {
+        ...matchingRetainedRow,
+        storageKey: '["org-1","user-1","duplicate-retained-key-2"]',
+        idempotencyKey: "duplicate-retained-key-2",
+        enqueueSequence: 2,
+        enqueuedAt: "2026-08-11T16:05:02.000Z",
+      },
+    ]);
+
+    await expect(
+      findRetainedSessionAttendanceEvent({
+        store,
+        organizationId: "org-1",
+        userId: "user-1",
+        sessionId: "11111111-1111-1111-1111-111111111111",
+        eventType: "session_started",
+      }),
+    ).rejects.toThrow("Multiple retained payroll attendance events matched the requested scope.");
   });
 
   it("persists and replays only canonical audit fields for retained attendance", async () => {

@@ -89,7 +89,7 @@ const payrollSessionContextOkSchema = z.object({
   activeShiftEventId: z.string().uuid().nullable(),
 }).strict();
 
-const payrollSessionContextResponseSchema = z.discriminatedUnion("state", [
+export const payrollSessionContextResponseSchema = z.discriminatedUnion("state", [
   payrollSessionContextFeatureDisabledSchema,
   payrollSessionContextOkSchema,
 ]);

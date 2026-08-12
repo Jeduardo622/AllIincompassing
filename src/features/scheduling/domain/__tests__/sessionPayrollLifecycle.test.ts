@@ -16,6 +16,7 @@ const baseScope = {
 };
 
 const baseContext: PayrollSessionContext = {
+  state: "ok",
   sessionId: "77777777-7777-7777-7777-777777777777",
   organizationId: baseScope.organizationId,
   employmentProfileId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
@@ -24,6 +25,13 @@ const baseContext: PayrollSessionContext = {
   canClockSelf: true,
   canonicalWorkLocation: "client_site",
   activeShiftEventId: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+};
+const { state: _ignoredBaseContextState, ...legacyBaseContext } = baseContext;
+
+const disabledContext = {
+  state: "feature_disabled" as const,
+  sessionId: baseContext.sessionId,
+  organizationId: baseScope.organizationId,
 };
 
 const startRequest = {
@@ -82,6 +90,151 @@ describe("sessionPayrollLifecycle", () => {
       kind: "ready",
       mode: "delegated",
     });
+  });
+
+  it("returns payroll_disabled from prepareStart without payroll or clinical side effects", async () => {
+    const store = createInMemoryPayrollOutboxStore();
+    const findRetainedEvent = vi.fn();
+    const enqueueOutboxEvent = vi.fn();
+    const drainOutbox = vi.fn();
+    const recordTimeEvent = vi.fn();
+    const recordSessionAttendance = vi.fn();
+    const startClinicalSession = vi.fn();
+
+    const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
+    const lifecycle = createSessionPayrollLifecycle({
+      store,
+      fetchSessionContext: vi.fn(async () => disabledContext),
+      enqueueOutboxEvent,
+      drainOutbox,
+      findRetainedEvent,
+      reconfirmRetainedEvent: vi.fn(),
+      clearRetainedEvent: vi.fn(),
+      recordTimeEvent,
+      recordSessionAttendance,
+      startClinicalSession,
+      completeClinicalSession: vi.fn(),
+      revalidateTerminalOutcome: vi.fn(),
+      isOnline: vi.fn(() => true),
+      createIdempotencyKey: vi.fn(() => "unused-disabled-key"),
+      now: vi.fn(() => "2026-08-12T16:04:00.000Z"),
+    });
+
+    await expect(
+      lifecycle.prepareStart({ scope: baseScope, sessionId: baseContext.sessionId }),
+    ).resolves.toEqual({ kind: "payroll_disabled" });
+
+    expect(findRetainedEvent).not.toHaveBeenCalled();
+    expect(enqueueOutboxEvent).not.toHaveBeenCalled();
+    expect(drainOutbox).not.toHaveBeenCalled();
+    expect(recordTimeEvent).not.toHaveBeenCalled();
+    expect(recordSessionAttendance).not.toHaveBeenCalled();
+    expect(startClinicalSession).not.toHaveBeenCalled();
+    await expect(listPayrollOutboxEvents(store, baseScope)).resolves.toEqual([]);
+  });
+
+  it("propagates generic context fetch failures instead of treating them as disabled bypasses", async () => {
+    const contextError = new Error("context fetch failed");
+    const findRetainedEvent = vi.fn();
+    const enqueueOutboxEvent = vi.fn();
+
+    const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
+    const lifecycle = createSessionPayrollLifecycle({
+      store: createInMemoryPayrollOutboxStore(),
+      fetchSessionContext: vi.fn(async () => {
+        throw contextError;
+      }),
+      enqueueOutboxEvent,
+      drainOutbox: vi.fn(),
+      findRetainedEvent,
+      reconfirmRetainedEvent: vi.fn(),
+      clearRetainedEvent: vi.fn(),
+      recordTimeEvent: vi.fn(),
+      recordSessionAttendance: vi.fn(),
+      startClinicalSession: vi.fn(),
+      completeClinicalSession: vi.fn(),
+      revalidateTerminalOutcome: vi.fn(),
+      isOnline: vi.fn(() => true),
+      createIdempotencyKey: vi.fn(() => "unused-error-key"),
+      now: vi.fn(() => "2026-08-12T16:04:30.000Z"),
+    });
+
+    await expect(
+      lifecycle.prepareStart({ scope: baseScope, sessionId: baseContext.sessionId }),
+    ).rejects.toBe(contextError);
+
+    expect(findRetainedEvent).not.toHaveBeenCalled();
+    expect(enqueueOutboxEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed session context responses before any payroll or clinical side effects", async () => {
+    const malformedCases = [
+      {
+        name: "unexpected discriminant",
+        context: { ...baseContext, state: "unexpected_state" },
+      },
+      {
+        name: "malformed ok",
+        context: { ...baseContext, state: "ok", canonicalWorkLocation: "invalid_location", unexpected: true },
+      },
+      {
+        name: "malformed feature_disabled",
+        context: {
+          state: "feature_disabled",
+          sessionId: baseContext.sessionId,
+          organizationId: baseScope.organizationId,
+          unexpected: true,
+        },
+      },
+      {
+        name: "malformed legacy no-state",
+        context: { ...legacyBaseContext, activeShiftEventId: "not-a-uuid" },
+      },
+    ];
+
+    for (const malformedCase of malformedCases) {
+      const store = createInMemoryPayrollOutboxStore();
+      const findRetainedEvent = vi.fn();
+      const enqueueOutboxEvent = vi.fn();
+      const drainOutbox = vi.fn();
+      const recordTimeEvent = vi.fn();
+      const recordSessionAttendance = vi.fn();
+      const startClinicalSession = vi.fn();
+      const completeClinicalSession = vi.fn();
+
+      const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
+      const lifecycle = createSessionPayrollLifecycle({
+        store,
+        fetchSessionContext: vi.fn(async () => malformedCase.context as PayrollSessionContext),
+        enqueueOutboxEvent,
+        drainOutbox,
+        findRetainedEvent,
+        reconfirmRetainedEvent: vi.fn(),
+        clearRetainedEvent: vi.fn(),
+        recordTimeEvent,
+        recordSessionAttendance,
+        startClinicalSession,
+        completeClinicalSession,
+        revalidateTerminalOutcome: vi.fn(),
+        isOnline: vi.fn(() => true),
+        createIdempotencyKey: vi.fn(() => "unused-malformed-key"),
+        now: vi.fn(() => "2026-08-12T16:04:45.000Z"),
+      });
+
+      await expect(
+        lifecycle.prepareStart({ scope: baseScope, sessionId: baseContext.sessionId }),
+        malformedCase.name,
+      ).rejects.toThrow(/payroll session context/i);
+
+      expect(findRetainedEvent, malformedCase.name).not.toHaveBeenCalled();
+      expect(enqueueOutboxEvent, malformedCase.name).not.toHaveBeenCalled();
+      expect(drainOutbox, malformedCase.name).not.toHaveBeenCalled();
+      expect(recordTimeEvent, malformedCase.name).not.toHaveBeenCalled();
+      expect(recordSessionAttendance, malformedCase.name).not.toHaveBeenCalled();
+      expect(startClinicalSession, malformedCase.name).not.toHaveBeenCalled();
+      expect(completeClinicalSession, malformedCase.name).not.toHaveBeenCalled();
+      await expect(listPayrollOutboxEvents(store, baseScope), malformedCase.name).resolves.toEqual([]);
+    }
   });
 
   it("records delegated attendance only, never offers clock-in, and clears the retained row after clinical start success", async () => {
@@ -876,6 +1029,525 @@ describe("sessionPayrollLifecycle", () => {
     ]);
   });
 
+  it("prepareCloseSession records and confirms retained close attendance without invoking clinical completion or clearing", async () => {
+    const store = createInMemoryPayrollOutboxStore();
+    const callOrder: string[] = [];
+    const completeClinicalSession = vi.fn(async () => {
+      callOrder.push("clinical-close");
+    });
+    const clearRetainedEvent = vi.fn(async (input) => {
+      callOrder.push(`clear:${input.idempotencyKey}`);
+      const { clearRetainedPayrollOutboxEvent } = await import("../../../payroll/outbox");
+      return clearRetainedPayrollOutboxEvent(input);
+    });
+
+    const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
+    const lifecycle = createSessionPayrollLifecycle({
+      store,
+      fetchSessionContext: vi.fn(async () => baseContext),
+      enqueueOutboxEvent: vi.fn(async (input) => {
+        callOrder.push(`enqueue:${input.idempotencyKey}:${input.localDate}:${input.payload.data.eventType}`);
+        const { enqueuePayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return enqueuePayrollOutboxEvent(input);
+      }),
+      drainOutbox: vi.fn(async (input) => {
+        callOrder.push("drain");
+        const { drainPayrollOutbox } = await import("../../../payroll/outbox");
+        return drainPayrollOutbox(input);
+      }),
+      findRetainedEvent: undefined,
+      reconfirmRetainedEvent: vi.fn(async (input) => {
+        const { reconfirmRetainedPayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return reconfirmRetainedPayrollOutboxEvent(input);
+      }),
+      clearRetainedEvent,
+      recordTimeEvent: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      recordSessionAttendance: vi.fn(async (input) => {
+        callOrder.push(`attendance:${input.idempotencyKey}:${input.event.data.eventType}:${input.localDate}`);
+        return confirmed(input.idempotencyKey);
+      }),
+      startClinicalSession: vi.fn(),
+      completeClinicalSession,
+      revalidateTerminalOutcome: vi.fn(),
+      isOnline: vi.fn(() => true),
+      createIdempotencyKey: vi.fn(() => "prepared-close-key"),
+      now: vi.fn(() => "2026-08-12T16:22:00.000Z"),
+    });
+
+    await expect(
+      lifecycle.prepareCloseSession({
+        scope: baseScope,
+        sessionId: baseContext.sessionId,
+      }),
+    ).resolves.toEqual({
+      kind: "ready",
+      preparation: {
+        kind: "session_close_preparation",
+        attendanceIdempotencyKey: "prepared-close-key",
+        occurredAt: "2026-08-12T16:22:00.000Z",
+      },
+    });
+
+    expect(callOrder).toEqual([
+      "enqueue:prepared-close-key:2026-08-12:session_ended",
+      "drain",
+      "attendance:prepared-close-key:session_ended:2026-08-12",
+    ]);
+    expect(completeClinicalSession).not.toHaveBeenCalled();
+    expect(clearRetainedEvent).not.toHaveBeenCalled();
+    await expect(listPayrollOutboxEvents(store, baseScope)).resolves.toEqual([
+      expect.objectContaining({
+        idempotencyKey: "prepared-close-key",
+        occurredAt: "2026-08-12T16:22:00.000Z",
+        localDate: "2026-08-12",
+        state: "confirmed_pending_clinical",
+      }),
+    ]);
+  });
+
+  it("completePreparedClose reuses the retained close key and occurredAt before clinical completion and clearing", async () => {
+    const store = createInMemoryPayrollOutboxStore();
+    const recordSessionAttendance = vi.fn(async (input) => confirmed(input.idempotencyKey));
+    const completeClinicalSession = vi.fn(async () => undefined);
+
+    const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
+    const lifecycle = createSessionPayrollLifecycle({
+      store,
+      fetchSessionContext: vi.fn(async () => baseContext),
+      enqueueOutboxEvent: vi.fn(async (input) => {
+        const { enqueuePayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return enqueuePayrollOutboxEvent(input);
+      }),
+      drainOutbox: vi.fn(async (input) => {
+        const { drainPayrollOutbox } = await import("../../../payroll/outbox");
+        return drainPayrollOutbox(input);
+      }),
+      findRetainedEvent: undefined,
+      reconfirmRetainedEvent: vi.fn(async (input) => {
+        const { reconfirmRetainedPayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return reconfirmRetainedPayrollOutboxEvent(input);
+      }),
+      clearRetainedEvent: vi.fn(async (input) => {
+        const { clearRetainedPayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return clearRetainedPayrollOutboxEvent(input);
+      }),
+      recordTimeEvent: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      recordSessionAttendance,
+      startClinicalSession: vi.fn(),
+      completeClinicalSession,
+      revalidateTerminalOutcome: vi.fn(),
+      isOnline: vi.fn(() => true),
+      createIdempotencyKey: vi.fn(() => "retained-close-key"),
+      now: vi.fn(() => "2026-08-12T16:23:00.000Z"),
+    });
+
+    const prepared = await lifecycle.prepareCloseSession({
+      scope: baseScope,
+      sessionId: baseContext.sessionId,
+    });
+    expect(prepared).toEqual({
+      kind: "ready",
+      preparation: {
+        kind: "session_close_preparation",
+        attendanceIdempotencyKey: "retained-close-key",
+        occurredAt: "2026-08-12T16:23:00.000Z",
+      },
+    });
+
+    await expect(
+      lifecycle.completePreparedClose({
+        scope: baseScope,
+        request: completeRequest,
+        preparation: prepared.kind === "ready" ? prepared.preparation : undefined,
+      }),
+    ).resolves.toEqual({
+      kind: "completed",
+      attendanceIdempotencyKey: "retained-close-key",
+      reconciledWithTerminalStatus: false,
+    });
+
+    expect(recordSessionAttendance).toHaveBeenLastCalledWith(expect.objectContaining({
+      idempotencyKey: "retained-close-key",
+      localDate: "2026-08-12",
+      event: expect.objectContaining({
+        occurredAt: "2026-08-12T16:23:00.000Z",
+      }),
+    }));
+    expect(completeClinicalSession).toHaveBeenCalledTimes(1);
+    expect(await listPayrollOutboxEvents(store, baseScope)).toEqual([]);
+  });
+
+  it("can complete a retained close row after reload from a fresh lifecycle instance", async () => {
+    const store = createInMemoryPayrollOutboxStore();
+    const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
+    const firstLifecycle = createSessionPayrollLifecycle({
+      store,
+      fetchSessionContext: vi.fn(async () => baseContext),
+      enqueueOutboxEvent: vi.fn(async (input) => {
+        const { enqueuePayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return enqueuePayrollOutboxEvent(input);
+      }),
+      drainOutbox: vi.fn(async (input) => {
+        const { drainPayrollOutbox } = await import("../../../payroll/outbox");
+        return drainPayrollOutbox(input);
+      }),
+      findRetainedEvent: undefined,
+      reconfirmRetainedEvent: vi.fn(async (input) => {
+        const { reconfirmRetainedPayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return reconfirmRetainedPayrollOutboxEvent(input);
+      }),
+      clearRetainedEvent: vi.fn(async (input) => {
+        const { clearRetainedPayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return clearRetainedPayrollOutboxEvent(input);
+      }),
+      recordTimeEvent: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      recordSessionAttendance: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      startClinicalSession: vi.fn(),
+      completeClinicalSession: vi.fn(),
+      revalidateTerminalOutcome: vi.fn(),
+      isOnline: vi.fn(() => true),
+      createIdempotencyKey: vi.fn(() => "reload-close-key"),
+      now: vi.fn(() => "2026-08-12T16:24:00.000Z"),
+    });
+
+    await firstLifecycle.prepareCloseSession({
+      scope: baseScope,
+      sessionId: baseContext.sessionId,
+    });
+
+    const secondLifecycle = createSessionPayrollLifecycle({
+      store,
+      fetchSessionContext: vi.fn(async () => baseContext),
+      enqueueOutboxEvent: vi.fn(async (input) => {
+        const { enqueuePayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return enqueuePayrollOutboxEvent(input);
+      }),
+      drainOutbox: vi.fn(async (input) => {
+        const { drainPayrollOutbox } = await import("../../../payroll/outbox");
+        return drainPayrollOutbox(input);
+      }),
+      findRetainedEvent: undefined,
+      reconfirmRetainedEvent: vi.fn(async (input) => {
+        const { reconfirmRetainedPayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return reconfirmRetainedPayrollOutboxEvent(input);
+      }),
+      clearRetainedEvent: vi.fn(async (input) => {
+        const { clearRetainedPayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return clearRetainedPayrollOutboxEvent(input);
+      }),
+      recordTimeEvent: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      recordSessionAttendance: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      startClinicalSession: vi.fn(),
+      completeClinicalSession: vi.fn(async () => undefined),
+      revalidateTerminalOutcome: vi.fn(),
+      isOnline: vi.fn(() => true),
+      createIdempotencyKey: vi.fn(() => "should-not-be-used"),
+      now: vi.fn(() => "2026-08-12T16:29:00.000Z"),
+    });
+
+    await expect(
+      secondLifecycle.completePreparedClose({
+        scope: baseScope,
+        request: completeRequest,
+      }),
+    ).resolves.toMatchObject({
+      kind: "completed",
+      attendanceIdempotencyKey: "reload-close-key",
+    });
+
+    expect(await listPayrollOutboxEvents(store, baseScope)).toEqual([]);
+  });
+
+  it("fails closed when the retained close row changes after preparation and does not call clinical completion or clear", async () => {
+    const store = createInMemoryPayrollOutboxStore();
+    const completeClinicalSession = vi.fn(async () => undefined);
+    const clearRetainedEvent = vi.fn(async (input) => {
+      const { clearRetainedPayrollOutboxEvent } = await import("../../../payroll/outbox");
+      return clearRetainedPayrollOutboxEvent(input);
+    });
+    const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
+    const lifecycle = createSessionPayrollLifecycle({
+      store,
+      fetchSessionContext: vi.fn(async () => baseContext),
+      enqueueOutboxEvent: vi.fn(async (input) => {
+        const { enqueuePayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return enqueuePayrollOutboxEvent(input);
+      }),
+      drainOutbox: vi.fn(async (input) => {
+        const { drainPayrollOutbox } = await import("../../../payroll/outbox");
+        return drainPayrollOutbox(input);
+      }),
+      findRetainedEvent: undefined,
+      reconfirmRetainedEvent: vi.fn(async (input) => {
+        const { reconfirmRetainedPayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return reconfirmRetainedPayrollOutboxEvent(input);
+      }),
+      clearRetainedEvent,
+      recordTimeEvent: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      recordSessionAttendance: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      startClinicalSession: vi.fn(),
+      completeClinicalSession,
+      revalidateTerminalOutcome: vi.fn(),
+      isOnline: vi.fn(() => true),
+      createIdempotencyKey: vi.fn(() => "prepared-then-changed-key"),
+      now: vi
+        .fn()
+        .mockReturnValueOnce("2026-08-12T16:26:00.000Z")
+        .mockReturnValueOnce("2026-08-12T16:27:00.000Z"),
+    });
+
+    const prepared = await lifecycle.prepareCloseSession({
+      scope: baseScope,
+      sessionId: baseContext.sessionId,
+    });
+    expect(prepared).toMatchObject({
+      kind: "ready",
+      preparation: {
+        attendanceIdempotencyKey: "prepared-then-changed-key",
+        occurredAt: "2026-08-12T16:26:00.000Z",
+      },
+    });
+
+    await enqueuePayrollOutboxEvent({
+      store,
+      ...baseScope,
+      action: "record_session_attendance",
+      idempotencyKey: "changed-after-prepare-key",
+      occurredAt: "2026-08-12T16:27:00.000Z",
+      payload: {
+        occurredAt: "2026-08-12T16:27:00.000Z",
+        timezone: baseContext.employmentTimezone,
+        workLocation: baseContext.canonicalWorkLocation,
+        data: {
+          eventType: "session_ended",
+          sessionId: baseContext.sessionId,
+        },
+      },
+      retainForClinical: true,
+    });
+    await clearRetainedPayrollOutboxEvent({
+      store,
+      organizationId: baseScope.organizationId,
+      userId: baseScope.userId,
+      idempotencyKey: "prepared-then-changed-key",
+      confirmedServerIdempotencyKey: "prepared-then-changed-key",
+    });
+
+    await expect(
+      lifecycle.completePreparedClose({
+        scope: baseScope,
+        request: completeRequest,
+        preparation: prepared.kind === "ready" ? prepared.preparation : undefined,
+      }),
+    ).rejects.toThrow(/prepared payroll close attendance is stale/i);
+
+    expect(completeClinicalSession).not.toHaveBeenCalled();
+    expect(clearRetainedEvent).not.toHaveBeenCalled();
+    await expect(listPayrollOutboxEvents(store, baseScope)).resolves.toEqual([
+      expect.objectContaining({
+        idempotencyKey: "changed-after-prepare-key",
+        occurredAt: "2026-08-12T16:27:00.000Z",
+      }),
+    ]);
+  });
+
+  it("fails closed when duplicate retained close siblings match the same session before clinical completion or clear", async () => {
+    const duplicateRetainedRows = [
+      {
+        storageKey: '["88888888-8888-8888-8888-888888888888","99999999-9999-9999-9999-999999999999","duplicate-close-key-1"]',
+        idempotencyKey: "duplicate-close-key-1",
+        action: "record_session_attendance" as const,
+        organizationId: baseScope.organizationId,
+        userId: baseScope.userId,
+        localDate: "2026-08-12",
+        occurredAt: "2026-08-12T16:28:00.000Z",
+        payload: {
+          occurredAt: "2026-08-12T16:28:00.000Z",
+          timezone: baseContext.employmentTimezone,
+          workLocation: baseContext.canonicalWorkLocation,
+          data: {
+            eventType: "session_ended" as const,
+            sessionId: baseContext.sessionId,
+          },
+        },
+        enqueueSequence: 1,
+        enqueuedAt: "2026-08-12T16:28:01.000Z",
+        state: "confirmed_pending_clinical" as const,
+        safeCode: null,
+        retainForClinical: true,
+      },
+      {
+        storageKey: '["88888888-8888-8888-8888-888888888888","99999999-9999-9999-9999-999999999999","duplicate-close-key-2"]',
+        idempotencyKey: "duplicate-close-key-2",
+        action: "record_session_attendance" as const,
+        organizationId: baseScope.organizationId,
+        userId: baseScope.userId,
+        localDate: "2026-08-12",
+        occurredAt: "2026-08-12T16:28:02.000Z",
+        payload: {
+          occurredAt: "2026-08-12T16:28:02.000Z",
+          timezone: baseContext.employmentTimezone,
+          workLocation: baseContext.canonicalWorkLocation,
+          data: {
+            eventType: "session_ended" as const,
+            sessionId: baseContext.sessionId,
+          },
+        },
+        enqueueSequence: 2,
+        enqueuedAt: "2026-08-12T16:28:03.000Z",
+        state: "confirmed_pending_clinical" as const,
+        safeCode: null,
+        retainForClinical: true,
+      },
+    ];
+    const store = createInMemoryPayrollOutboxStore(duplicateRetainedRows);
+    const completeClinicalSession = vi.fn(async () => undefined);
+    const clearRetainedEvent = vi.fn(async (input) => {
+      const { clearRetainedPayrollOutboxEvent } = await import("../../../payroll/outbox");
+      return clearRetainedPayrollOutboxEvent(input);
+    });
+
+    const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
+    const lifecycle = createSessionPayrollLifecycle({
+      store,
+      fetchSessionContext: vi.fn(async () => baseContext),
+      enqueueOutboxEvent: vi.fn(async (input) => {
+        const { enqueuePayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return enqueuePayrollOutboxEvent(input);
+      }),
+      drainOutbox: vi.fn(async (input) => {
+        const { drainPayrollOutbox } = await import("../../../payroll/outbox");
+        return drainPayrollOutbox(input);
+      }),
+      findRetainedEvent: undefined,
+      reconfirmRetainedEvent: vi.fn(async (input) => {
+        const { reconfirmRetainedPayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return reconfirmRetainedPayrollOutboxEvent(input);
+      }),
+      clearRetainedEvent,
+      recordTimeEvent: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      recordSessionAttendance: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      startClinicalSession: vi.fn(),
+      completeClinicalSession,
+      revalidateTerminalOutcome: vi.fn(),
+      isOnline: vi.fn(() => true),
+      createIdempotencyKey: vi.fn(() => "unused-duplicate-close-key"),
+      now: vi.fn(() => "2026-08-12T16:28:30.000Z"),
+    });
+
+    await expect(
+      lifecycle.closeSession({
+        scope: baseScope,
+        request: completeRequest,
+      }),
+    ).rejects.toThrow("Multiple retained payroll attendance events matched the requested scope.");
+
+    expect(completeClinicalSession).not.toHaveBeenCalled();
+    expect(clearRetainedEvent).not.toHaveBeenCalled();
+    await expect(listPayrollOutboxEvents(store, baseScope)).resolves.toEqual([
+      expect.objectContaining({ idempotencyKey: "duplicate-close-key-1" }),
+      expect.objectContaining({ idempotencyKey: "duplicate-close-key-2" }),
+    ]);
+  });
+
+  it("bypasses payroll close writes when session payroll is explicitly disabled and completes clinical close directly", async () => {
+    const store = createInMemoryPayrollOutboxStore();
+    const enqueueOutboxEvent = vi.fn();
+    const drainOutbox = vi.fn();
+    const recordTimeEvent = vi.fn();
+    const recordSessionAttendance = vi.fn();
+    const clearRetainedEvent = vi.fn();
+    const completeClinicalSession = vi.fn(async () => undefined);
+
+    const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
+    const lifecycle = createSessionPayrollLifecycle({
+      store,
+      fetchSessionContext: vi.fn(async () => disabledContext),
+      enqueueOutboxEvent,
+      drainOutbox,
+      findRetainedEvent: vi.fn(),
+      reconfirmRetainedEvent: vi.fn(),
+      clearRetainedEvent,
+      recordTimeEvent,
+      recordSessionAttendance,
+      startClinicalSession: vi.fn(),
+      completeClinicalSession,
+      revalidateTerminalOutcome: vi.fn(),
+      isOnline: vi.fn(() => true),
+      createIdempotencyKey: vi.fn(() => "unused-disabled-close-key"),
+      now: vi.fn(() => "2026-08-12T16:24:30.000Z"),
+    });
+
+    await expect(
+      lifecycle.completePreparedClose({
+        scope: baseScope,
+        request: completeRequest,
+      }),
+    ).resolves.toEqual({
+      kind: "completed",
+      reconciledWithTerminalStatus: false,
+    });
+
+    expect(completeClinicalSession).toHaveBeenCalledTimes(1);
+    expect(enqueueOutboxEvent).not.toHaveBeenCalled();
+    expect(drainOutbox).not.toHaveBeenCalled();
+    expect(recordTimeEvent).not.toHaveBeenCalled();
+    expect(recordSessionAttendance).not.toHaveBeenCalled();
+    expect(clearRetainedEvent).not.toHaveBeenCalled();
+    await expect(listPayrollOutboxEvents(store, baseScope)).resolves.toEqual([]);
+  });
+
+  it("derives retained close localDate from occurredAt in the authoritative employment timezone", async () => {
+    const store = createInMemoryPayrollOutboxStore();
+    const timezoneScope = {
+      ...baseScope,
+      localDate: "2099-12-31",
+    };
+
+    const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
+    const lifecycle = createSessionPayrollLifecycle({
+      store,
+      fetchSessionContext: vi.fn(async () => ({
+        ...baseContext,
+        employmentTimezone: "America/Los_Angeles",
+      })),
+      enqueueOutboxEvent: vi.fn(async (input) => {
+        const { enqueuePayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return enqueuePayrollOutboxEvent(input);
+      }),
+      drainOutbox: vi.fn(async () => ({ confirmedKeys: [] })),
+      findRetainedEvent: undefined,
+      reconfirmRetainedEvent: vi.fn(),
+      clearRetainedEvent: vi.fn(),
+      recordTimeEvent: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      recordSessionAttendance: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      startClinicalSession: vi.fn(),
+      completeClinicalSession: vi.fn(),
+      revalidateTerminalOutcome: vi.fn(),
+      isOnline: vi.fn(() => false),
+      createIdempotencyKey: vi.fn(() => "timezone-close-key"),
+      now: vi.fn(() => "2026-03-08T07:30:00.000Z"),
+    });
+
+    await expect(
+      lifecycle.prepareCloseSession({
+        scope: timezoneScope,
+        sessionId: baseContext.sessionId,
+      }),
+    ).resolves.toEqual({
+      kind: "attendance_not_confirmed",
+      reason: "offline",
+    });
+
+    await expect(listPayrollOutboxEvents(store, timezoneScope)).resolves.toEqual([
+      expect.objectContaining({
+        idempotencyKey: "timezone-close-key",
+        occurredAt: "2026-03-08T07:30:00.000Z",
+        localDate: "2026-03-07",
+      }),
+    ]);
+  });
+
   it("captures close attendance before the completion callback, clears on success, and never emits shift_ended", async () => {
     const store = createInMemoryPayrollOutboxStore();
     const callOrder: string[] = [];
@@ -938,6 +1610,53 @@ describe("sessionPayrollLifecycle", () => {
     ]);
     expect(callOrder).not.toContain("time:shift_ended");
     expect(await listPayrollOutboxEvents(store, baseScope)).toEqual([]);
+  });
+
+  it("supports unbound closeSession invocation without relying on method-call this", async () => {
+    const store = createInMemoryPayrollOutboxStore();
+    const completeClinicalSession = vi.fn(async () => undefined);
+
+    const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
+    const lifecycle = createSessionPayrollLifecycle({
+      store,
+      fetchSessionContext: vi.fn(async () => baseContext),
+      enqueueOutboxEvent: vi.fn(async (input) => {
+        const { enqueuePayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return enqueuePayrollOutboxEvent(input);
+      }),
+      drainOutbox: vi.fn(async (input) => {
+        const { drainPayrollOutbox } = await import("../../../payroll/outbox");
+        return drainPayrollOutbox(input);
+      }),
+      findRetainedEvent: vi.fn(async () => null),
+      reconfirmRetainedEvent: vi.fn(),
+      clearRetainedEvent: vi.fn(async (input) => {
+        const { clearRetainedPayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return clearRetainedPayrollOutboxEvent(input);
+      }),
+      recordTimeEvent: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      recordSessionAttendance: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      startClinicalSession: vi.fn(),
+      completeClinicalSession,
+      revalidateTerminalOutcome: vi.fn(),
+      isOnline: vi.fn(() => true),
+      createIdempotencyKey: vi.fn(() => "unbound-close-key"),
+      now: vi.fn(() => "2026-08-12T16:25:30.000Z"),
+    });
+
+    const { closeSession } = lifecycle;
+
+    await expect(
+      closeSession({
+        scope: baseScope,
+        request: completeRequest,
+      }),
+    ).resolves.toMatchObject({
+      kind: "completed",
+      attendanceIdempotencyKey: "unbound-close-key",
+    });
+
+    expect(completeClinicalSession).toHaveBeenCalledTimes(1);
   });
 
   it("revalidates ALREADY_TERMINAL exactly, clears only on a compatible match, and preserves retained close rows otherwise", async () => {

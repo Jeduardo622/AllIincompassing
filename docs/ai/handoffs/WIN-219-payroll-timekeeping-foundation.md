@@ -317,3 +317,16 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - pr handoff: ready after commit and push; exact-head required checks must rerun
 - reviewer: completed
 - required follow-up: commit, push, update WIN-219, poll exact-head checks on the bounded schedule, and stop for human review without merging or activating
+
+### Exact-Head UTC Timezone Repair
+
+- Hosted evidence: tenant-safety run `31593685514` completed the full suite at 8192 MB without OOM, proving the capacity repair, then reported 4423 passed, 32 skipped, and one failed `/time` assertion.
+- Root cause: the page described timestamps as employment-local but `formatTimestamp` omitted the `Intl` `timeZone`, so the same `2026-08-11T16:00:00Z` event rendered as `9:00 AM` on a Pacific machine and `4:00 PM` on the UTC GitHub runner.
+- Reproduction: `Time.test.tsx` failed 1/13 with `TZ=UTC` and passed 13/13 with `TZ=America/Los_Angeles` before the fix.
+- Bounded repair: day/current/history timestamps use protected-bootstrap `employmentTimezone`; period-review timestamps use event timezone with period timezone fallback.
+- Focused verification: post-fix `TZ=UTC` and `TZ=America/Los_Angeles` runs both passed 13/13; full lint, typecheck, and build passed.
+- Responsive verification: the fixed PHI-free `payroll-time` scenario passed `/time` at desktop `1440x900` and mobile `390x844` with no failure codes.
+- Independent review: code and security reviewers returned `APPROVED` with no blocking findings.
+- Aggregate verification: fresh 8 GB `verify:local` passed policy, lint, typecheck, the full 4424-test coverage suite, 92.87% line coverage, and build. Tier-0 was interrupted only by a verified orphan Vite preview from this worktree on port 4173; after stopping that exact listener, the isolated gate passed 228/228.
+- verification result: `pass`; exact-head hosted tenant-safety remains the final runner gate after push.
+- tracking: `WIN-219` remains the issue of record; no new Linear issue will be created.

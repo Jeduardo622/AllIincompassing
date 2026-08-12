@@ -22,8 +22,9 @@ const formatLocalDate = (date: Date, timeZone?: string | null): string => {
   return formatter.format(date);
 };
 
-const formatTimestamp = (value: string): string =>
+const formatTimestamp = (value: string, timeZone?: string | null): string =>
   new Date(value).toLocaleString(undefined, {
+    timeZone: timeZone ?? undefined,
     dateStyle: 'medium',
     timeStyle: 'short',
   });
@@ -239,7 +240,9 @@ const PeriodReviewSummary = ({
               <li key={event.id} className="rounded-xl border border-gray-100 px-3 py-2 text-sm dark:border-gray-800">
                 <div className="flex items-center justify-between gap-3">
                   <span className="font-medium text-gray-900 dark:text-white">{formatLabel(event.eventType)}</span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">{formatTimestamp(event.occurredAt)}</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    {formatTimestamp(event.occurredAt, event.timezone ?? displayedPeriod.timezone)}
+                  </span>
                 </div>
               </li>
             ))}
@@ -411,6 +414,7 @@ export function Time() {
   }
 
   const payrollDay = payrollDayQuery.data;
+  const employmentTimezone = payrollDay.bootstrap.employmentTimezone;
 
   if (payrollDay.state === 'feature_disabled') {
     return (
@@ -536,7 +540,7 @@ export function Time() {
             Active shift
           </div>
           <p className="mt-2 text-lg font-semibold text-gray-900 dark:text-white">
-            {shiftState.activeShiftStartedAt ? formatTimestamp(shiftState.activeShiftStartedAt) : 'Not clocked in'}
+            {shiftState.activeShiftStartedAt ? formatTimestamp(shiftState.activeShiftStartedAt, employmentTimezone) : 'Not clocked in'}
           </p>
         </div>
         <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-dark-lighter">
@@ -600,7 +604,9 @@ export function Time() {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="font-medium text-gray-900 dark:text-white">{entry.label}</p>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{formatTimestamp(entry.when)}</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {formatTimestamp(entry.when, employmentTimezone)}
+                    </p>
                   </div>
                   {entry.kind === 'employee_time' ? (
                     <ActionButton

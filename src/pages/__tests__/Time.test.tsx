@@ -354,6 +354,8 @@ describe("Time page", () => {
     expect(screen.getByText(/calculation pending/i)).toBeInTheDocument();
     expect(screen.getAllByText(/shift started/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/session started/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/aug 11, 2026, 9:00 am/i).length).toBeGreaterThan(1);
+    expect(screen.getByText(/aug 11, 2026, 9:15 am/i)).toBeInTheDocument();
     expect(screen.getByText(/pending local events/i)).toBeInTheDocument();
     expect(screen.getByText(/pending confirmation/i)).toBeInTheDocument();
     expect(screen.getAllByText(/missed_punch/i).length).toBeGreaterThan(0);

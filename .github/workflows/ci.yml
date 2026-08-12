@@ -887,6 +887,7 @@ jobs:
 
           npm run playwright:iehp-assessment-import-smoke
           npm run playwright:iehp-assessment-import-skills-behaviors
+          npm run playwright:iehp-assessment-import-generated-docx-parity
 
       - name: Cleanup IEHP smoke admin
         if: always() && steps.browser_scope.outputs.iehp_assessment_import_smoke_required == 'true'

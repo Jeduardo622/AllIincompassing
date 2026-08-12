@@ -1,21 +1,30 @@
 import { createClient } from '@supabase/supabase-js';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { isValidPhone, sanitizePhone } from '../src/lib/validation';
 import * as iehpAssessmentImportSmoke from './lib/iehp-assessment-import-smoke';
 
-import { cleanupAssessmentImportArtifacts } from './lib/assessment-import-cleanup';
+import { cleanupAssessmentImportArtifacts, deleteAssessmentStorageObject } from './lib/assessment-import-cleanup';
+import { assertSmokeClientMarker } from './lib/assessment-upload-promote-smoke-guards';
+import { readClinicalQaOutputFixtureText } from './lib/clinical-data-parity-agent';
 import {
+  IEHP_GENERATED_DOCX_PARITY_PROOF_CASE,
   IEHP_PDF_MINI_MATRIX_CASES,
   assertIehpDocumentChecklistField,
+  assertIehpGeneratedDocxTextParity,
+  buildRedactedIehpPreflightBlockerEvidence,
+  buildIehpGeneratedDocxParityPdfHtml,
   buildIehpPdfMiniMatrixHtml,
   canonicalizeUsPhoneForComparison,
+  deriveIehpGeneratedDocxParityManifest,
   buildIehpSmokeCleanupFailureMessage,
   buildIehpSmokeCleanupFailureManifestPayload,
   buildIehpSmokeUploadFileName,
   resolveIehpSmokeSampleFile,
+  selectIehpRequiredFinalOutputApprovals,
 } from './lib/iehp-assessment-import-smoke';
 import { loadPlaywrightEnv } from './lib/load-playwright-env';
 import {
@@ -45,9 +54,20 @@ type ChecklistResponse = {
     id: string;
     placeholder_key: string;
     label?: string | null;
+    required?: boolean;
+    status?: string;
     value_text?: string | null;
+    value_json?: unknown;
   }>;
-  structured_sections?: unknown[];
+  structured_sections?: Array<{
+    id?: string;
+    field_key?: string;
+    section_key?: string;
+    section_index?: number;
+    payload?: unknown;
+    required?: boolean;
+    status?: string;
+  }> | unknown[];
 };
 
 type ChecklistResponsePayload =
@@ -99,7 +119,38 @@ type IehpSmokeCaseEvidence = {
   screenshot: string;
 };
 
+type AssessmentPlanPdfBlocker = {
+  code?: unknown;
+};
+
+type AssessmentPlanPdfPreflightResponse = {
+  assessment_document_id?: unknown;
+  generated_file_type?: unknown;
+  preflight?: {
+    ready?: unknown;
+    blockers?: unknown;
+    warnings?: unknown;
+  };
+};
+
+type AssessmentPlanPdfGenerateResponse = {
+  assessment_document_id?: string;
+  generated_file_type?: 'docx' | 'pdf';
+  signed_url?: string;
+  object_path?: string;
+  bucket_id?: string | null;
+  filename?: string | null;
+};
+
+type ParsedAssessmentPlanPdfPreflight = {
+  assessmentDocumentId: string;
+  generatedFileType: 'docx' | 'pdf';
+  ready: boolean;
+  blockers: AssessmentPlanPdfBlocker[];
+};
+
 const DEFAULT_BASE_URL = 'https://app.allincompassing.ai';
+const DEFAULT_ASSESSMENT_BUCKET_ID = 'client-documents';
 const EXTRACTION_TIMEOUT_MS = 120_000;
 const IEHP_REFERRAL_DATE_FIELD_KEY = 'IEHP_FBA_REFERRAL_DATE';
 
@@ -347,6 +398,173 @@ const fetchAssessmentChecklist = async (
   return normalizeAssessmentChecklistResponse((await response.json()) as ChecklistResponsePayload);
 };
 
+const callAppJson = async <T>(
+  baseUrl: string,
+  accessToken: string,
+  pathValue: string,
+  init: RequestInit = {},
+): Promise<T> => {
+  const response = await fetchWithRetry(
+    `${baseUrl}${pathValue}`,
+    {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...init.headers,
+      },
+    },
+    `Request for ${pathValue}`,
+  );
+
+  if (!response.ok) {
+    throw new Error(`Request for ${pathValue} failed with status ${response.status}.`);
+  }
+
+  const text = await response.text();
+  return text ? JSON.parse(text) as T : {} as T;
+};
+
+const postAssessmentPlanPdfPreflight = async (args: {
+  baseUrl: string;
+  accessToken: string;
+  assessmentDocumentId: string;
+}): Promise<AssessmentPlanPdfPreflightResponse> =>
+  callAppJson<AssessmentPlanPdfPreflightResponse>(
+    args.baseUrl,
+    args.accessToken,
+    '/api/assessment-plan-pdf',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        assessment_document_id: args.assessmentDocumentId,
+        preflight_only: true,
+      }),
+    },
+  );
+
+export const parseAssessmentPlanPdfPreflight = (
+  payload: AssessmentPlanPdfPreflightResponse,
+): ParsedAssessmentPlanPdfPreflight => {
+  const assessmentDocumentId =
+    typeof payload.assessment_document_id === 'string' ? payload.assessment_document_id.trim() : '';
+  if (!assessmentDocumentId) {
+    throw new Error('IEHP generated DOCX parity expected assessment-plan-pdf preflight to include assessment_document_id.');
+  }
+
+  const generatedFileType = payload.generated_file_type;
+  if (generatedFileType !== 'docx' && generatedFileType !== 'pdf') {
+    throw new Error('IEHP generated DOCX parity expected assessment-plan-pdf preflight to include generated_file_type.');
+  }
+
+  if (!payload.preflight || typeof payload.preflight !== 'object') {
+    throw new Error('IEHP generated DOCX parity expected assessment-plan-pdf preflight payload.preflight.');
+  }
+
+  if (typeof payload.preflight.ready !== 'boolean') {
+    throw new Error('IEHP generated DOCX parity expected assessment-plan-pdf preflight ready boolean.');
+  }
+
+  if (!Array.isArray(payload.preflight.blockers)) {
+    throw new Error('IEHP generated DOCX parity expected assessment-plan-pdf preflight blockers array.');
+  }
+
+  return {
+    assessmentDocumentId,
+    generatedFileType,
+    ready: payload.preflight.ready,
+    blockers: payload.preflight.blockers as AssessmentPlanPdfBlocker[],
+  };
+};
+
+export const cleanupGeneratedDocxParityArtifacts = async (args: {
+  generatedArtifact?:
+    | {
+        bucketId: string;
+        objectPath: string;
+      }
+    | null;
+  sourceAssessment?:
+    | {
+        assessmentDocumentId: string;
+        bucketId: string;
+        objectPath: string;
+      }
+    | null;
+  deleteGeneratedArtifact?: () => Promise<void>;
+  deleteSourceAssessment?: () => Promise<void>;
+}): Promise<void> => {
+  const operations: Array<Promise<void>> = [];
+
+  if (args.generatedArtifact || args.deleteGeneratedArtifact) {
+    operations.push((args.deleteGeneratedArtifact ?? (async () => undefined))());
+  }
+  if (args.sourceAssessment || args.deleteSourceAssessment) {
+    operations.push((args.deleteSourceAssessment ?? (async () => undefined))());
+  }
+
+  const results = await Promise.allSettled(operations);
+  const failedCount = results.filter((result) => result.status === 'rejected').length;
+  if (failedCount > 0) {
+    throw new Error(`IEHP generated DOCX parity cleanup did not complete for ${failedCount} cleanup target(s).`);
+  }
+};
+
+export const assertIehpGeneratedDocxStorageTarget = (args: {
+  bucketId: string | null | undefined;
+  objectPath: string | null | undefined;
+  clientId: string;
+  assessmentDocumentId: string;
+}): { bucketId: typeof DEFAULT_ASSESSMENT_BUCKET_ID; objectPath: string } => {
+  const bucketId = args.bucketId?.trim() ?? '';
+  const objectPath = args.objectPath?.trim() ?? '';
+  const expectedPrefix = `clients/${args.clientId}/assessments/generated-iehp-fba-${args.assessmentDocumentId}-`;
+  const timestampAndExtension = objectPath.slice(expectedPrefix.length);
+
+  if (bucketId !== DEFAULT_ASSESSMENT_BUCKET_ID) {
+    throw new Error('IEHP generated DOCX parity rejected an unexpected generated artifact bucket.');
+  }
+  if (!objectPath.startsWith(expectedPrefix) || !/^\d+\.docx$/.test(timestampAndExtension)) {
+    throw new Error('IEHP generated DOCX parity rejected an unexpected generated artifact object path.');
+  }
+
+  return { bucketId: DEFAULT_ASSESSMENT_BUCKET_ID, objectPath };
+};
+
+export const readSyntheticGeneratedDocxText = async (
+  artifactBuffer: Buffer,
+  options: {
+    tempRoot?: string;
+    reader?: (filePath: string) => Promise<string>;
+  } = {},
+): Promise<string> => {
+  const tempDirectory = mkdtempSync(path.join(options.tempRoot ?? tmpdir(), 'synthetic-iehp-docx-parity-'));
+  const tempArtifactPath = path.join(tempDirectory, 'generated.docx');
+
+  try {
+    writeFileSync(tempArtifactPath, artifactBuffer);
+    return await (options.reader ?? readClinicalQaOutputFixtureText)(tempArtifactPath);
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+};
+
+const patchAssessmentChecklist = async (args: {
+  baseUrl: string;
+  accessToken: string;
+  body: Record<string, unknown>;
+}): Promise<void> => {
+  await callAppJson(
+    args.baseUrl,
+    args.accessToken,
+    '/api/assessment-checklist',
+    {
+      method: 'PATCH',
+      body: JSON.stringify(args.body),
+    },
+  );
+};
+
 export const fetchIehpAssessorPhoneProvenance = async (args: {
   accessToken: string;
   assessmentDocumentId: string;
@@ -561,7 +779,7 @@ export const selectConfiguredSmokeClient = async (
       const authResult = await signInSmokeUser(supabase, email, password);
       const { data: client, error } = await supabase
         .from('clients')
-        .select('id, therapist_id, organization_id')
+        .select('id, therapist_id, organization_id, full_name')
         .eq('id', configuredClientId)
         .maybeSingle();
 
@@ -611,6 +829,11 @@ export const selectConfiguredSmokeClient = async (
         );
       }
 
+      assertSmokeClientMarker(
+        typeof client.full_name === 'string' ? client.full_name : null,
+        'configured-client',
+      );
+
       return {
         accessToken: authResult.accessToken,
         clientId: client.id,
@@ -642,10 +865,13 @@ async function run() {
   const supabaseAnonKey = resolveSupabaseAnonKey();
   const isPdfMiniMatrixMode = process.argv.includes('--pdf-mini-matrix');
   const isSkillsBehaviorsProofMode = process.argv.includes('--skills-behaviors-proof');
+  const isGeneratedDocxParityMode = process.argv.includes('--generated-docx-parity');
   const IEHP_SKILLS_BEHAVIORS_PROOF_CASE = iehpAssessmentImportSmoke.IEHP_SKILLS_BEHAVIORS_PROOF_CASE;
   // buildIehpSkillsBehaviorsProofPdfHtml
   const sampleFilePath =
-    isPdfMiniMatrixMode || isSkillsBehaviorsProofMode ? null : resolveIehpSmokeSampleFile({ cwd: process.cwd() });
+    isPdfMiniMatrixMode || isSkillsBehaviorsProofMode || isGeneratedDocxParityMode
+      ? null
+      : resolveIehpSmokeSampleFile({ cwd: process.cwd() });
   const defaultSourceFileBuffer = sampleFilePath ? readFileSync(sampleFilePath) : null;
   const credentialCandidates = [
     {
@@ -837,6 +1063,276 @@ async function run() {
       }
     };
 
+    const runGeneratedDocxParityCase = async () => {
+      let createdAssessment: AssessmentDocumentRecord | null = null;
+      let generatedDocxObjectPath: string | null = null;
+      let generatedDocxBucketId: string | null = null;
+
+      return executeIehpSmokeCaseWithCleanup({
+        caseId: 'generated-docx-parity',
+        latestDir,
+        executeCase: async () => {
+          const uploadFileName = buildIehpSmokeUploadFileName(Date.now(), 'pdf');
+          const generatedPdfPage = await context.newPage();
+          let generatedPdfBuffer: Buffer;
+          try {
+            await generatedPdfPage.setContent(
+              buildIehpGeneratedDocxParityPdfHtml(IEHP_GENERATED_DOCX_PARITY_PROOF_CASE),
+            );
+            generatedPdfBuffer = await generatedPdfPage.pdf({ format: 'Letter', printBackground: true });
+          } finally {
+            if (!generatedPdfPage.isClosed()) {
+              await generatedPdfPage.close().then(() => undefined);
+            }
+          }
+          await page.goto(`${baseUrl}/clients/${clientId}?tab=programs-goals`, {
+            waitUntil: 'domcontentloaded',
+            timeout: 60_000,
+          });
+          await page.waitForLoadState('networkidle').catch(() => undefined);
+
+          await page.locator('#programs-goals-fba-template').selectOption('iehp_fba');
+          await page.getByText('IEHP FBA Upload Workflow').waitFor({ timeout: 20_000 });
+          await page.locator('#programs-goals-fba-file-upload').setInputFiles({
+            name: uploadFileName,
+            mimeType: 'application/pdf',
+            buffer: generatedPdfBuffer,
+          });
+          await page.getByRole('button', { name: /Upload IEHP FBA/i }).click();
+          await page.getByText('Uploading and processing your FBA. This can take a moment.').waitFor({ timeout: 20_000 });
+
+          const deadline = Date.now() + EXTRACTION_TIMEOUT_MS;
+          while (Date.now() < deadline) {
+            const documents = await fetchAssessmentDocuments(baseUrl, accessToken, clientId);
+            createdAssessment =
+              documents.find(
+                (document) => document.file_name === uploadFileName && document.template_type === 'iehp_fba',
+              ) ?? null;
+            if (createdAssessment && !['uploaded', 'extracting', 'extraction_running'].includes(createdAssessment.status)) {
+              break;
+            }
+            await pause(2_000);
+          }
+
+          if (!createdAssessment) {
+            throw new Error('Uploaded IEHP assessment document was not found in the queue.');
+          }
+          if (createdAssessment.status === 'drafted') {
+            throw new Error('IEHP import smoke unexpectedly created draft records and moved to drafted status.');
+          }
+          if (createdAssessment.status !== 'extracted') {
+            throw new Error(
+              `IEHP import smoke ended with ${createdAssessment.status}${
+                createdAssessment.extraction_error ? `: ${createdAssessment.extraction_error}` : ''
+              }`,
+            );
+          }
+
+          const { programCount, goalCount } = await fetchAssessmentDraftCounts(baseUrl, accessToken, createdAssessment.id);
+          if (programCount !== 0 || goalCount !== 0) {
+            throw new Error(
+              `IEHP import smoke expected zero drafts but found ${programCount} program(s) and ${goalCount} goal(s).`,
+            );
+          }
+
+          const checklist = await fetchAssessmentChecklist(baseUrl, accessToken, createdAssessment.id);
+          const provenanceRows = await fetchIehpAssessmentProvenance({
+            accessToken,
+            assessmentDocumentId: createdAssessment.id,
+            organizationId,
+            supabaseAnonKey,
+            supabaseUrl,
+            fieldKeys: [IEHP_ASSESSOR_PHONE_FIELD_KEY],
+          });
+          const assessorPhoneAssertion = assertIehpAssessorPhoneChecklist({
+            checklist,
+            expectedPhone: expectedAssessorPhone,
+            provenanceRows,
+          });
+
+          const preflightBeforeApprovalResponse = await postAssessmentPlanPdfPreflight({
+            baseUrl,
+            accessToken,
+            assessmentDocumentId: createdAssessment.id,
+          });
+          const parsedPreflightBeforeApproval = parseAssessmentPlanPdfPreflight(preflightBeforeApprovalResponse);
+          const preflightBeforeApproval = buildRedactedIehpPreflightBlockerEvidence({
+            ready: parsedPreflightBeforeApproval.ready,
+            blockers: parsedPreflightBeforeApproval.blockers,
+          });
+          if (preflightBeforeApproval.ready || !preflightBeforeApproval.hasUnapprovedRequiredBlocker) {
+            throw new Error('IEHP generated DOCX parity expected preflight_only to report unapproved required blockers.');
+          }
+
+          const sourceManifest = deriveIehpGeneratedDocxParityManifest({ checklist });
+          const approvalSelection = selectIehpRequiredFinalOutputApprovals({ checklist });
+          for (const approval of approvalSelection.checklistApprovals) {
+            await patchAssessmentChecklist({
+              baseUrl,
+              accessToken,
+              body: approval,
+            });
+          }
+          for (const approval of approvalSelection.structuredSectionApprovals) {
+            await patchAssessmentChecklist({
+              baseUrl,
+              accessToken,
+              body: approval,
+            });
+          }
+
+          const approvedChecklist = await fetchAssessmentChecklist(baseUrl, accessToken, createdAssessment.id);
+          const approvalVerification = selectIehpRequiredFinalOutputApprovals({ checklist: approvedChecklist });
+          if (!approvalVerification.summary.allRequiredRowsApproved) {
+            throw new Error('IEHP generated DOCX parity expected all required final-output rows to be approved after PATCH.');
+          }
+
+          const preflightAfterApprovalResponse = await postAssessmentPlanPdfPreflight({
+            baseUrl,
+            accessToken,
+            assessmentDocumentId: createdAssessment.id,
+          });
+          const parsedPreflightAfterApproval = parseAssessmentPlanPdfPreflight(preflightAfterApprovalResponse);
+          const preflightAfterApproval = buildRedactedIehpPreflightBlockerEvidence({
+            ready: parsedPreflightAfterApproval.ready,
+            blockers: parsedPreflightAfterApproval.blockers,
+          });
+          if (!preflightAfterApproval.ready) {
+            throw new Error('IEHP generated DOCX parity expected preflight_only to become ready after required approvals.');
+          }
+
+          await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+          await page.waitForLoadState('networkidle').catch(() => undefined);
+          await page.getByRole('button', { name: uploadFileName, exact: true }).click({ timeout: 20_000 });
+          await page.getByRole('heading', { name: 'IEHP FBA Checklist Review' }).waitFor({ timeout: 20_000 });
+          const generatedDocxResponsePromise = page.waitForResponse(
+            (response) => {
+              const url = new URL(response.url());
+              return url.pathname === '/api/assessment-plan-pdf' && response.request().method() === 'POST';
+            },
+            { timeout: 45_000 },
+          );
+          const popupPromise = page.waitForEvent('popup', { timeout: 5_000 }).catch(() => null);
+          await page.getByRole('button', { name: /Generate completed IEHP DOCX/i }).click({ timeout: 10_000 });
+
+          const generatedDocxResponse = await generatedDocxResponsePromise;
+          if (!generatedDocxResponse.ok()) {
+            throw new Error('IEHP generated DOCX parity request failed before artifact download.');
+          }
+
+          const generatedDocxPayload = (await generatedDocxResponse.json()) as AssessmentPlanPdfGenerateResponse;
+          if (generatedDocxPayload.assessment_document_id !== createdAssessment.id) {
+            throw new Error('IEHP generated DOCX parity received a generation response for the wrong assessment document.');
+          }
+          if (generatedDocxPayload.generated_file_type !== 'docx') {
+            throw new Error('IEHP generated DOCX parity expected a DOCX response.');
+          }
+          const signedUrl = typeof generatedDocxPayload.signed_url === 'string' ? generatedDocxPayload.signed_url.trim() : '';
+          if (!signedUrl) {
+            throw new Error('IEHP generated DOCX parity expected a non-empty signed_url.');
+          }
+          const generatedStorageTarget = assertIehpGeneratedDocxStorageTarget({
+            bucketId: generatedDocxPayload.bucket_id,
+            objectPath: generatedDocxPayload.object_path,
+            clientId,
+            assessmentDocumentId: createdAssessment.id,
+          });
+          generatedDocxObjectPath = generatedStorageTarget.objectPath;
+          generatedDocxBucketId = generatedStorageTarget.bucketId;
+
+          const generatedDocxArtifactResponse = await page.context().request.get(signedUrl);
+          if (!generatedDocxArtifactResponse.ok()) {
+            throw new Error(`IEHP generated DOCX parity artifact download failed with HTTP ${generatedDocxArtifactResponse.status()}.`);
+          }
+          const generatedDocxArtifactBuffer = await generatedDocxArtifactResponse.body();
+          const popup = await popupPromise;
+          await popup?.close().catch(() => undefined);
+
+          const generatedDocxText = await readSyntheticGeneratedDocxText(generatedDocxArtifactBuffer);
+          const generatedDocxParity = assertIehpGeneratedDocxTextParity({
+            generatedDocxText,
+            sourceManifest,
+            proofCase: IEHP_GENERATED_DOCX_PARITY_PROOF_CASE,
+          });
+
+          return {
+            ok: true,
+            mode: 'generated-docx-parity',
+            caseId: 'generated-docx-parity',
+            templateType: 'iehp_fba',
+            status: createdAssessment.status,
+            draftPrograms: programCount,
+            draftGoals: goalCount,
+            assessorPhoneAssertion,
+            preflightBeforeApproval,
+            preflightAfterApproval,
+            sourceManifest: {
+              sectionCount: sourceManifest.sectionCount,
+              version: sourceManifest.version,
+              totalNames: sourceManifest.totalNames,
+              behaviorCount: sourceManifest.behaviorCount,
+              skillCount: sourceManifest.skillCount,
+              matchedCount: sourceManifest.matchedCount,
+              detailedOnlyCount: sourceManifest.detailedOnlyCount,
+              summaryOnlyOrAmbiguousCount: sourceManifest.summaryOnlyOrAmbiguousCount,
+            },
+            approvalSummary: approvalSelection.summary,
+            generatedDocxParity,
+            cleanupVerified: true,
+          };
+        },
+        cleanupCase: async () => {
+          await cleanupGeneratedDocxParityArtifacts({
+            generatedArtifact: generatedDocxObjectPath
+              ? {
+                  bucketId: generatedDocxBucketId || DEFAULT_ASSESSMENT_BUCKET_ID,
+                  objectPath: generatedDocxObjectPath,
+                }
+              : null,
+            sourceAssessment: createdAssessment
+              ? {
+                  assessmentDocumentId: createdAssessment.id,
+                  bucketId: createdAssessment.bucket_id?.trim() || DEFAULT_ASSESSMENT_BUCKET_ID,
+                  objectPath: createdAssessment.object_path,
+                }
+              : null,
+            deleteGeneratedArtifact: generatedDocxObjectPath
+              ? () =>
+                  deleteAssessmentStorageObject(fetch, {
+                    supabaseUrl,
+                    supabaseAnonKey,
+                    accessToken,
+                    bucketId: generatedDocxBucketId || DEFAULT_ASSESSMENT_BUCKET_ID,
+                    objectPath: generatedDocxObjectPath,
+                  })
+              : undefined,
+            deleteSourceAssessment: createdAssessment
+              ? () =>
+                  cleanupAssessmentImportArtifacts({
+                    accessToken,
+                    baseUrl,
+                    supabaseAnonKey,
+                    supabaseUrl,
+                    target: {
+                      assessmentDocumentId: createdAssessment.id,
+                      bucketId: createdAssessment.bucket_id?.trim() || DEFAULT_ASSESSMENT_BUCKET_ID,
+                      objectPath: createdAssessment.object_path,
+                    },
+                  })
+              : undefined,
+          });
+        },
+        cleanupTargetKnown: () => Boolean(createdAssessment),
+        onRunFailure: async () => {
+          const screenshot = await captureFailureScreenshot(
+            page,
+            'playwright-iehp-assessment-import-smoke-generated-docx-parity-failure',
+          );
+          console.error(`IEHP assessment import smoke failed for generated-docx-parity. Screenshot: ${screenshot}`);
+        },
+      });
+    };
+
     if (isPdfMiniMatrixMode) {
       const passedCases: IehpSmokeCaseEvidence[] = [];
       for (const caseDefinition of IEHP_PDF_MINI_MATRIX_CASES) {
@@ -1003,6 +1499,12 @@ async function run() {
           2,
         ),
       );
+      return;
+    }
+
+    if (isGeneratedDocxParityMode) {
+      const generatedDocxParityEvidence = await runGeneratedDocxParityCase();
+      console.log(JSON.stringify(generatedDocxParityEvidence, null, 2));
       return;
     }
 

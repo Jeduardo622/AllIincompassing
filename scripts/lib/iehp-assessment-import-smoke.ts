@@ -27,13 +27,28 @@ type IehpRasterPdfMiniMatrixCase = IehpPdfMiniMatrixBaseCase & {
 export type IehpPdfMiniMatrixCase = IehpDigitalPdfMiniMatrixCase | IehpRasterPdfMiniMatrixCase;
 
 type DocumentChecklistItem = {
+  id?: string;
+  label?: string | null;
   placeholder_key: string;
+  required?: boolean;
+  status?: string;
   value_text?: string | null;
+  value_json?: unknown;
+};
+
+type DocumentChecklistStructuredSection = {
+  id?: string;
+  field_key?: string;
+  section_key?: string;
+  section_index?: number;
+  payload?: unknown;
+  required?: boolean;
+  status?: string;
 };
 
 type DocumentChecklistResponse = {
   items: DocumentChecklistItem[];
-  structured_sections?: unknown[];
+  structured_sections?: DocumentChecklistStructuredSection[] | unknown[];
 };
 
 type AssessmentExtractionProvenanceRow = {
@@ -72,6 +87,10 @@ type SkillsBehaviorsCounts = {
 type SkillsBehaviorsClinicalGoalType = 'behavior' | 'skill' | null;
 
 type SkillsBehaviorsReconciliationStatus = 'matched' | 'summary_only' | 'detailed_only' | 'ambiguous';
+
+type IehpPreflightBlocker = {
+  code?: unknown;
+};
 
 export type IehpSkillsBehaviorsProofCase = {
   id: 'skills-behaviors-proof';
@@ -119,6 +138,67 @@ export type IehpDocumentFieldAssertion = {
   valueMatched: true;
   provenanceRowCount: number;
   documentProvenanceVerified: true;
+};
+
+export type IehpGeneratedDocxParityManifest = {
+  sectionCount: 1;
+  version: 1;
+  names: string[];
+  totalNames: number;
+  behaviorCount: number;
+  skillCount: number;
+  matchedCount: number;
+  detailedOnlyCount: number;
+  summaryOnlyOrAmbiguousCount: number;
+};
+
+export type IehpRedactedPreflightBlockerEvidence = {
+  ready: boolean;
+  blockerCount: number;
+  blockerCodes: string[];
+  hasUnapprovedRequiredBlocker: boolean;
+};
+
+type IehpChecklistApprovalPatch = {
+  item_id: string;
+  status: 'approved';
+  review_notes: string;
+  value_text?: string;
+  value_json?: unknown;
+};
+
+type IehpStructuredSectionApprovalPatch = {
+  structured_section_id: string;
+  status: 'approved';
+  review_notes: string;
+  payload: Record<string, unknown>;
+};
+
+export type IehpRequiredFinalOutputApprovals = {
+  checklistApprovals: IehpChecklistApprovalPatch[];
+  structuredSectionApprovals: IehpStructuredSectionApprovalPatch[];
+  summary: {
+    checklistCount: number;
+    structuredCount: number;
+    allRequiredRowsApproved: boolean;
+  };
+};
+
+export type IehpGeneratedDocxParityProofCase = {
+  id: 'generated-docx-parity';
+  expectedSectionHeadings: readonly string[];
+  expectedBehaviorSkillTerms: readonly [string, string, string, string];
+  expectedNarrativeTerms: readonly string[];
+};
+
+export type IehpGeneratedDocxParityAssertion = {
+  expectedNameCount: number;
+  matchedNameCount: number;
+  expectedSectionHeadingCount: number;
+  matchedSectionHeadingCount: number;
+  expectedNarrativeTermCount: number;
+  matchedNarrativeTermCount: number;
+  allExpectedContentPresent: true;
 };
 
 export const IEHP_PDF_MINI_MATRIX_CASES: readonly IehpPdfMiniMatrixCase[] = [
@@ -199,6 +279,51 @@ export const IEHP_SKILLS_BEHAVIORS_PROOF_CASE: IehpSkillsBehaviorsProofCase = {
     detailedOnly: 'Waiting',
     excludedParent: 'Parent Coaching',
   },
+};
+
+export const IEHP_GENERATED_DOCX_PARITY_PROOF_CASE: IehpGeneratedDocxParityProofCase = {
+  id: 'generated-docx-parity',
+  expectedSectionHeadings: [
+    'I. IDENTIFICATION',
+    'Referral Date:',
+    'Assessor/Certification:',
+    'II. BEHAVIORS',
+    'III. BACKGROUND INFORMATION',
+    'IV. BHT SCHOOL HOURS',
+    'HEALTH AND MEDICAL',
+    'CURRENT SERVICES AND ACTIVITIES',
+    'INTERVENTION HISTORY',
+    'V. BHT AVAILABILITY',
+    "VI. MEMBER'S ENVIRONMENTAL ANALYSIS:",
+    'VII. DESCRIPTION OF ASSESSMENT PROCEDURES:',
+    'PREFERENCE ASSESSMENT',
+    'Preference Areas: Potential Reinforcers:',
+    'VIII. ADAPTIVE AND FUNCTIONAL MEASURE SUMMARIES',
+    'TARGET BEHAVIORS:',
+    'REPLACEMENT BEHAVIORS:',
+    'SAFETY/CRISIS PROCEDURE',
+    'XI. PARENT EDUCATION',
+    'COORDINATION OF CARE:',
+    'XIII. DISCHARGE CRITERIA:',
+    'TRANSITION OF CARE:',
+    'TEACHING INTERVENTION STRATEGIES',
+    'FAMILY INVOLVEMENT',
+    'XIV. RECOMMENDATIONS:',
+    'REPORT COMPLETED BY:',
+  ],
+  expectedBehaviorSkillTerms: [
+    'Functional Communication',
+    'Community Safety',
+    'Transition Tolerance',
+    'Waiting',
+  ],
+  expectedNarrativeTerms: [
+    'Records reviewed included synthetic diagnostic',
+    'visual schedule, transition warnings',
+    'caregivers will secure the environment',
+    'Home, school, and community',
+    'Caregiver will implement prompting and reinforcement strategies',
+  ],
 };
 
 type ResolveIehpSmokeSampleFileArgs = {
@@ -317,6 +442,139 @@ export const buildIehpSkillsBehaviorsProofPdfHtml = (
   </body>
 </html>`;
 
+export const buildIehpGeneratedDocxParityPdfHtml = (
+  proofCase: IehpGeneratedDocxParityProofCase = IEHP_GENERATED_DOCX_PARITY_PROOF_CASE,
+): string => `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>${proofCase.id}</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        color: #111;
+        margin: 32px;
+        line-height: 1.35;
+        font-size: 12px;
+      }
+      h1, h2, h3 {
+        margin: 18px 0 8px;
+      }
+      p {
+        margin: 0 0 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Inland Empire Health Plan Functional Behavioral Assessment Report</h1>
+    <p>Header: synthetic IEHP generated DOCX parity fixture.</p>
+    <h2>I. IDENTIFICATION</h2>
+    <p>First Name: Synthetic</p>
+    <p>Last Name: Member</p>
+    <p>Birth Date: 01/01/2018</p>
+    <p>Report Date: 08/12/2026</p>
+    <p>Referral Date: 08/01/2026</p>
+    <p>IEHP Member ID#: SYNTH-0001</p>
+    <p>Present Address: 100 Synthetic Way, Test City, CA 90000</p>
+    <p>Parent/Guardian: Synthetic Caregiver</p>
+    <p>Phone: (909) 555-0199</p>
+    <p>Language: English</p>
+    <p>Assessor/Certification: Synthetic BCBA, BCBA 1-00-00000</p>
+    <p>Assessor's phone number: (909) 555-0188</p>
+    <p>Reason for Referral: Synthetic caregiver request for ABA treatment focused on communication, safety, and transitions.</p>
+    <h2>II. BEHAVIORS</h2>
+    <p>The behaviors and functional skills to be addressed are:</p>
+    <p>${proofCase.expectedBehaviorSkillTerms.join('; ')}</p>
+    <h2>III. BACKGROUND INFORMATION</h2>
+    <p>Persons in Household and Relationship to IEHP Member</p>
+    <p>Member lives with two caregivers and one sibling in a synthetic household.</p>
+    <p>School Information</p>
+    <p>Member attends a synthetic public school classroom with speech and behavior support.</p>
+    <h2>IV. BHT SCHOOL HOURS</h2>
+    <p>Monday through Friday: 8:00 AM to 3:00 PM.</p>
+    <h2>HEALTH AND MEDICAL</h2>
+    <p>Medical summary narrative for synthetic QA fixture. No acute medical concerns were documented.</p>
+    <h2>CURRENT SERVICES AND ACTIVITIES</h2>
+    <p>School-based services, caregiver coaching, and recreational community routines were reviewed.</p>
+    <h2>INTERVENTION HISTORY</h2>
+    <p>Prior ABA ended last year and resumed in a synthetic continuity-of-care scenario.</p>
+    <h2>V. BHT AVAILABILITY</h2>
+    <p>After-school weekday availability and weekend daytime availability were documented.</p>
+    <h2>VI. MEMBER'S ENVIRONMENTAL ANALYSIS:</h2>
+    <p>Availability and access to reinforcers: Yes. Level of noise/environmental distractions: Fair.</p>
+    <h2>VII. DESCRIPTION OF ASSESSMENT PROCEDURES:</h2>
+    <p>Records Reviewed: 08/01/2026 Telehealth BCBA</p>
+    <p>Clinical Interview: 08/02/2026 Home BCBA</p>
+    <p>1st Member Observation: 08/03/2026 home observation narrative.</p>
+    <p>2nd Member Observation: 08/04/2026 school observation narrative.</p>
+    <p>Records reviewed included synthetic diagnostic, school, and service coordination documents.</p>
+    <h2>PREFERENCE ASSESSMENT</h2>
+    <p>Caregiver reported interests and reinforcers including praise, sensory tools, breaks, and music.</p>
+    <p>Preference Areas: Potential Reinforcers:</p>
+    <p>Social: praise and shared activities.</p>
+    <p>Sensory: fidgets and music.</p>
+    <h2>VIII. ADAPTIVE AND FUNCTIONAL MEASURE SUMMARIES</h2>
+    <p>VB-MAPP Assessment Summary: Preserve as assessment block.</p>
+    <p>Vineland Adaptive Behavior Scales, 3rd Edition Date Administered: 08/01/2026 Name of Interviewer: Synthetic BCBA Name of Respondent: Synthetic Caregiver Assessment Summary: Synthetic adaptive summary.</p>
+    <p>AFLS Assessment Summary: Preserve as assessment block.</p>
+    <p>ABAS-3 Assessment Summary: Preserve as assessment block.</p>
+    <h2>IX. TARGET BEHAVIORS</h2>
+    <h3>TARGET BEHAVIORS:</h3>
+    <p>Program Name: Transition Tolerance</p>
+    <p>Instrumental Goal: Member will transition between tasks without aggression across home and school routines.</p>
+    <p>Data Collection: Frequency</p>
+    <p>Mastery Criteria: Zero events across four consecutive weeks.</p>
+    <p>Baseline: Three events per hour.</p>
+    <h3>REPLACEMENT BEHAVIORS:</h3>
+    <p>Program Name: Functional Communication</p>
+    <p>Instrumental Goal: Member will request help across five targets in home and school contexts.</p>
+    <p>Data Collection: Percent opportunities</p>
+    <p>Mastery Criteria: Eighty percent across four consecutive weeks.</p>
+    <p>Baseline: Zero percent independent.</p>
+    <p>Program Name: Waiting</p>
+    <p>Instrumental Goal: Member will wait safely before accessing preferred activities in the community.</p>
+    <p>Data Collection: Percent opportunities</p>
+    <p>Mastery Criteria: Eighty percent across four consecutive weeks.</p>
+    <p>Baseline: Zero percent independent.</p>
+    <p>Program Name: Community Safety</p>
+    <p>Instrumental Goal: Member will remain with caregiver and stop at safety cues across public settings.</p>
+    <p>Data Collection: Percent opportunities</p>
+    <p>Mastery Criteria: Eighty percent across four consecutive weeks.</p>
+    <p>Baseline: Twenty percent independent.</p>
+    <h2>X. BEHAVIOR INTERVENTION PLAN</h2>
+    <p>Antecedent Strategies: visual schedule, transition warnings, and first-then supports.</p>
+    <p>Replacement Behavior: request break and request help.</p>
+    <p>Consequence Strategies: differential reinforcement and planned response blocking for safety.</p>
+    <h2>SAFETY/CRISIS PROCEDURE</h2>
+    <p>Safety Procedure: caregivers will secure the environment, follow the synthetic crisis response, and contact emergency services for immediate danger.</p>
+    <h2>XI. PARENT EDUCATION</h2>
+    <p>Program Name: Parent Coaching</p>
+    <p>Instrumental Goal: Caregiver will implement prompting and reinforcement strategies with fidelity.</p>
+    <p>Data Collection: Percent opportunities</p>
+    <p>Mastery Criteria: Ninety percent across four consecutive weeks.</p>
+    <p>Baseline: Zero percent independent.</p>
+    <h2>XII. LOCATION OF SERVICE</h2>
+    <p>Home, school, and community.</p>
+    <h2>COORDINATION OF CARE:</h2>
+    <p>Coordinate with parent, school, PCP, and current service providers.</p>
+    <h2>XIII. DISCHARGE CRITERIA:</h2>
+    <p>Exit plan criteria placeholder covering sustained performance and caregiver implementation.</p>
+    <h2>TRANSITION OF CARE:</h2>
+    <p>Transition planning includes fading service intensity, handoff to natural supports, and school coordination.</p>
+    <h2>TEACHING INTERVENTION STRATEGIES</h2>
+    <p>Modeling, least-to-most prompting, visual supports, and reinforcement thinning were documented.</p>
+    <h2>FAMILY INVOLVEMENT</h2>
+    <p>Caregiver participation, consent, and agreement with the synthetic treatment plan were documented.</p>
+    <h2>XIV. RECOMMENDATIONS:</h2>
+    <p>H2019 Therapeutic Behavioral Services, per 15 minutes 10 units</p>
+    <p>H0032 Mental Health Service Plan Development by Non-Physician, per 15 minutes 4 units</p>
+    <p>Recommendation notes: synthetic HCPCS recommendation summary.</p>
+    <h2>REPORT COMPLETED BY:</h2>
+    <p>Synthetic BCBA MM/DD/YYYY</p>
+    <p>Signature placeholder: synthetic parity fixture only.</p>
+  </body>
+</html>`;
+
 export const assertIehpDocumentChecklistField = (args: {
   checklist: DocumentChecklistResponse;
   expectedValue: string;
@@ -381,6 +639,41 @@ const hasValidSkillsBehaviorsClinicalGoalType = (value: unknown): value is Skill
 
 const hasValidSkillsBehaviorsReconciliationStatus = (value: unknown): value is SkillsBehaviorsReconciliationStatus =>
   value === 'matched' || value === 'summary_only' || value === 'detailed_only' || value === 'ambiguous';
+
+const IEHP_OPTIONAL_FINAL_OUTPUT_KEYS = new Set([
+  'IEHP_FBA_ADAPTIVE_MEASURE_SUMMARIES',
+  'IEHP_FBA_ASSESSOR_PHONE',
+  'IEHP_FBA_REFERRING_PROVIDER',
+]);
+
+const NON_MEANINGFUL_METADATA_KEYS = new Set([
+  'id',
+  'created_at',
+  'updated_at',
+  'section_key',
+  'section_index',
+  'field_key',
+  'label',
+  'status',
+  'required',
+]);
+
+const hasMeaningfulValue = (value: unknown): boolean => {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'boolean') return value;
+  if (Array.isArray(value)) return value.some((entry) => hasMeaningfulValue(entry));
+  if (isObjectRecord(value)) {
+    return Object.entries(value).some(([key, entry]) =>
+      !NON_MEANINGFUL_METADATA_KEYS.has(key) && hasMeaningfulValue(entry)
+    );
+  }
+  return false;
+};
+
+const isRequiredForIehpFinalOutput = (fieldKey: string | undefined, required: boolean | undefined): boolean =>
+  Boolean(required) && typeof fieldKey === 'string' && !IEHP_OPTIONAL_FINAL_OUTPUT_KEYS.has(fieldKey);
 
 const hasValidSkillsBehaviorsStatusTypePairing = (
   clinicalGoalType: SkillsBehaviorsClinicalGoalType,
@@ -566,6 +859,235 @@ export const assertIehpSkillsBehaviorsChecklistSection = (args: {
     detailedOnlyPreserved: true,
     parentExcluded: true,
     provenanceVerified: true,
+  };
+};
+
+export const buildRedactedIehpPreflightBlockerEvidence = (args: {
+  ready: boolean;
+  blockers: IehpPreflightBlocker[];
+}): IehpRedactedPreflightBlockerEvidence => {
+  const blockerCodes: string[] = [];
+  for (const blocker of args.blockers) {
+    const code = typeof blocker?.code === 'string' && blocker.code.trim() ? blocker.code.trim() : 'unknown_blocker';
+    if (!blockerCodes.includes(code)) {
+      blockerCodes.push(code);
+    }
+  }
+
+  return {
+    ready: args.ready,
+    blockerCount: args.blockers.length,
+    blockerCodes,
+    hasUnapprovedRequiredBlocker: blockerCodes.some((code) => /(required|unapproved)/i.test(code)),
+  };
+};
+
+export const deriveIehpGeneratedDocxParityManifest = (args: {
+  checklist: DocumentChecklistResponse;
+}): IehpGeneratedDocxParityManifest => {
+  const sections = Array.isArray(args.checklist.structured_sections) ? args.checklist.structured_sections : [];
+  const matchingRows = sections.filter((section) =>
+    isObjectRecord(section) && section.field_key === 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS'
+  );
+
+  if (matchingRows.length === 0) {
+    throw new Error('IEHP smoke could not find IEHP_FBA_BEHAVIOR_SKILL_TARGETS in structured sections.');
+  }
+  if (matchingRows.length !== 1) {
+    throw new Error(
+      `IEHP smoke expected exactly one IEHP_FBA_BEHAVIOR_SKILL_TARGETS structured section row but found ${matchingRows.length}.`,
+    );
+  }
+
+  const payload = matchingRows[0]?.payload;
+  const skillsBehaviors = isObjectRecord(payload) ? payload.skills_behaviors : null;
+  if (!isObjectRecord(skillsBehaviors) || !Array.isArray(skillsBehaviors.items)) {
+    throw new Error('IEHP smoke found IEHP_FBA_BEHAVIOR_SKILL_TARGETS but payload.skills_behaviors was missing or malformed.');
+  }
+  if (skillsBehaviors.version !== 1) {
+    throw new Error('IEHP smoke expected IEHP_FBA_BEHAVIOR_SKILL_TARGETS skills_behaviors.version to equal 1.');
+  }
+
+  let behaviorCount = 0;
+  let skillCount = 0;
+  let matchedCount = 0;
+  let detailedOnlyCount = 0;
+  let summaryOnlyOrAmbiguousCount = 0;
+  const names: string[] = [];
+
+  for (const item of skillsBehaviors.items) {
+    if (!isObjectRecord(item)) {
+      throw new Error(
+        'IEHP smoke found IEHP_FBA_BEHAVIOR_SKILL_TARGETS but payload.skills_behaviors.items contained a malformed entry.',
+      );
+    }
+    const name = typeof item.name === 'string' ? item.name.trim() : '';
+    if (!name) {
+      throw new Error(
+        'IEHP smoke found IEHP_FBA_BEHAVIOR_SKILL_TARGETS but payload.skills_behaviors.items contained a blank name.',
+      );
+    }
+    const clinicalGoalType = item.clinical_goal_type;
+    const reconciliationStatus = item.reconciliation_status;
+    if (!hasValidSkillsBehaviorsClinicalGoalType(clinicalGoalType)) {
+      throw new Error(
+        'IEHP smoke found IEHP_FBA_BEHAVIOR_SKILL_TARGETS but payload.skills_behaviors.items contained an invalid clinical_goal_type.',
+      );
+    }
+    if (
+      !hasValidSkillsBehaviorsReconciliationStatus(reconciliationStatus) ||
+      !hasValidSkillsBehaviorsStatusTypePairing(clinicalGoalType, reconciliationStatus)
+    ) {
+      throw new Error(
+        'IEHP smoke found IEHP_FBA_BEHAVIOR_SKILL_TARGETS but payload.skills_behaviors.items contained an invalid reconciliation_status for its clinical_goal_type.',
+      );
+    }
+
+    names.push(name);
+    if (clinicalGoalType === 'behavior') behaviorCount += 1;
+    if (clinicalGoalType === 'skill') skillCount += 1;
+    if (reconciliationStatus === 'matched') matchedCount += 1;
+    if (reconciliationStatus === 'detailed_only') detailedOnlyCount += 1;
+    if (reconciliationStatus === 'summary_only' || reconciliationStatus === 'ambiguous') {
+      summaryOnlyOrAmbiguousCount += 1;
+    }
+  }
+
+  if (behaviorCount === 0 || skillCount === 0) {
+    throw new Error('IEHP smoke expected at least one behavior and one skill in IEHP_FBA_BEHAVIOR_SKILL_TARGETS.');
+  }
+  if (summaryOnlyOrAmbiguousCount > 0) {
+    throw new Error(
+      'IEHP generated DOCX parity refuses to auto-approve summary-only or ambiguous skills_behaviors items.',
+    );
+  }
+
+  return {
+    sectionCount: 1,
+    version: 1,
+    names,
+    totalNames: names.length,
+    behaviorCount,
+    skillCount,
+    matchedCount,
+    detailedOnlyCount,
+    summaryOnlyOrAmbiguousCount,
+  };
+};
+
+const normalizeParityText = (value: string): string => value.toLowerCase().replace(/\s+/g, ' ').trim();
+
+export const assertIehpGeneratedDocxTextParity = (args: {
+  generatedDocxText: string;
+  sourceManifest: IehpGeneratedDocxParityManifest;
+  proofCase?: IehpGeneratedDocxParityProofCase;
+}): IehpGeneratedDocxParityAssertion => {
+  const proofCase = args.proofCase ?? IEHP_GENERATED_DOCX_PARITY_PROOF_CASE;
+  const normalizedOutput = normalizeParityText(args.generatedDocxText);
+  const countMatches = (values: readonly string[]): number =>
+    values.filter((value) => normalizedOutput.includes(normalizeParityText(value))).length;
+
+  const matchedNameCount = countMatches(args.sourceManifest.names);
+  const matchedSectionHeadingCount = countMatches(proofCase.expectedSectionHeadings);
+  const matchedNarrativeTermCount = countMatches(proofCase.expectedNarrativeTerms);
+
+  if (matchedNameCount !== args.sourceManifest.totalNames) {
+    throw new Error('IEHP generated DOCX parity expected every in-memory skills_behaviors name to appear in the generated DOCX.');
+  }
+  if (matchedSectionHeadingCount !== proofCase.expectedSectionHeadings.length) {
+    throw new Error('IEHP generated DOCX parity expected every representative IEHP section heading to appear in the generated DOCX.');
+  }
+  if (matchedNarrativeTermCount !== proofCase.expectedNarrativeTerms.length) {
+    throw new Error('IEHP generated DOCX parity expected every representative source narrative to appear in the generated DOCX.');
+  }
+
+  return {
+    expectedNameCount: args.sourceManifest.totalNames,
+    matchedNameCount,
+    expectedSectionHeadingCount: proofCase.expectedSectionHeadings.length,
+    matchedSectionHeadingCount,
+    expectedNarrativeTermCount: proofCase.expectedNarrativeTerms.length,
+    matchedNarrativeTermCount,
+    allExpectedContentPresent: true,
+  };
+};
+
+const assertSyntheticAutoApprovalStatus = (status: string | undefined, fieldKey: string): void => {
+  const normalizedStatus = status?.trim() ?? '';
+  if (normalizedStatus !== 'drafted' && normalizedStatus !== 'verified' && normalizedStatus !== 'approved') {
+    throw new Error(`IEHP smoke required row ${fieldKey} was not in a reviewable status for synthetic auto-approval.`);
+  }
+};
+
+export const selectIehpRequiredFinalOutputApprovals = (args: {
+  checklist: DocumentChecklistResponse;
+}): IehpRequiredFinalOutputApprovals => {
+  const checklistApprovals: IehpChecklistApprovalPatch[] = [];
+  const structuredSectionApprovals: IehpStructuredSectionApprovalPatch[] = [];
+
+  for (const item of args.checklist.items) {
+    if (!isRequiredForIehpFinalOutput(item.placeholder_key, item.required)) {
+      continue;
+    }
+    const hasMeaningfulTextValue = typeof item.value_text === 'string' && hasMeaningfulValue(item.value_text);
+    const hasMeaningfulJsonValue = hasMeaningfulValue(item.value_json);
+    if (!hasMeaningfulTextValue && !hasMeaningfulJsonValue) {
+      throw new Error(`IEHP smoke required checklist row ${item.placeholder_key} was blank or malformed.`);
+    }
+    assertSyntheticAutoApprovalStatus(item.status, item.placeholder_key);
+    if ((item.status ?? '').trim() === 'approved') {
+      continue;
+    }
+    const itemId = typeof item.id === 'string' ? item.id.trim() : '';
+    if (!itemId) {
+      throw new Error(`IEHP smoke required checklist row ${item.placeholder_key} was blank or malformed.`);
+    }
+    checklistApprovals.push({
+      item_id: itemId,
+      status: 'approved',
+      review_notes: 'IEHP generated DOCX parity auto-approved required checklist row from synthetic smoke fixture.',
+      ...(hasMeaningfulTextValue
+        ? { value_text: item.value_text.trim() }
+        : { value_json: item.value_json }),
+    });
+  }
+
+  const sections = Array.isArray(args.checklist.structured_sections) ? args.checklist.structured_sections : [];
+  for (const section of sections) {
+    if (!isObjectRecord(section) || !isRequiredForIehpFinalOutput(section.field_key, section.required === true)) {
+      continue;
+    }
+    if (!isObjectRecord(section.payload) || !hasMeaningfulValue(section.payload)) {
+      throw new Error(`IEHP smoke required structured row ${section.field_key} was blank or malformed.`);
+    }
+    assertSyntheticAutoApprovalStatus(
+      typeof section.status === 'string' ? section.status : undefined,
+      section.field_key ?? 'unknown',
+    );
+    if ((typeof section.status === 'string' ? section.status.trim() : '') === 'approved') {
+      continue;
+    }
+    const sectionId = typeof section.id === 'string' ? section.id.trim() : '';
+    if (!sectionId) {
+      throw new Error(`IEHP smoke required structured row ${section.field_key} was blank or malformed.`);
+    }
+    structuredSectionApprovals.push({
+      structured_section_id: sectionId,
+      status: 'approved',
+      review_notes: 'IEHP generated DOCX parity auto-approved required structured row from synthetic smoke fixture.',
+      payload: section.payload,
+    });
+  }
+
+  const allRequiredRowsApproved = checklistApprovals.length === 0 && structuredSectionApprovals.length === 0;
+  return {
+    checklistApprovals,
+    structuredSectionApprovals,
+    summary: {
+      checklistCount: checklistApprovals.length,
+      structuredCount: structuredSectionApprovals.length,
+      allRequiredRowsApproved,
+    },
   };
 };
 

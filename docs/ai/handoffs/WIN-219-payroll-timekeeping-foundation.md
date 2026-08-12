@@ -275,3 +275,45 @@ Task 2 delivers separate payroll and insurance/audit clocks without allowing ses
 ### Handoff Summary
 
 Task 3 adds the bounded California ordinary nonexempt derivation layer, immutable snapshot persistence, protected `payroll-timesheets` transport, and a self `/time` period-review surface that can create immutable review snapshots but cannot submit, approve, lock, or export. The repair round moved all pay-period and authority decisions to the database, preserved structured fail-closed outcomes, restored compensation privacy, serialized canonical snapshot inputs safely, and restricted deployment to a separate explicit manual activation. Clean local schema, focused, loopback, policy, tenant, type, performance, responsive, aggregate, and six-specialist review proofs pass. The slice is PR-ready with credentialed `ci:playwright` disclosed as the sole local blocked check; human critical-lane and payroll/legal review remain mandatory before merge or activation.
+
+### Exact-Head Tenant-Safety Capacity Repair
+
+- Live failure evidence: GitHub Actions run `31591082941` failed twice in `tenant-safety` only after tenant validation, lint, and typecheck passed; the unmasked full test process exhausted the configured 6144 MB V8 heap.
+- Bounded repair: only `.github/workflows/tenant-safety.yml` changes from 6144 MB to 8192 MB for `Run tests`; `ci.yml` and `supabase-validate.yml` remain at 6144 MB.
+- Contract coverage: `tests/workflows/ci-test-memory.test.ts` now pins the explicit per-workflow values and prevents accidental global heap drift.
+- Witnessed TDD: the workflow contract failed while tenant-safety remained at 6144 MB, then passed after the one-line workflow repair.
+- Focused verification: workflow/policy regression suite passed 4 files and 154 tests; `npm run ci:check-focused`, `npm run lint`, and `npm run typecheck` passed.
+- Aggregate verification: process-local 8 GB `npm run verify:local` passed end to end in 477.7 seconds, including policy, lint, typecheck, full coverage tests, build, and 228/228 tier-0 routes.
+- Independent review: code, security, and DevOps reviewers returned `APPROVED` with no findings.
+- Tracking: existing issue `WIN-219` remains authoritative; its linkage plus status/comment updates satisfies the critical-lane Linear requirement, and no new issue creation will be attempted.
+- Residual risk: exact-head GitHub `tenant-safety` must prove that the hosted runner has sufficient total memory headroom; human critical-lane review remains mandatory.
+
+#### Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: CI/workflow/policy capacity repair
+- files touched: `.github/workflows/tenant-safety.yml`, `tests/workflows/ci-test-memory.test.ts`, and the existing Task 3 tracking artifacts
+- required agents: specification, architecture, test, implementation, code review, security review, and DevOps review
+- required checks: direct workflow contract test; focused CI-policy tests; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run build`; `npm run verify:local`
+- executed checks: witnessed workflow-contract RED then GREEN; focused CI-policy suite 154/154; policy, lint, and typecheck passed; the 477.7-second `verify:local` run passed full tests, coverage, build, and 228/228 tier-0 routes
+- blocked checks: none for this heap-only workflow repair; the broader Task 3 credentialed `ci:playwright` block remains separately disclosed above
+- reviewer: independent code, security, and DevOps reviews completed with `APPROVED`
+- result: `pass`
+- residual risk: only exact-head hosted runner execution can prove total runner memory headroom
+
+#### PR Hygiene
+
+- pr-ready: yes
+- lane: `critical`
+- branch-ready: yes; isolated `codex/payroll-timekeeping-derivation` branch and existing PR #926
+- linear-ready: yes; existing `WIN-219` linkage plus status/comment updates
+- single-purpose: yes; one failing workflow receives a bounded capacity increase with an explicit regression contract
+- unrelated changes: none
+- generated artifact drift: none; the transient reliability timestamp was removed
+- protected-path drift: expected `.github/workflows/tenant-safety.yml` change only, with the critical lane retained
+- change summary: present
+- verification summary: present
+- pr handoff: ready after commit and push; exact-head required checks must rerun
+- reviewer: completed
+- required follow-up: commit, push, update WIN-219, poll exact-head checks on the bounded schedule, and stop for human review without merging or activating

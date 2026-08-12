@@ -418,6 +418,111 @@ Deno.test("maps payroll approval RPC failures to exact protected envelopes", asy
   }
 });
 
+Deno.test("keeps state conflict, method deny, and invalid response bodies identical across direct edge parity paths", async () => {
+  const stateConflictResponse = await handlePayrollApprovals({
+    req: createRequest({
+      action: "lock",
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "a".repeat(64),
+    }, {
+      headers: {
+        "Idempotency-Key": "approval-state-key",
+        "x-request-id": "state-request-id",
+      },
+    }),
+    userContext: createUserContext("admin"),
+    db: createRpcClient(() => ({
+      data: null,
+      error: { code: "23514", message: "approval transition violates current workflow state" },
+    })),
+  });
+  const stateConflictBody = await stateConflictResponse.json() as Record<string, unknown>;
+  assertEquals(stateConflictBody, {
+    success: false,
+    requestId: "state-request-id",
+    code: "state_conflict",
+    error: "Payroll state conflict.",
+    message: "Payroll state conflict.",
+    classification: {
+      category: "request",
+      severity: "medium",
+      retryable: false,
+      httpStatus: 409,
+    },
+    idempotencyKey: "approval-state-key",
+  });
+
+  const methodDenyResponse = await handlePayrollApprovals({
+    req: createRequest({}, {
+      method: "GET",
+      headers: {
+        "x-request-id": "method-request-id",
+      },
+    }),
+    userContext: createUserContext(),
+    db: createRpcClient(() => {
+      throw new Error("RPC should not execute for method mismatch");
+    }),
+  });
+  const methodDenyBody = await methodDenyResponse.json() as Record<string, unknown>;
+  assertEquals(methodDenyBody, {
+    success: false,
+    requestId: "method-request-id",
+    code: "validation_error",
+    error: "Method not allowed",
+    message: "Method not allowed",
+    classification: {
+      category: "validation",
+      severity: "low",
+      retryable: false,
+      httpStatus: 405,
+    },
+  });
+
+  const invalidResponse = await handlePayrollApprovals({
+    req: createRequest({
+      action: "submit",
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "a".repeat(64),
+      attestation: true,
+    }, {
+      headers: {
+        "Idempotency-Key": "approval-invalid-key",
+        "x-request-id": "invalid-request-id",
+      },
+    }),
+    userContext: createUserContext(),
+    db: createRpcClient(() => ({
+      data: {
+        transitionId: "22222222-2222-2222-2222-222222222222",
+        snapshotId: "11111111-1111-1111-1111-111111111111",
+        snapshotHash: "a".repeat(64),
+        canonicalSnapshotHash: "a".repeat(64),
+        action: "submitted",
+        previousTransitionId: null,
+        replayed: false,
+        occurredAt: "2026-08-12T18:00:00.000Z",
+        grossEarningsCents: 999999,
+      },
+      error: null,
+    })),
+  });
+  const invalidResponseBody = await invalidResponse.json() as Record<string, unknown>;
+  assertEquals(invalidResponseBody, {
+    success: false,
+    requestId: "invalid-request-id",
+    code: "invalid_response",
+    error: "Invalid payroll approval response.",
+    message: "Invalid payroll approval response.",
+    classification: {
+      category: "upstream",
+      severity: "high",
+      retryable: false,
+      httpStatus: 502,
+    },
+  });
+});
+
 Deno.test("fails closed when the approval response leaks compensation data", async () => {
   const response = await handlePayrollApprovals({
     req: createRequest({

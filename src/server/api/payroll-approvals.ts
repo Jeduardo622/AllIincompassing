@@ -132,7 +132,7 @@ const payrollApprovalErrorSchema = z.object({
   success: z.literal(false),
   error: z.string().min(1),
   requestId: z.string().min(1),
-  code: z.enum(["feature_disabled", "conflict", "validation_error", "forbidden", "upstream_error", "rate_limited", "invalid_response"]),
+  code: z.enum(["feature_disabled", "conflict", "state_conflict", "validation_error", "forbidden", "upstream_error", "rate_limited", "invalid_response"]),
   message: z.string().min(1),
   classification: z.object({
     category: z.string().min(1),
@@ -145,6 +145,28 @@ const payrollApprovalErrorSchema = z.object({
 }).strict();
 
 type PayrollApprovalAction = z.infer<typeof payrollApprovalActionSchema>;
+type PayrollApprovalErrorCode = z.infer<typeof payrollApprovalErrorSchema.shape.code>;
+
+const PAYROLL_ERROR_CLASSIFICATIONS = {
+  method_deny: {
+    category: "validation",
+    severity: "low",
+    retryable: false,
+    httpStatus: 405,
+  },
+  invalid_response: {
+    category: "upstream",
+    severity: "high",
+    retryable: false,
+    httpStatus: 502,
+  },
+  state_conflict: {
+    category: "request",
+    severity: "medium",
+    retryable: false,
+    httpStatus: 409,
+  },
+} as const;
 
 const traceHeadersForRequest = (request: Request): Record<string, string> =>
   TRACE_HEADER_NAMES.reduce<Record<string, string>>((acc, headerName) => {
@@ -163,6 +185,38 @@ const traceHeadersFromHeaders = (headers: Headers): Record<string, string> =>
     }
     return acc;
   }, {});
+
+const payrollErrorResponse = (
+  request: Request,
+  status: number,
+  payload: {
+    code: PayrollApprovalErrorCode;
+    message: string;
+    classification: {
+      category: string;
+      severity: "low" | "medium" | "high" | "critical";
+      retryable: boolean;
+      httpStatus: number;
+    };
+    idempotencyKey?: string;
+    state?: string;
+  },
+  traceHeaders: Record<string, string>,
+  extraHeaders: Record<string, string> = {},
+) =>
+  jsonForRequest(request, {
+    success: false,
+    error: payload.message,
+    requestId: request.headers.get("x-request-id")?.trim() || crypto.randomUUID(),
+    code: payload.code,
+    message: payload.message,
+    classification: payload.classification,
+    ...(payload.idempotencyKey ? { idempotencyKey: payload.idempotencyKey } : {}),
+    ...(payload.state ? { state: payload.state } : {}),
+  }, status, {
+    ...traceHeaders,
+    ...extraHeaders,
+  });
 
 const containsForbiddenAuthority = (value: unknown): boolean => {
   if (!value || typeof value !== "object") {
@@ -218,18 +272,18 @@ const validateApprovalResponse = (
 ): PayrollApprovalTransition | PayrollBlockerResolution | Response => {
   const parsed = payrollApprovalResponseSchema.safeParse(payload);
   if (!parsed.success) {
-    return errorResponse(request, "upstream_error", "Invalid payroll approval response.", {
-      status: 502,
-      headers: traceHeaders,
-      extra: { code: "invalid_response" },
-    });
+    return payrollErrorResponse(request, 502, {
+      code: "invalid_response",
+      message: "Invalid payroll approval response.",
+      classification: PAYROLL_ERROR_CLASSIFICATIONS.invalid_response,
+    }, traceHeaders);
   }
   if (parsed.data.idempotencyKey !== requestedKey) {
-    return errorResponse(request, "upstream_error", "Invalid payroll approval response.", {
-      status: 502,
-      headers: traceHeaders,
-      extra: { code: "invalid_response" },
-    });
+    return payrollErrorResponse(request, 502, {
+      code: "invalid_response",
+      message: "Invalid payroll approval response.",
+      classification: PAYROLL_ERROR_CLASSIFICATIONS.invalid_response,
+    }, traceHeaders);
   }
   return parsed.data;
 };
@@ -311,7 +365,7 @@ const mapLegacyError = (
   if (message.includes("feature_disabled")) {
     return featureDisabledResponse(request, traceHeaders, idempotencyKey);
   }
-  if (message.includes("IDEMPOTENCY_CONFLICT") || code === "23505" || result.status === 409) {
+  if (message.includes("IDEMPOTENCY_CONFLICT") || code === "23505" || (result.status === 409 && code !== "23514")) {
     return errorResponse(request, "conflict", "Idempotency conflict.", {
       status: 409,
       headers,
@@ -319,10 +373,13 @@ const mapLegacyError = (
     });
   }
   if (code === "23514") {
-    return errorResponse(request, "conflict", "Payroll state conflict.", {
-      status: 409,
-      headers,
-      extra: { ...extra, code: "state_conflict" },
+    return payrollErrorResponse(request, 409, {
+      code: "state_conflict",
+      message: "Payroll state conflict.",
+      classification: PAYROLL_ERROR_CLASSIFICATIONS.state_conflict,
+      idempotencyKey,
+    }, traceHeaders, {
+      "Idempotency-Key": idempotencyKey,
     });
   }
   if (code === "22023") {
@@ -407,12 +464,7 @@ const invalidForwardedEdgeResponse = (
     headers: traceHeaders,
     extra: {
       code: "invalid_response",
-      classification: {
-        category: "upstream",
-        severity: "high",
-        retryable: false,
-        httpStatus: 502,
-      },
+      classification: PAYROLL_ERROR_CLASSIFICATIONS.invalid_response,
     },
   });
 
@@ -511,10 +563,11 @@ export async function payrollApprovalsHandler(request: Request): Promise<Respons
   }
 
   if (request.method !== "POST") {
-    return errorResponse(request, "validation_error", "Method not allowed", {
-      status: 405,
-      headers: traceHeaders,
-    });
+    return payrollErrorResponse(request, 405, {
+      code: "validation_error",
+      message: "Method not allowed",
+      classification: PAYROLL_ERROR_CLASSIFICATIONS.method_deny,
+    }, traceHeaders);
   }
 
   const accessToken = getAccessToken(request);

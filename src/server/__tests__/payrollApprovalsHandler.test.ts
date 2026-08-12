@@ -40,6 +40,10 @@ const createAuthToken = (subject = "bt-user-1") => {
   return `header.${payload}.signature`;
 };
 
+async function readJson(response: Response) {
+  return await response.json() as Record<string, unknown>;
+}
+
 describe("payrollApprovalsHandler", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -361,6 +365,160 @@ describe("payrollApprovalsHandler", () => {
       idempotencyKey: "approval-feature-key",
     }));
     expect(response.status).toBe(403);
+  });
+
+  it("keeps 23514 state conflict envelopes identical across legacy node and node-edge mode", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
+    vi.mocked(fetchJson).mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      data: {
+        code: "23514",
+        message: "approval transition violates current workflow state",
+      },
+    });
+
+    const request = new Request("http://localhost/api/payroll-approvals", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${createAuthToken()}`,
+        "Idempotency-Key": "approval-state-key",
+        "x-request-id": "state-request-id",
+      },
+      body: JSON.stringify({
+        action: "lock",
+        snapshotId: "11111111-1111-1111-1111-111111111111",
+        snapshotHash: "a".repeat(64),
+      }),
+    });
+
+    const legacyResponse = await payrollApprovalsHandler(request.clone());
+    const legacyBody = await readJson(legacyResponse);
+
+    vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
+    vi.mocked(proxyToEdgeAuthority).mockResolvedValueOnce(
+      new Response(JSON.stringify({
+        success: false,
+        error: "Payroll state conflict.",
+        requestId: "state-request-id",
+        code: "state_conflict",
+        message: "Payroll state conflict.",
+        classification: {
+          category: "request",
+          severity: "medium",
+          retryable: false,
+          httpStatus: 409,
+        },
+        idempotencyKey: "approval-state-key",
+      }), {
+        status: 409,
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": "approval-state-key",
+        },
+      }),
+    );
+
+    const edgeModeResponse = await payrollApprovalsHandler(request.clone());
+    const edgeModeBody = await readJson(edgeModeResponse);
+
+    expect(legacyResponse.status).toBe(409);
+    expect(edgeModeResponse.status).toBe(409);
+    expect(legacyResponse.headers.get("Idempotency-Key")).toBe("approval-state-key");
+    expect(edgeModeResponse.headers.get("Idempotency-Key")).toBe("approval-state-key");
+    expect(edgeModeBody).toEqual(legacyBody);
+  });
+
+  it("keeps method deny and invalid_response classifications identical in legacy node and node-edge mode", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
+
+    const methodDenyRequest = new Request("http://localhost/api/payroll-approvals", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${createAuthToken()}`,
+        "x-request-id": "method-request-id",
+      },
+    });
+
+    const legacyMethodDeny = await payrollApprovalsHandler(methodDenyRequest.clone());
+    const legacyMethodBody = await readJson(legacyMethodDeny);
+
+    const forwardedMethodDeny = await payrollApprovalsHandler(methodDenyRequest.clone());
+    const forwardedMethodBody = await readJson(forwardedMethodDeny);
+
+    expect(forwardedMethodBody).toEqual(legacyMethodBody);
+    expect(forwardedMethodBody.classification).toEqual({
+      category: "validation",
+      severity: "low",
+      retryable: false,
+      httpStatus: 405,
+    });
+
+    vi.mocked(fetchJson).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: {
+        transitionId: "22222222-2222-2222-2222-222222222222",
+        snapshotId: "11111111-1111-1111-1111-111111111111",
+        snapshotHash: "a".repeat(64),
+        canonicalSnapshotHash: "a".repeat(64),
+        action: "submitted",
+        previousTransitionId: null,
+        replayed: false,
+        occurredAt: "2026-08-12T18:00:00.000Z",
+        grossEarningsCents: 999999,
+      },
+    });
+
+    const invalidResponseRequest = new Request("http://localhost/api/payroll-approvals", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${createAuthToken()}`,
+        "Idempotency-Key": "approval-invalid-key",
+        "x-request-id": "invalid-request-id",
+      },
+      body: JSON.stringify({
+        action: "submit",
+        snapshotId: "11111111-1111-1111-1111-111111111111",
+        snapshotHash: "a".repeat(64),
+        attestation: true,
+      }),
+    });
+
+    const legacyInvalidResponse = await payrollApprovalsHandler(invalidResponseRequest.clone());
+    const legacyInvalidBody = await readJson(legacyInvalidResponse);
+
+    vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
+    vi.mocked(proxyToEdgeAuthority).mockResolvedValueOnce(
+      new Response(JSON.stringify({
+        transitionId: "22222222-2222-2222-2222-222222222222",
+        snapshotId: "11111111-1111-1111-1111-111111111111",
+        snapshotHash: "a".repeat(64),
+        canonicalSnapshotHash: "a".repeat(64),
+        action: "submitted",
+        previousTransitionId: null,
+        replayed: false,
+        occurredAt: "2026-08-12T18:00:00.000Z",
+        grossEarningsCents: 999999,
+      }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": "approval-invalid-key",
+        },
+      }),
+    );
+
+    const edgeInvalidResponse = await payrollApprovalsHandler(invalidResponseRequest.clone());
+    const edgeInvalidBody = await readJson(edgeInvalidResponse);
+
+    expect(edgeInvalidBody).toEqual(legacyInvalidBody);
+    expect(edgeInvalidBody.classification).toEqual({
+      category: "upstream",
+      severity: "high",
+      retryable: false,
+      httpStatus: 502,
+    });
   });
 
   it.each([

@@ -148,6 +148,26 @@ const protectedErrorResponseSchema = z.object({
   idempotencyKey: z.string().min(1).optional(),
   state: z.string().min(1).optional(),
 }).strict();
+const PAYROLL_ERROR_CLASSIFICATIONS = {
+  method_deny: {
+    category: "validation",
+    severity: "low",
+    retryable: false,
+    httpStatus: 405,
+  },
+  invalid_response: {
+    category: "upstream",
+    severity: "high",
+    retryable: false,
+    httpStatus: 502,
+  },
+  state_conflict: {
+    category: "request",
+    severity: "medium",
+    retryable: false,
+    httpStatus: 409,
+  },
+} as const;
 
 type PayrollApprovalAction = z.infer<typeof payrollApprovalActionSchema>;
 type PayrollApprovalResponse = z.infer<typeof payrollApprovalResponseSchema>;
@@ -289,12 +309,7 @@ const validateApprovalResponse = (
       code: "invalid_response",
       error: "Invalid payroll approval response.",
       message: "Invalid payroll approval response.",
-      classification: {
-        category: "upstream",
-        severity: "high",
-        retryable: false,
-        httpStatus: 502,
-      },
+      classification: PAYROLL_ERROR_CLASSIFICATIONS.invalid_response,
     });
   }
   if (parsed.data.idempotencyKey !== requestedKey) {
@@ -304,12 +319,7 @@ const validateApprovalResponse = (
       code: "invalid_response",
       error: "Invalid payroll approval response.",
       message: "Invalid payroll approval response.",
-      classification: {
-        category: "upstream",
-        severity: "high",
-        retryable: false,
-        httpStatus: 502,
-      },
+      classification: PAYROLL_ERROR_CLASSIFICATIONS.invalid_response,
     });
   }
   return parsed.data;
@@ -407,15 +417,10 @@ const mapRpcError = (req: Request, error: { code?: string; message?: string } | 
   }
   if (code === "23514") {
     return jsonErrorResponse(req, 409, {
-      code: "conflict",
+      code: "state_conflict",
       error: "Payroll state conflict.",
       message: "Payroll state conflict.",
-      classification: {
-        category: "request",
-        severity: "medium",
-        retryable: false,
-        httpStatus: 409,
-      },
+      classification: PAYROLL_ERROR_CLASSIFICATIONS.state_conflict,
       idempotencyKey,
     }, extraHeaders);
   }
@@ -490,12 +495,7 @@ export async function handlePayrollApprovals({ req, userContext, db }: HandlerPa
       code: "validation_error",
       error: "Method not allowed",
       message: "Method not allowed",
-      classification: {
-        category: "validation",
-        severity: "low",
-        retryable: false,
-        httpStatus: 405,
-      },
+      classification: PAYROLL_ERROR_CLASSIFICATIONS.method_deny,
     });
   }
 

@@ -366,6 +366,7 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - Responsive proof: `/payroll`, `/time`, and `/time/review` passed the read-only observer at desktop `1440x900` and mobile `390x844`; all six evidence cards have empty failure-code lists and matching on-disk hashes.
 - Blocked check: `npm run ci:playwright` stops at the fail-closed preflight because neither `PW_SUPERADMIN_*` nor `PW_ADMIN_*` credential pair is available locally. This remains a required CI/human environment gate.
 - Review: code, security, Supabase, UI, test-isolation, and responsive specialists approved the final bounded behavior after policy-precedence and missing-settings classification fixes.
+- Final protected-path review: commit `32c26097` adds `payroll-approvals` to auth-parity and manual deploy governance, verifies remote `verify_jwt=true`, requires live immutable-current-main attestation before credentials and immediately before deploy, and returns the shared typed Netlify `internal_error` envelope. DevOps, security, and code re-review found no remaining issue.
 - Tracking: existing issue `WIN-219` remains authoritative and was updated with commit and verification evidence. No new issue creation was attempted.
 - Boundary: no hosted migration, deployment, activation, merge, production data, PHI, secrets, `.env*` access, taxes, deductions, payments, full payroll engine, or CSV export occurred. Task 5 owns provider-neutral export.
 
@@ -375,7 +376,7 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - lane: `critical`
 - change type: UI/page; auth/routing; server/API/Edge; database/RLS/migration/tenant isolation
 - required checks: focused payroll unit/Edge/RPC tests; clean local migration replay; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run ci:verify-coverage`; `npm run validate:tenant`; `npm run build`; `npm run test:routes:tier0`; `npm run ci:playwright`; responsive observer for `/payroll`, `/time`, and `/time/review`; `npm run verify:local`
-- executed checks: all required local and secret-free checks passed, including the isolated database counts above, six responsive cards, and the complete 493.6-second `verify:local` gate
+- executed checks: all required local and secret-free checks passed, including the isolated database counts above, six responsive cards, the complete 493.6-second approval gate, and a fresh 485.7-second `verify:local` rerun after the final protected workflow/adapter repair; final coverage is 92.96% lines/statements, 98.75% functions, and 84.75% branches
 - blocked checks: `npm run ci:playwright` -> required credential pairs are unavailable; preflight failed closed before browser execution
 - result: `pass-with-blocked-checks`
 - residual risk: human critical-lane review, exact-head hosted checks, credentialed browser smoke, payroll/legal review, and explicit migration/deploy activation remain mandatory; no merge or activation is authorized

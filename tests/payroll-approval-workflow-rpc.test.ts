@@ -256,7 +256,7 @@ const resolveBlocker = async (
 const readLatestApproval = async (client: Client) =>
   (
     await client.query(
-      `select action, snapshot_hash, payload_hash, comment, reason
+      `select action, snapshot_hash, payload_hash, comment, reason, actor_user_id
        from public.timesheet_approvals
        where organization_id = $1::uuid
          and employment_profile_id = $2::uuid
@@ -266,6 +266,19 @@ const readLatestApproval = async (client: Client) =>
       [IDS.orgA, IDS.employmentA, IDS.payPeriodA],
     )
   ).rows[0];
+
+const readApprovalHistory = async (client: Client) =>
+  (
+    await client.query(
+      `select action, actor_user_id, previous_transition_id
+       from public.timesheet_approvals
+       where organization_id = $1::uuid
+         and employment_profile_id = $2::uuid
+         and pay_period_id = $3::uuid
+       order by occurred_at asc, received_at asc, id asc`,
+      [IDS.orgA, IDS.employmentA, IDS.payPeriodA],
+    )
+  ).rows;
 
 const readLatestResolution = async (client: Client) =>
   (
@@ -289,6 +302,163 @@ const readSnapshotHash = async (client: Client, snapshotId: string) =>
       [IDS.orgA, snapshotId],
     )
   ).rows[0].canonical_snapshot_hash as string;
+
+const seedApprovalChain = async (
+  client: Client,
+  currentState: "submitted" | "manager_approved",
+) => {
+  const policyId = (
+    await client.query(
+      `select id
+       from public.payroll_policy_versions
+       where organization_id = $1::uuid
+       order by effective_from desc, created_at desc, id desc
+       limit 1`,
+      [IDS.orgA],
+    )
+  ).rows[0]?.id as string;
+
+  const snapshotId = (
+    await client.query(
+      `insert into public.timesheet_snapshots (
+         organization_id,
+         employment_profile_id,
+         pay_period_id,
+         policy_version_id,
+         source_hash,
+         source_high_water,
+         canonical_payload,
+         regular_seconds,
+         overtime_seconds,
+         double_time_seconds,
+         meal_premium_cents,
+         gross_earnings_cents,
+         lockable,
+         created_by
+       ) values (
+         $1::uuid,
+         $2::uuid,
+         $3::uuid,
+         $4::uuid,
+         repeat('1', 64),
+         '{}'::jsonb,
+         jsonb_build_object('period', jsonb_build_object('employmentProfileId', $2::text, 'payPeriodId', $3::text)),
+         14400,
+         0,
+         0,
+         0,
+         12000,
+         true,
+         $5::uuid
+       )
+       returning id`,
+      [IDS.orgA, IDS.employmentA, IDS.payPeriodA, policyId, IDS.employeeA],
+    )
+  ).rows[0].id as string;
+  const snapshotHash = await readSnapshotHash(client, snapshotId);
+
+  await client.query(
+    `insert into public.timesheet_snapshot_current_heads (
+       organization_id,
+       employment_profile_id,
+       pay_period_id,
+       snapshot_id,
+       source_hash,
+       prior_snapshot_id,
+       created_by
+     ) values (
+       $1::uuid,
+       $2::uuid,
+       $3::uuid,
+       $4::uuid,
+       repeat('1', 64),
+       null,
+       $5::uuid
+     )`,
+    [IDS.orgA, IDS.employmentA, IDS.payPeriodA, snapshotId, IDS.employeeA],
+  );
+
+  const submittedId = (
+    await client.query(
+      `insert into public.timesheet_approvals (
+         organization_id,
+         employment_profile_id,
+         pay_period_id,
+         snapshot_id,
+         snapshot_hash,
+         actor_user_id,
+         action,
+         previous_transition_id,
+         attestation,
+         comment,
+         reason,
+         idempotency_key,
+         payload_hash,
+         occurred_at,
+         received_at
+       ) values (
+         $1::uuid,
+         $2::uuid,
+         $3::uuid,
+         $4::uuid,
+         $5::text,
+         $6::uuid,
+         'submitted',
+         null,
+         true,
+         null,
+         null,
+         $7::text,
+         repeat('2', 64),
+         '2026-08-11T21:00:00Z'::timestamptz,
+         '2026-08-11T21:00:00Z'::timestamptz
+       )
+       returning id`,
+      [IDS.orgA, IDS.employmentA, IDS.payPeriodA, snapshotId, snapshotHash, IDS.employeeA, `seed-submitted-${currentState}`],
+    )
+  ).rows[0].id as string;
+
+  if (currentState === "manager_approved") {
+    await client.query(
+      `insert into public.timesheet_approvals (
+         organization_id,
+         employment_profile_id,
+         pay_period_id,
+         snapshot_id,
+         snapshot_hash,
+         actor_user_id,
+         action,
+         previous_transition_id,
+         attestation,
+         comment,
+         reason,
+         idempotency_key,
+         payload_hash,
+         occurred_at,
+         received_at
+       ) values (
+         $1::uuid,
+         $2::uuid,
+         $3::uuid,
+         $4::uuid,
+         $5::text,
+         $6::uuid,
+         'manager_approved',
+         $7::uuid,
+         null,
+         null,
+         null,
+         $8::text,
+         repeat('3', 64),
+         '2026-08-11T22:00:00Z'::timestamptz,
+         '2026-08-11T22:00:00Z'::timestamptz
+       )`,
+      [IDS.orgA, IDS.employmentA, IDS.payPeriodA, snapshotId, snapshotHash, IDS.managerA, submittedId, "seed-manager-approved"],
+    );
+  }
+
+  return { snapshotId, snapshotHash };
+};
 
 const readPayPeriodProjection = async (client: Client) =>
   (
@@ -604,6 +774,109 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
       snapshotId: secondSnapshot.snapshotId,
       replayed: false,
     });
+  });
+
+  it("atomically appends exactly one approval_invalidated after a submitted source append before later manager action", async () => {
+    const snapshot = await seedApprovalChain(admin, "submitted");
+
+    const beforeAppend = await countWorkflowRows(admin);
+    await insertTimeEvent(admin, "shift_started", "2026-08-12T16:30:00Z");
+
+    expect(await countWorkflowRows(admin)).toEqual({
+      approvals: beforeAppend.approvals + 1,
+      resolutions: beforeAppend.resolutions,
+      receipts: beforeAppend.receipts,
+      audits: beforeAppend.audits,
+    });
+    expect(await readApprovalHistory(admin)).toEqual([
+      {
+        action: "submitted",
+        actor_user_id: IDS.employeeA,
+        previous_transition_id: null,
+      },
+      {
+        action: "approval_invalidated",
+        actor_user_id: IDS.employeeA,
+        previous_transition_id: expect.any(String),
+      },
+    ]);
+
+    const beforeManagerAction = await countWorkflowRows(admin);
+    await expect(
+      transitionApproval(
+        admin,
+        {
+          action: "manager_approve",
+          snapshotId: snapshot.snapshotId,
+          snapshotHash: snapshot.snapshotHash,
+        },
+        "approve-after-append-invalidation",
+        IDS.managerA,
+      ),
+    ).rejects.toThrow(/invalid approval transition/i);
+    expect(await countWorkflowRows(admin)).toEqual(beforeManagerAction);
+  });
+
+  it("invalidates a manager-approved chain once on reviewable append and preserves tenant-scoped source provenance", async () => {
+    await seedApprovalChain(admin, "manager_approved");
+
+    const originalEventId = (
+      await admin.query(
+        `select id
+         from public.employee_time_events
+         where organization_id = $1::uuid and employment_profile_id = $2::uuid
+         order by event_at asc, created_at asc, id asc
+         limit 1`,
+        [IDS.orgA, IDS.employmentA],
+      )
+    ).rows[0].id;
+
+    const beforeCorrection = await countWorkflowRows(admin);
+    await admin.query(
+      `insert into public.time_correction_requests (
+         organization_id, employment_profile_id, original_event_id, requested_by, reason_code, replacement_payload
+       ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'missed_punch', '{}'::jsonb)`,
+      [IDS.orgA, IDS.employmentA, originalEventId, IDS.employeeA],
+    );
+
+    expect(await countWorkflowRows(admin)).toEqual({
+      approvals: beforeCorrection.approvals + 1,
+      resolutions: beforeCorrection.resolutions,
+      receipts: beforeCorrection.receipts,
+      audits: beforeCorrection.audits,
+    });
+    expect(await readApprovalHistory(admin)).toEqual([
+      {
+        action: "submitted",
+        actor_user_id: IDS.employeeA,
+        previous_transition_id: null,
+      },
+      {
+        action: "manager_approved",
+        actor_user_id: IDS.managerA,
+        previous_transition_id: expect.any(String),
+      },
+      {
+        action: "approval_invalidated",
+        actor_user_id: IDS.employeeA,
+        previous_transition_id: expect.any(String),
+      },
+    ]);
+
+    await admin.query(
+      `insert into public.time_correction_requests (
+         organization_id, employment_profile_id, original_event_id, requested_by, reason_code, replacement_payload
+       ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'missed_punch', '{}'::jsonb)`,
+      [IDS.orgA, IDS.employmentA, originalEventId, IDS.employeeA],
+    );
+    await admin.query(
+      `insert into public.employee_time_events (
+         organization_id, employment_profile_id, event_type, event_at, actor_user_id, source_timezone, work_location
+       ) values ($1::uuid, $2::uuid, 'shift_started', '2026-08-13T16:00:00Z', $3::uuid, 'America/Los_Angeles', 'office')`,
+      [IDS.orgB, IDS.employmentB, IDS.employeeB],
+    );
+
+    expect((await readApprovalHistory(admin)).filter((row) => row.action === "approval_invalidated")).toHaveLength(1);
   });
 
   it("requires blocker resolution before payroll lock, preserves projection columns, and allows reopen with reason", async () => {

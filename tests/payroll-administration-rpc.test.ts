@@ -1460,7 +1460,7 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll administration rpc runtime contr
       canResolveExceptions: false,
       canLockPeriod: false,
       canReopenPeriod: false,
-      canGeneratePeriods: true,
+      canGeneratePeriods: false,
       canViewCompensation: false,
       canManagePolicyMutations: false,
     });
@@ -1605,6 +1605,51 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll administration rpc runtime contr
         ),
       ).toBe(true);
     }
+  });
+
+  it("requires payroll.configure_employment for generate_periods reads and writes", async () => {
+    await admin.query(
+      `delete from public.payroll_capability_grants
+       where organization_id = $1::uuid
+         and user_id = $2::uuid`,
+      [IDS.orgA, IDS.schedulerA],
+    );
+    await admin.query(
+      `insert into public.payroll_capability_grants (
+         organization_id, user_id, capability, effective_from, granted_by
+       ) values ($1::uuid, $2::uuid, 'payroll.export_period', '2026-08-01T00:00:00Z', $3::uuid)`,
+      [IDS.orgA, IDS.schedulerA, IDS.adminA],
+    );
+    await admin.query(
+      `update public.user_roles
+       set role_id = (select id from public.roles where name = 'admin' limit 1)
+       where user_id = $1::uuid`,
+      [IDS.schedulerA],
+    );
+
+    expect((await getAdministration(admin, IDS.schedulerA)).capabilities.canGeneratePeriods).toBe(false);
+    await expect(
+      executeAdministration(
+        admin,
+        {
+          action: "generate_periods",
+          payGroupId: IDS.payGroupWeeklyA,
+          from: "2026-08-01",
+          to: "2026-08-31",
+        },
+        "export-only-generate-periods",
+        IDS.schedulerA,
+      ),
+    ).rejects.toThrow(/payroll\.configure_employment capability is required/i);
+
+    await admin.query(
+      `insert into public.payroll_capability_grants (
+         organization_id, user_id, capability, effective_from, granted_by
+       ) values ($1::uuid, $2::uuid, 'payroll.configure_employment', '2026-08-01T00:00:00Z', $3::uuid)`,
+      [IDS.orgA, IDS.schedulerA, IDS.adminA],
+    );
+
+    expect((await getAdministration(admin, IDS.schedulerA)).capabilities.canGeneratePeriods).toBe(true);
   });
 
   it("bounds payroll administration history by default and keeps the unrelated advisory-lock scope independent from pay-group generation", async () => {

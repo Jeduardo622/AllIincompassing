@@ -342,6 +342,7 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll review read models rpc runtime c
     const selfApproval = await getSelfApproval(admin, IDS.employeeA);
     expect(selfApproval).toMatchObject({
       state: "ok",
+      selectedLocalDate,
       approval: {
         currentState: "submitted",
         snapshot: {
@@ -390,6 +391,150 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll review read models rpc runtime c
     );
     await expect(getSelfApproval(admin, IDS.employeeA)).resolves.toMatchObject({
       state: "unsupported_policy",
+    });
+  });
+
+  it("echoes the requested selectedLocalDate in the exact ok self-approval schema", async () => {
+    const policyId = (
+      await admin.query(
+        `select id
+         from public.payroll_policy_versions
+         where organization_id = $1::uuid
+         order by effective_from desc, created_at desc, id desc
+         limit 1`,
+        [IDS.orgA],
+      )
+    ).rows[0]?.id as string;
+
+    await admin.query(
+      `insert into public.timesheet_snapshots (
+         id,
+         organization_id,
+         employment_profile_id,
+         pay_period_id,
+         policy_version_id,
+         source_hash,
+         source_high_water,
+         canonical_payload,
+         regular_seconds,
+         overtime_seconds,
+         double_time_seconds,
+         meal_premium_cents,
+         gross_earnings_cents,
+         lockable,
+         created_by
+       ) values (
+         '91000000-0000-4000-8000-000000000001',
+         $1::uuid,
+         $2::uuid,
+         $3::uuid,
+         $4::uuid,
+         repeat('1', 64),
+         '{}'::jsonb,
+         jsonb_build_object('period', jsonb_build_object('employmentProfileId', $2::text, 'payPeriodId', $3::text)),
+         14400,
+         0,
+         0,
+         0,
+         12000,
+         true,
+         $5::uuid
+       )`,
+      [IDS.orgA, IDS.employmentA, IDS.payPeriodA, policyId, IDS.employeeA],
+    );
+    const snapshotHash = await getSnapshotHash(admin, "91000000-0000-4000-8000-000000000001");
+    await admin.query(
+      `insert into public.timesheet_snapshot_current_heads (
+         id,
+         organization_id,
+         employment_profile_id,
+         pay_period_id,
+         snapshot_id,
+         source_hash,
+         prior_snapshot_id,
+         created_by
+       ) values (
+         '91000000-0000-4000-8000-000000000002',
+         $1::uuid,
+         $2::uuid,
+         $3::uuid,
+         '91000000-0000-4000-8000-000000000001',
+         repeat('1', 64),
+         null,
+         $4::uuid
+       )`,
+      [IDS.orgA, IDS.employmentA, IDS.payPeriodA, IDS.employeeA],
+    );
+    await admin.query(
+      `insert into public.timesheet_approvals (
+         id,
+         organization_id,
+         employment_profile_id,
+         pay_period_id,
+         snapshot_id,
+         snapshot_hash,
+         actor_user_id,
+         action,
+         previous_transition_id,
+         attestation,
+         comment,
+         reason,
+         idempotency_key,
+         payload_hash,
+         occurred_at,
+         received_at
+       ) values (
+         '91000000-0000-4000-8000-000000000003',
+         $1::uuid,
+         $2::uuid,
+         $3::uuid,
+         '91000000-0000-4000-8000-000000000001',
+         $4::text,
+         $5::uuid,
+         'submitted',
+         null,
+         true,
+         null,
+         null,
+         'self-approval-selected-date',
+         repeat('2', 64),
+         '2026-08-13T18:00:00Z'::timestamptz,
+         '2026-08-13T18:00:00Z'::timestamptz
+       )`,
+      [IDS.orgA, IDS.employmentA, IDS.payPeriodA, snapshotHash, IDS.employeeA],
+    );
+
+    const selfApproval = await getSelfApproval(admin, IDS.employeeA);
+    expect(selfApproval).toEqual({
+      state: "ok",
+      selectedLocalDate,
+      approval: {
+        currentState: "submitted",
+        submittedAt: expect.any(String),
+        returnedComment: null,
+        unresolvedBlockerCount: 0,
+        snapshot: {
+          id: expect.any(String),
+          hash: expect.stringMatching(/^[0-9a-f]{64}$/),
+          isCurrent: true,
+        },
+        actions: {
+          canSubmit: false,
+        },
+        compensation: {
+          grossEarningsCents: expect.any(Number),
+        },
+        history: [
+          {
+            action: "submitted",
+            occurredAt: expect.any(String),
+            comment: null,
+            reason: null,
+            snapshotId: expect.any(String),
+            snapshotHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+          },
+        ],
+      },
     });
   });
 

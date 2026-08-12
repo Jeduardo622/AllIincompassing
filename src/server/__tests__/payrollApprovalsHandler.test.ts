@@ -231,6 +231,99 @@ describe("payrollApprovalsHandler", () => {
     );
   });
 
+  it("calls get_payroll_review_queue in legacy mode without Idempotency-Key requirements", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
+    vi.mocked(fetchJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        state: "ok",
+        selectedLocalDate: "2026-08-12",
+        queue: [],
+        capabilities: {
+          canReviewAssigned: true,
+          canApproveAssigned: false,
+          canViewCompensation: false,
+          hasOrgPayrollAccess: false,
+        },
+      },
+    });
+
+    const response = await payrollApprovalsHandler(
+      new Request("http://localhost/api/payroll-approvals", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${createAuthToken()}`,
+        },
+        body: JSON.stringify({
+          action: "review_queue",
+          selectedLocalDate: "2026-08-12",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(vi.mocked(fetchJson)).toHaveBeenCalledWith(
+      "https://example.supabase.co/rest/v1/rpc/get_payroll_review_queue",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          selected_local_date: "2026-08-12",
+        }),
+      }),
+    );
+  });
+
+  it("calls get_payroll_review_details in legacy mode with exact snapshot binding and no mutation headers", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
+    vi.mocked(fetchJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        state: "ok",
+        snapshotId: "11111111-1111-1111-1111-111111111111",
+        snapshotHash: "a".repeat(64),
+        periodStart: "2026-08-10",
+        periodEnd: "2026-08-16",
+        approvalHistory: [],
+        punches: [],
+        blockers: [],
+        classifiedSeconds: {
+          regular: 0,
+          overtime: 0,
+          doubleTime: 0,
+        },
+        unresolvedBlockerCount: 0,
+      },
+    });
+
+    const response = await payrollApprovalsHandler(
+      new Request("http://localhost/api/payroll-approvals", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${createAuthToken()}`,
+        },
+        body: JSON.stringify({
+          action: "review_details",
+          snapshotId: "11111111-1111-1111-1111-111111111111",
+          snapshotHash: "a".repeat(64),
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(vi.mocked(fetchJson)).toHaveBeenCalledWith(
+      "https://example.supabase.co/rest/v1/rpc/get_payroll_review_details",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          snapshot_id: "11111111-1111-1111-1111-111111111111",
+          snapshot_hash: "a".repeat(64),
+        }),
+      }),
+    );
+  });
+
   it("calls resolve_payroll_blocker in legacy mode with exact blocker RPC args only", async () => {
     vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
     vi.mocked(fetchJson).mockResolvedValue({

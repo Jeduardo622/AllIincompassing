@@ -50,6 +50,13 @@ const payrollBlockerTypeSchema = z.enum([
   "timekeeping_exception",
 ]);
 const payrollBlockerResolutionSchema = z.enum(["resolved", "reopened"]);
+const payrollReviewStateSchema = z.enum([
+  "ok",
+  "feature_disabled",
+  "unsupported_policy",
+  "unsupported_jurisdiction",
+  "missing_prerequisite",
+]);
 
 const timeEventPayloadSchema = z.object({
   occurredAt: z.string().min(1),
@@ -227,6 +234,91 @@ const payrollBlockerResolutionResponseSchema = z.object({
   occurredAt: z.string().min(1),
   idempotencyKey: z.string().min(1),
 }).strict();
+const payrollReviewCapabilitiesSchema = z.object({
+  canReviewAssigned: z.boolean(),
+  canApproveAssigned: z.boolean(),
+  canViewCompensation: z.boolean(),
+  hasOrgPayrollAccess: z.boolean(),
+}).strict();
+const payrollReviewQueueItemSchema = z.object({
+  employeeLabel: z.string().min(1),
+  employmentProfileId: z.string().min(1),
+  payPeriodId: z.string().uuid(),
+  periodStart: z.string().date(),
+  periodEnd: z.string().date(),
+  state: z.string().min(1),
+  blockerCount: z.number().int(),
+  submittedAt: z.string().min(1).nullable(),
+  snapshot: z.object({
+    id: z.string().uuid().nullable(),
+    hash: z.string().min(1).nullable(),
+  }).strict(),
+  classifiedSeconds: z.object({
+    regular: z.number().int(),
+    overtime: z.number().int(),
+    doubleTime: z.number().int(),
+  }).strict(),
+  compensation: z.object({
+    grossEarningsCents: z.number().int(),
+  }).strict().optional(),
+}).strict();
+const payrollReviewQueueResponseSchema = z.object({
+  state: payrollReviewStateSchema,
+  selectedLocalDate: z.string().date(),
+  capabilities: payrollReviewCapabilitiesSchema,
+  queue: z.array(payrollReviewQueueItemSchema),
+}).strict().superRefine((value, ctx) => {
+  if (!value.capabilities.canViewCompensation) {
+    value.queue.forEach((item, index) => {
+      if (item.compensation) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Compensation requires payroll.view_compensation.",
+          path: ["queue", index, "compensation"],
+        });
+      }
+    });
+  }
+});
+const payrollReviewDetailsResponseSchema = z.object({
+  state: z.literal("ok"),
+  snapshotId: z.string().uuid(),
+  snapshotHash: z.string().min(1),
+  periodStart: z.string().date(),
+  periodEnd: z.string().date(),
+  punches: z.array(z.object({
+    id: z.string().uuid(),
+    eventType: z.string().min(1),
+    occurredAt: z.string().min(1),
+    timezone: z.string().min(1),
+    workLocation: z.string().nullable(),
+    workCategory: z.string().nullable(),
+    createdAt: z.string().min(1),
+  }).strict()),
+  classifiedSeconds: z.object({
+    regular: z.number().int(),
+    overtime: z.number().int(),
+    doubleTime: z.number().int(),
+  }).strict(),
+  approvalHistory: z.array(z.object({
+    action: z.string().min(1),
+    occurredAt: z.string().min(1),
+    comment: z.string().nullable(),
+    reason: z.string().nullable(),
+    snapshotId: z.string().uuid(),
+    snapshotHash: z.string().min(1),
+  }).strict()),
+  blockers: z.array(z.object({
+    blockerType: payrollBlockerTypeSchema,
+    blockerId: z.string().uuid(),
+    state: z.string().min(1),
+    createdAt: z.string().min(1),
+  }).strict()),
+  unresolvedBlockerCount: z.number().int(),
+  compensation: z.object({
+    grossEarningsCents: z.number().int(),
+  }).strict().optional(),
+}).strict();
 const payrollTimesheetSnapshotSchema = z.object({
   id: z.string().uuid().optional(),
   snapshotId: z.string().uuid().optional(),
@@ -364,6 +456,8 @@ export type PayrollTimesheetDeriveResponse =
   | z.infer<typeof payrollTimesheetDeriveBlockedSchema>;
 export type PayrollApprovalTransition = z.infer<typeof payrollApprovalTransitionSchema>;
 export type PayrollBlockerResolutionResponse = z.infer<typeof payrollBlockerResolutionResponseSchema>;
+export type PayrollReviewQueueResponse = z.infer<typeof payrollReviewQueueResponseSchema>;
+export type PayrollReviewDetailsResponse = z.infer<typeof payrollReviewDetailsResponseSchema>;
 export type PayrollDayResponse = {
   state: PayrollDayState;
   bootstrap?: PayrollBootstrap;
@@ -911,6 +1005,70 @@ export async function resolvePayrollBlocker(
     reason: validatePayrollApprovalReason(input.reason),
   }, idempotencyKey);
   return confirmExactApprovalResponse(response, idempotencyKey, payrollBlockerResolutionResponseSchema);
+}
+
+export async function fetchPayrollReviewQueue(scope: PayrollScope): Promise<PayrollReviewQueueResponse> {
+  const response = await callApi(PAYROLL_APPROVALS_ENDPOINT, {
+    method: "POST",
+    headers: new Headers({
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify({
+      action: "review_queue",
+      selectedLocalDate: z.string().date().parse(scope.localDate),
+    }),
+  });
+
+  if (!response.ok) {
+    throw await parseFailure(response, "Failed to fetch payroll review queue.");
+  }
+
+  const parsed = await parseJsonResponse(response.clone(), payrollReviewQueueResponseSchema);
+  if (!parsed) {
+    throw toNormalizedApiError(
+      {
+        code: "invalid_response",
+        error: "Invalid payroll approval response.",
+      },
+      502,
+      "Invalid payroll approval response.",
+    );
+  }
+
+  return parsed;
+}
+
+export async function fetchPayrollReviewDetails(
+  input: PayrollScope & { snapshotId: string; snapshotHash: string },
+): Promise<PayrollReviewDetailsResponse> {
+  const response = await callApi(PAYROLL_APPROVALS_ENDPOINT, {
+    method: "POST",
+    headers: new Headers({
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify({
+      action: "review_details",
+      ...validateSnapshotBinding(input),
+    }),
+  });
+
+  if (!response.ok) {
+    throw await parseFailure(response, "Failed to fetch payroll review details.");
+  }
+
+  const parsed = await parseJsonResponse(response.clone(), payrollReviewDetailsResponseSchema);
+  if (!parsed) {
+    throw toNormalizedApiError(
+      {
+        code: "invalid_response",
+        error: "Invalid payroll approval response.",
+      },
+      502,
+      "Invalid payroll approval response.",
+    );
+  }
+
+  return parsed;
 }
 
 export const isRetryablePayrollTransportError = (error: unknown): boolean => {

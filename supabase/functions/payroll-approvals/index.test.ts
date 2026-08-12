@@ -250,6 +250,89 @@ Deno.test("submit calls transition_timesheet_approval with exact payload and rep
   assertEquals(body.replayed, true);
 });
 
+Deno.test("review_queue calls the exact read rpc without Idempotency-Key requirements", async () => {
+  const calls: RpcCall[] = [];
+  const response = await handlePayrollApprovals({
+    req: createRequest({
+      action: "review_queue",
+      selectedLocalDate: "2026-08-12",
+    }),
+    userContext: createUserContext("bcba"),
+    db: createRpcClient((fn, args) => {
+      calls.push({ fn, args });
+      return {
+        data: {
+          state: "ok",
+          selectedLocalDate: "2026-08-12",
+          queue: [],
+          capabilities: {
+            canReviewAssigned: true,
+            canApproveAssigned: false,
+            canViewCompensation: false,
+            hasOrgPayrollAccess: false,
+          },
+        },
+        error: null,
+      };
+    }),
+  });
+
+  assertEquals(response.status, 200);
+  assertEquals(calls, [{
+    fn: "get_payroll_review_queue",
+    args: {
+      selected_local_date: "2026-08-12",
+    },
+  }]);
+  assertEquals(response.headers.get("Idempotency-Key"), null);
+  assertEquals(response.headers.get("Idempotent-Replay"), null);
+});
+
+Deno.test("review_details calls the exact read rpc with snapshot binding and no mutation headers", async () => {
+  const calls: RpcCall[] = [];
+  const response = await handlePayrollApprovals({
+    req: createRequest({
+      action: "review_details",
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "a".repeat(64),
+    }),
+    userContext: createUserContext("bcba"),
+    db: createRpcClient((fn, args) => {
+      calls.push({ fn, args });
+      return {
+        data: {
+          state: "ok",
+          snapshotId: "11111111-1111-1111-1111-111111111111",
+          snapshotHash: "a".repeat(64),
+          periodStart: "2026-08-11",
+          periodEnd: "2026-08-17",
+          approvalHistory: [],
+          punches: [],
+          blockers: [],
+          classifiedSeconds: {
+            regular: 0,
+            overtime: 0,
+            doubleTime: 0,
+          },
+          unresolvedBlockerCount: 0,
+        },
+        error: null,
+      };
+    }),
+  });
+
+  assertEquals(response.status, 200);
+  assertEquals(calls, [{
+    fn: "get_payroll_review_details",
+    args: {
+      snapshot_id: "11111111-1111-1111-1111-111111111111",
+      snapshot_hash: "a".repeat(64),
+    },
+  }]);
+  assertEquals(response.headers.get("Idempotency-Key"), null);
+  assertEquals(response.headers.get("Idempotent-Replay"), null);
+});
+
 Deno.test("resolve_blocker calls resolve_payroll_blocker with exact blocker payload only", async () => {
   const calls: RpcCall[] = [];
   const response = await handlePayrollApprovals({

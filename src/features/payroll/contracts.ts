@@ -57,6 +57,8 @@ export const PAYROLL_EVENT_OPERATIONS = [
 ] as const;
 
 export const PAYROLL_APPROVAL_ACTIONS = [
+  "review_queue",
+  "review_details",
   "submit",
   "manager_approve",
   "return",

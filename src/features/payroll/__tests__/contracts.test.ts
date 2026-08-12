@@ -59,6 +59,8 @@ describe("payroll contracts", () => {
 
   it("pins the exact protected payroll approval action vocabulary", () => {
     expect(PAYROLL_APPROVAL_ACTIONS).toEqual([
+      "review_queue",
+      "review_details",
       "submit",
       "manager_approve",
       "return",

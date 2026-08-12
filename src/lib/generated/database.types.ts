@@ -11344,6 +11344,18 @@ export type Database = {
         Returns: string
       }
       get_payroll_day: { Args: { local_date: string }; Returns: Json }
+      get_payroll_review_details: {
+        Args: { snapshot_hash: string; snapshot_id: string }
+        Returns: Json
+      }
+      get_payroll_review_queue: {
+        Args: { selected_local_date: string }
+        Returns: Json
+      }
+      get_payroll_self_approval: {
+        Args: { selected_local_date: string }
+        Returns: Json
+      }
       get_payroll_timesheet_period: {
         Args: { selected_local_date: string }
         Returns: Json

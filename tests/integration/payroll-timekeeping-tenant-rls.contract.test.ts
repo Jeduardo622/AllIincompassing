@@ -44,9 +44,19 @@ const approvalSql = approvalMigrationName
       "utf8",
     )
   : "";
+const reviewReadModelsMigrationName =
+  readdirSync(path.join(process.cwd(), "supabase", "migrations")).find((name) =>
+    name.endsWith("payroll_review_read_models.sql"),
+  ) ?? "";
+const reviewReadModelsSql = reviewReadModelsMigrationName
+  ? readFileSync(
+      path.join(process.cwd(), "supabase", "migrations", reviewReadModelsMigrationName),
+      "utf8",
+    )
+  : "";
 const sessionLifecycleSql = `${sessionLifecycleBaseSql}\n${sessionLifecycleAdditiveSql}`;
 const functionDefinition = (qualifiedName: string): string => {
-  const matches = `${sql}\n${captureSql}\n${sessionLifecycleSql}\n${approvalSql}`.match(
+  const matches = `${sql}\n${captureSql}\n${sessionLifecycleSql}\n${approvalSql}\n${reviewReadModelsSql}`.match(
     new RegExp(
       `create or replace function ${qualifiedName.replace(".", "\\.")}\\([\\s\\S]*?\\n\\$\\$;`,
       "gi",
@@ -331,6 +341,54 @@ describe("payroll timekeeping tenant and RLS contract", () => {
     expect(functionDefinition("app.payroll_event_is_locked")).toMatch(/approval_row\.action = 'locked'/i);
     expect(functionDefinition("app.payroll_event_is_locked")).not.toMatch(/period_row\.locked_at is not null/i);
     expect(functionDefinition("app.payroll_event_is_locked")).toMatch(/period_row\.exported_at is not null/i);
+  });
+
+  it("keeps payroll review read models authenticated-only and off raw service-role table access", () => {
+    expect(reviewReadModelsSql).toMatch(
+      /revoke all on function public\.get_payroll_self_approval\(date\) from public,\s*anon,\s*service_role/i,
+    );
+    expect(reviewReadModelsSql).toMatch(
+      /grant execute on function public\.get_payroll_self_approval\(date\) to authenticated/i,
+    );
+    expect(reviewReadModelsSql).not.toMatch(
+      /grant execute on function public\.get_payroll_self_approval\(date\) to authenticated,\s*service_role/i,
+    );
+    expect(reviewReadModelsSql).toMatch(
+      /revoke all on function public\.get_payroll_review_queue\(date\) from public,\s*anon,\s*service_role/i,
+    );
+    expect(reviewReadModelsSql).toMatch(
+      /grant execute on function public\.get_payroll_review_queue\(date\) to authenticated/i,
+    );
+    expect(reviewReadModelsSql).not.toMatch(
+      /grant execute on function public\.get_payroll_review_queue\(date\) to authenticated,\s*service_role/i,
+    );
+    expect(reviewReadModelsSql).toMatch(
+      /revoke all on function public\.get_payroll_review_details\(uuid,\s*text\) from public,\s*anon,\s*service_role/i,
+    );
+    expect(reviewReadModelsSql).toMatch(
+      /grant execute on function public\.get_payroll_review_details\(uuid,\s*text\) to authenticated/i,
+    );
+    expect(reviewReadModelsSql).not.toMatch(
+      /grant execute on function public\.get_payroll_review_details\(uuid,\s*text\) to authenticated,\s*service_role/i,
+    );
+    expect(reviewReadModelsSql).not.toMatch(/grant select on public\.employee_rate_versions to authenticated,\s*service_role/i);
+    expect(reviewReadModelsSql).not.toMatch(/grant select on public\.timesheet_snapshot_lines to authenticated,\s*service_role/i);
+  });
+
+  it("binds review reads to exact current assignment or explicit payroll grants without exposing non-payroll fields", () => {
+    expect(functionDefinition("public.get_payroll_review_queue")).toMatch(
+      /app\.current_user_can_read_payroll_employee\(employment\.organization_id,\s*employment\.id\)/i,
+    );
+    expect(functionDefinition("public.get_payroll_review_queue")).toMatch(/time\.review_assigned|time\.approve_assigned/i);
+    expect(functionDefinition("public.get_payroll_review_queue")).toMatch(/payroll\.lock_period|payroll\.reopen_period|payroll\.resolve_exceptions|payroll\.view_compensation/i);
+    expect(functionDefinition("public.get_payroll_review_queue")).not.toMatch(/session_id/i);
+    expect(functionDefinition("public.get_payroll_review_queue")).not.toMatch(/client_id/i);
+    expect(functionDefinition("public.get_payroll_review_queue")).not.toMatch(/canonical_payload/i);
+    expect(functionDefinition("public.get_payroll_review_details")).toMatch(/app\.timesheet_snapshot_is_current\(/i);
+    expect(functionDefinition("public.get_payroll_review_details")).not.toMatch(/session_id/i);
+    expect(functionDefinition("public.get_payroll_review_details")).not.toMatch(/client_id/i);
+    expect(functionDefinition("public.get_payroll_review_details")).not.toMatch(/canonical_payload/i);
+    expect(functionDefinition("public.get_payroll_review_details")).not.toMatch(/hourly_rate_cents/i);
   });
 
   it("rejects overlapping active payroll employment across organizations", () => {

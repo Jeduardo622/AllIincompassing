@@ -39,6 +39,8 @@ const FORBIDDEN_AUTHORITY_KEYS = new Set([
   "payPeriodId",
 ]);
 const SUPPORTED_ACTIONS = new Set([
+  "review_queue",
+  "review_details",
   "submit",
   "manager_approve",
   "return",
@@ -70,6 +72,15 @@ const protectedErrorClassificationSchema = z.object({
 }).strict();
 
 const payrollApprovalActionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("review_queue"),
+    selectedLocalDate: z.string().date(),
+  }).strict(),
+  z.object({
+    action: z.literal("review_details"),
+    snapshotId: z.string().uuid(),
+    snapshotHash: snapshotHashSchema,
+  }).strict(),
   z.object({
     action: z.literal("submit"),
     snapshotId: z.string().uuid(),
@@ -138,6 +149,94 @@ const payrollApprovalResponseSchema = z.union([
   payrollApprovalTransitionResponseSchema,
   payrollBlockerResolutionResponseSchema,
 ]);
+const payrollReviewStateSchema = z.enum([
+  "ok",
+  "feature_disabled",
+  "unsupported_policy",
+  "unsupported_jurisdiction",
+  "missing_prerequisite",
+]);
+const payrollReviewCapabilitiesSchema = z.object({
+  canReviewAssigned: z.boolean(),
+  canApproveAssigned: z.boolean(),
+  canViewCompensation: z.boolean(),
+  hasOrgPayrollAccess: z.boolean(),
+}).strict();
+const payrollReviewQueueItemSchema = z.object({
+  employeeLabel: z.string().min(1),
+  employmentProfileId: z.string().uuid(),
+  payPeriodId: z.string().uuid(),
+  periodStart: z.string().date(),
+  periodEnd: z.string().date(),
+  state: z.string().min(1),
+  blockerCount: z.number().int(),
+  submittedAt: z.string().min(1).nullable(),
+  snapshot: z.object({
+    id: z.string().uuid().nullable(),
+    hash: z.string().min(1).nullable(),
+  }).strict(),
+  classifiedSeconds: z.object({
+    regular: z.number().int(),
+    overtime: z.number().int(),
+    doubleTime: z.number().int(),
+  }).strict(),
+  compensation: z.object({
+    grossEarningsCents: z.number().int(),
+  }).strict().optional(),
+}).strict();
+const payrollReviewQueueResponseSchema = z.union([
+  z.object({
+    state: z.literal("ok"),
+    selectedLocalDate: z.string().date(),
+    capabilities: payrollReviewCapabilitiesSchema,
+    queue: z.array(payrollReviewQueueItemSchema),
+  }).strict(),
+  z.object({
+    state: z.enum(["feature_disabled", "unsupported_policy", "unsupported_jurisdiction", "missing_prerequisite"]),
+    selectedLocalDate: z.string().date(),
+    capabilities: payrollReviewCapabilitiesSchema,
+    queue: z.array(payrollReviewQueueItemSchema),
+  }).strict(),
+]);
+const payrollReviewDetailsResponseSchema = z.object({
+  state: z.literal("ok"),
+  snapshotId: z.string().uuid(),
+  snapshotHash: snapshotHashSchema,
+  periodStart: z.string().date(),
+  periodEnd: z.string().date(),
+  punches: z.array(z.object({
+    id: z.string().uuid(),
+    eventType: z.string().min(1),
+    occurredAt: z.string().min(1),
+    timezone: z.string().min(1),
+    workLocation: z.string().nullable(),
+    workCategory: z.string().nullable(),
+    createdAt: z.string().min(1),
+  }).strict()),
+  classifiedSeconds: z.object({
+    regular: z.number().int(),
+    overtime: z.number().int(),
+    doubleTime: z.number().int(),
+  }).strict(),
+  approvalHistory: z.array(z.object({
+    action: z.string().min(1),
+    occurredAt: z.string().min(1),
+    comment: z.string().nullable(),
+    reason: z.string().nullable(),
+    snapshotId: z.string().uuid(),
+    snapshotHash: snapshotHashSchema,
+  }).strict()),
+  blockers: z.array(z.object({
+    blockerType: blockerTypeSchema,
+    blockerId: z.string().uuid(),
+    state: z.string().min(1),
+    createdAt: z.string().min(1),
+  }).strict()),
+  unresolvedBlockerCount: z.number().int(),
+  compensation: z.object({
+    grossEarningsCents: z.number().int(),
+  }).strict().optional(),
+}).strict();
 const protectedErrorResponseSchema = z.object({
   success: z.literal(false),
   requestId: z.string().min(1),
@@ -278,6 +377,10 @@ const validateIdempotency = (req: Request, parsed: PayrollApprovalAction): { ide
     });
   }
 
+  if (parsed.action === "review_queue" || parsed.action === "review_details") {
+    return { idempotencyKey: "" };
+  }
+
   const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() ?? "";
   if (!idempotencyKey) {
     return jsonErrorResponse(req, 400, {
@@ -299,9 +402,16 @@ const validateIdempotency = (req: Request, parsed: PayrollApprovalAction): { ide
 const validateApprovalResponse = (
   req: Request,
   data: unknown,
+  action: PayrollApprovalAction["action"],
   requestedKey: string,
 ): PayrollApprovalResponse | Response => {
-  const parsed = payrollApprovalResponseSchema.safeParse(data);
+  const schema =
+    action === "review_queue"
+      ? payrollReviewQueueResponseSchema
+      : action === "review_details"
+      ? payrollReviewDetailsResponseSchema
+      : payrollApprovalResponseSchema;
+  const parsed = schema.safeParse(data);
   if (!parsed.success) {
     return protectedErrorResponse(req, 502, {
       success: false,
@@ -312,7 +422,10 @@ const validateApprovalResponse = (
       classification: PAYROLL_ERROR_CLASSIFICATIONS.invalid_response,
     });
   }
-  if (parsed.data.idempotencyKey !== requestedKey) {
+  if (action === "review_queue" || action === "review_details") {
+    return parsed.data as PayrollApprovalResponse;
+  }
+  if ((parsed.data as PayrollApprovalResponse).idempotencyKey !== requestedKey) {
     return protectedErrorResponse(req, 502, {
       success: false,
       requestId: req.headers.get("x-request-id")?.trim() || crypto.randomUUID(),
@@ -326,6 +439,25 @@ const validateApprovalResponse = (
 };
 
 const mapActionToRpc = (parsed: PayrollApprovalAction, idempotencyKey: string) => {
+  if (parsed.action === "review_queue") {
+    return {
+      functionName: "get_payroll_review_queue",
+      args: {
+        selected_local_date: parsed.selectedLocalDate,
+      },
+    };
+  }
+
+  if (parsed.action === "review_details") {
+    return {
+      functionName: "get_payroll_review_details",
+      args: {
+        snapshot_id: parsed.snapshotId,
+        snapshot_hash: parsed.snapshotHash,
+      },
+    };
+  }
+
   if (parsed.action === "resolve_blocker") {
     return {
       functionName: "resolve_payroll_blocker",
@@ -586,9 +718,13 @@ export async function handlePayrollApprovals({ req, userContext, db }: HandlerPa
     return mapRpcError(req, error as { code?: string; message?: string }, validated.idempotencyKey);
   }
 
-  const validatedResponse = validateApprovalResponse(req, data, validated.idempotencyKey);
+  const validatedResponse = validateApprovalResponse(req, data, parsed.data.action, validated.idempotencyKey);
   if (validatedResponse instanceof Response) {
     return validatedResponse;
+  }
+
+  if (parsed.data.action === "review_queue" || parsed.data.action === "review_details") {
+    return jsonResponse(req, 200, validatedResponse as unknown as Record<string, unknown>);
   }
 
   const replayed = validatedResponse.replayed ? "true" : "false";

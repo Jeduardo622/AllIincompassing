@@ -9,6 +9,8 @@ import {
   approvePayrollTimesheet,
   derivePayrollTimesheetSnapshot,
   fetchPayrollDay,
+  fetchPayrollReviewDetails,
+  fetchPayrollReviewQueue,
   fetchPayrollTimesheetPeriod,
   fetchSessionPayrollContext,
   lockPayrollTimesheet,
@@ -897,6 +899,111 @@ describe("payroll api client", () => {
       snapshotId: "11111111-1111-1111-1111-111111111111",
       snapshotHash: "a".repeat(64),
       attestation: true,
+    });
+  });
+
+  it("fetches the review queue without Idempotency-Key and fails closed on compensation leakage", async () => {
+    mockedCallApi.mockResolvedValueOnce(
+      jsonResponse({
+        state: "ok",
+        selectedLocalDate: "2026-08-12",
+        capabilities: {
+          canReviewAssigned: true,
+          canApproveAssigned: false,
+          canViewCompensation: false,
+          hasOrgPayrollAccess: false,
+        },
+        queue: [
+          {
+            employmentProfileId: "employment-1",
+            periodStart: "2026-08-10",
+            periodEnd: "2026-08-16",
+            state: "submitted",
+            blockerCount: 0,
+            submittedAt: "2026-08-12T18:00:00.000Z",
+            snapshot: {
+              id: "11111111-1111-1111-1111-111111111111",
+              hash: "a".repeat(64),
+            },
+            classifiedSeconds: {
+              regular: 14400,
+              overtime: 0,
+              doubleTime: 0,
+            },
+            compensation: {
+              grossEarningsCents: 123456,
+            },
+          },
+        ],
+      }),
+    );
+
+    await expect(
+      fetchPayrollReviewQueue({
+        organizationId: "org-1",
+        userId: "user-1",
+        localDate: "2026-08-12",
+      }),
+    ).rejects.toMatchObject({
+      code: "invalid_response",
+      status: 502,
+    });
+
+    const [path, init] = mockedCallApi.mock.calls[0] ?? [];
+    expect(path).toBe("/api/payroll-approvals");
+    expect(init?.method).toBe("POST");
+    const headers = init?.headers as Headers;
+    expect(headers.get("Idempotency-Key")).toBeNull();
+    expect(JSON.parse(String(init?.body))).toEqual({
+      action: "review_queue",
+      selectedLocalDate: "2026-08-12",
+    });
+  });
+
+  it("fetches review details with exact snapshot binding and no Idempotency-Key header", async () => {
+    mockedCallApi.mockResolvedValueOnce(
+      jsonResponse({
+        state: "ok",
+        snapshotId: "11111111-1111-1111-1111-111111111111",
+        snapshotHash: "a".repeat(64),
+        periodStart: "2026-08-10",
+        periodEnd: "2026-08-16",
+        approvalHistory: [],
+        punches: [],
+        blockers: [],
+        classifiedSeconds: {
+          regular: 14400,
+          overtime: 0,
+          doubleTime: 0,
+        },
+        unresolvedBlockerCount: 0,
+      }),
+    );
+
+    await expect(
+      fetchPayrollReviewDetails({
+        organizationId: "org-1",
+        userId: "user-1",
+        localDate: "2026-08-12",
+        snapshotId: "11111111-1111-1111-1111-111111111111",
+        snapshotHash: "a".repeat(64),
+      }),
+    ).resolves.toMatchObject({
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "a".repeat(64),
+      punches: [],
+      approvalHistory: [],
+    });
+
+    const [path, init] = mockedCallApi.mock.calls[0] ?? [];
+    expect(path).toBe("/api/payroll-approvals");
+    expect(init?.method).toBe("POST");
+    const headers = init?.headers as Headers;
+    expect(headers.get("Idempotency-Key")).toBeNull();
+    expect(JSON.parse(String(init?.body))).toEqual({
+      action: "review_details",
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "a".repeat(64),
     });
   });
 

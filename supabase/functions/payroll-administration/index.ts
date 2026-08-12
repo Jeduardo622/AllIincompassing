@@ -372,17 +372,17 @@ export const consumePayrollAdministrationRateLimit = async (
     }
     const count = Number(payload[0]?.result);
     const expiryApplied = Number(payload[1]?.result);
-    const ttl = Number(payload[2]?.result);
+    const rawTtl = payload[2]?.result;
     if (
       !Number.isInteger(count) || count < 1
       || !Number.isInteger(expiryApplied) || (expiryApplied !== 0 && expiryApplied !== 1)
-      || !Number.isInteger(ttl) || ttl < 0
+      || typeof rawTtl !== "number" || !Number.isFinite(rawTtl) || !Number.isInteger(rawTtl) || rawTtl < 0
     ) {
       return { outcome: "unavailable" };
     }
 
     return count > 60
-      ? { outcome: "denied", retryAfterSeconds: Math.max(1, ttl) }
+      ? { outcome: "denied", retryAfterSeconds: Math.max(1, rawTtl) }
       : { outcome: "allowed" };
   } catch {
     return { outcome: "unavailable" };

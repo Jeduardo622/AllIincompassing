@@ -15,9 +15,14 @@ const write = (root: string, relativePath: string, content: string) => {
 
 const makeFakeSupabase = ({
   listPayload = [{ slug: "payroll-administration", verify_jwt: true }],
+  secretListPayload = [
+    { name: "UPSTASH_REDIS_REST_URL" },
+    { name: "UPSTASH_REDIS_REST_TOKEN" },
+  ],
   deployFailure = "docker-rate-limit",
 }: {
   listPayload?: unknown;
+  secretListPayload?: unknown;
   deployFailure?: "docker-rate-limit" | "none";
 } = {}) => {
   const root = mkdtempSync(path.join(tmpdir(), "payroll-administration-deploy-"));
@@ -30,6 +35,11 @@ const makeFakeSupabase = ({
     "const state = JSON.parse(readFileSync(statePath, 'utf8'));",
     "const args = process.argv.slice(2);",
     "state.calls.push(args);",
+    "if (args[0] === 'secrets' && args[1] === 'list') {",
+    `  process.stdout.write(JSON.stringify(${JSON.stringify(secretListPayload)}));`,
+    "  writeFileSync(statePath, JSON.stringify(state, null, 2));",
+    "  process.exit(0);",
+    "}",
     "if (args[0] === 'functions' && args[1] === 'deploy') {",
     `  if (${JSON.stringify(deployFailure)} === 'docker-rate-limit' && !args.includes('--use-api') && !state.failedOnce) {`,
     "    state.failedOnce = true;",
@@ -80,9 +90,58 @@ describe("deploy-payroll-administration-function", () => {
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
     expect(`${result.stdout}\n${result.stderr}`).toContain("retrying with --use-api");
     expect(state.calls).toEqual([
+      ["secrets", "list", "--project-ref", "wnnjeqheqxxyrgsjmygy", "--output", "json"],
       ["functions", "deploy", "payroll-administration", "--project-ref", "wnnjeqheqxxyrgsjmygy"],
       ["functions", "deploy", "payroll-administration", "--project-ref", "wnnjeqheqxxyrgsjmygy", "--use-api"],
       ["functions", "list", "--project-ref", "wnnjeqheqxxyrgsjmygy", "--output", "json"],
+    ]);
+  });
+
+  test.each([
+    ["UPSTASH_REDIS_REST_URL", [{ name: "UPSTASH_REDIS_REST_TOKEN" }]],
+    ["UPSTASH_REDIS_REST_TOKEN", [{ name: "UPSTASH_REDIS_REST_URL" }]],
+  ])("fails before deploy when remote secret %s is missing", (missingName, secretListPayload) => {
+    const { root, statePath } = makeFakeSupabase({ secretListPayload, deployFailure: "none" });
+    const result = spawnSync(process.execPath, [scriptPath], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${root}${path.delimiter}${process.env.PATH ?? ""}`,
+        FAKE_SUPABASE_STATE_PATH: statePath,
+        SUPABASE_PROJECT_REF: "wnnjeqheqxxyrgsjmygy",
+        SUPABASE_ACCESS_TOKEN: "synthetic-token",
+      },
+      timeout: 120_000,
+    });
+    const state = JSON.parse(readFileSync(statePath, "utf8")) as { calls: string[][] };
+
+    expect(result.status).toBe(1);
+    expect(`${result.stdout}\n${result.stderr}`).toContain(`Missing remote Edge secret: ${missingName}`);
+    expect(state.calls).toEqual([
+      ["secrets", "list", "--project-ref", "wnnjeqheqxxyrgsjmygy", "--output", "json"],
+    ]);
+  });
+
+  test("supports exact remote secret-name verification without deploying", () => {
+    const { root, statePath } = makeFakeSupabase({ deployFailure: "none" });
+    const result = spawnSync(process.execPath, [scriptPath, "--verify-edge-secrets"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${root}${path.delimiter}${process.env.PATH ?? ""}`,
+        FAKE_SUPABASE_STATE_PATH: statePath,
+        SUPABASE_PROJECT_REF: "wnnjeqheqxxyrgsjmygy",
+        SUPABASE_ACCESS_TOKEN: "synthetic-token",
+      },
+      timeout: 120_000,
+    });
+    const state = JSON.parse(readFileSync(statePath, "utf8")) as { calls: string[][] };
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(state.calls).toEqual([
+      ["secrets", "list", "--project-ref", "wnnjeqheqxxyrgsjmygy", "--output", "json"],
     ]);
   });
 

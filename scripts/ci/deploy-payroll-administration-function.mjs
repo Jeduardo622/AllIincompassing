@@ -2,7 +2,17 @@ import { spawnSync } from "node:child_process";
 import { validateEdgeDeployPrerequisites } from "./check-edge-deploy-prerequisites.mjs";
 
 const FUNCTION_SLUG = "payroll-administration";
+const REQUIRED_EDGE_SECRETS = [
+  "UPSTASH_REDIS_REST_URL",
+  "UPSTASH_REDIS_REST_TOKEN",
+];
 const DOCKER_RATE_LIMIT_PATTERN = /(toomanyrequests|rate exceeded|public\.ecr\.aws\/supabase\/edge-runtime)/i;
+const verifySecretsOnly = process.argv.length === 3 && process.argv[2] === "--verify-edge-secrets";
+
+if (process.argv.length > (verifySecretsOnly ? 3 : 2)) {
+  console.error("Unsupported payroll-administration deploy arguments.");
+  process.exit(1);
+}
 
 const runSupabase = (args) =>
   spawnSync("supabase", args, {
@@ -33,6 +43,37 @@ if (!prereqResult.ok) {
 }
 
 const { projectRef } = prereqResult;
+const secretListResult = runSupabase(["secrets", "list", "--project-ref", projectRef, "--output", "json"]);
+if ((secretListResult.status ?? 1) !== 0) {
+  console.error("Could not verify remote Edge secret names.");
+  process.exit(secretListResult.status ?? 1);
+}
+
+let remoteSecrets = [];
+try {
+  remoteSecrets = JSON.parse(secretListResult.stdout || "[]");
+} catch {
+  console.error("Could not parse `supabase secrets list` JSON output.");
+  process.exit(1);
+}
+
+const remoteSecretNames = new Set(
+  Array.isArray(remoteSecrets)
+    ? remoteSecrets.map((item) => item?.name).filter((name) => typeof name === "string")
+    : [],
+);
+for (const requiredSecret of REQUIRED_EDGE_SECRETS) {
+  if (!remoteSecretNames.has(requiredSecret)) {
+    console.error(`Missing remote Edge secret: ${requiredSecret}`);
+    process.exit(1);
+  }
+}
+console.log("Required payroll-administration remote Edge secret names verified.");
+
+if (verifySecretsOnly) {
+  process.exit(0);
+}
+
 console.log(`Deploying ${FUNCTION_SLUG} to project ${projectRef}...`);
 const deployArgs = ["functions", "deploy", FUNCTION_SLUG, "--project-ref", projectRef];
 let deployResult = runSupabase(deployArgs);

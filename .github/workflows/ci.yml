@@ -444,37 +444,61 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Validate payroll-administration deploy prerequisites
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
-          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
-        run: |
-          set -euo pipefail
-          missing=()
-          for key in UPSTASH_REDIS_REST_URL UPSTASH_REDIS_REST_TOKEN; do
-            if [ -z "${!key:-}" ]; then
-              missing+=("${key}")
-            fi
-          done
-          if [ "${#missing[@]}" -gt 0 ]; then
-            echo "::error::Missing required payroll-administration deploy configuration: ${missing[*]}" >&2
-            exit 1
-          fi
-          node scripts/ci/check-edge-deploy-prerequisites.mjs payroll-administration
-
-      - name: Verify payroll-administration immutable current main
+      - name: Attest payroll-administration current main before credentials
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_WORKFLOW_SHA: ${{ github.sha }}
           GH_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          live_main_sha="$(gh api --method GET "repos/${GH_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
-          if [ -z "${live_main_sha}" ] || [ "${live_main_sha}" != "${EXPECTED_WORKFLOW_SHA}" ]; then
-            echo "::error::Refusing payroll-administration deployment because workflow SHA is not current origin/main." >&2
+          main_ref_record="$(gh api --method GET "repos/${GH_REPOSITORY}/git/ref/heads/main" --jq '[.ref, .object.sha] | @tsv')"
+          IFS=$'\t' read -r live_main_ref live_main_sha <<< "${main_ref_record}"
+          if [ "${live_main_ref}" != "refs/heads/main" ] || [ -z "${live_main_sha}" ] || [ "${live_main_sha}" != "${EXPECTED_WORKFLOW_SHA}" ]; then
+            echo "::error::Refusing payroll-administration deployment because workflow SHA is not immutable current main." >&2
+            exit 1
+          fi
+
+      - name: Sync payroll-administration Upstash Edge secrets
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_PROJECT_REF:?Missing SUPABASE_PROJECT_REF}"
+          : "${SUPABASE_ACCESS_TOKEN:?Missing SUPABASE_ACCESS_TOKEN}"
+          : "${UPSTASH_REDIS_REST_URL:?Missing UPSTASH_REDIS_REST_URL}"
+          : "${UPSTASH_REDIS_REST_TOKEN:?Missing UPSTASH_REDIS_REST_TOKEN}"
+          supabase secrets set \
+            "UPSTASH_REDIS_REST_URL=${UPSTASH_REDIS_REST_URL}" \
+            "UPSTASH_REDIS_REST_TOKEN=${UPSTASH_REDIS_REST_TOKEN}" \
+            --project-ref "${SUPABASE_PROJECT_REF}"
+
+      - name: Validate payroll-administration deploy prerequisites
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/ci/check-edge-deploy-prerequisites.mjs payroll-administration
+
+      - name: Verify payroll-administration remote Edge secret names
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/ci/deploy-payroll-administration-function.mjs --verify-edge-secrets
+
+      - name: Re-attest payroll-administration current main immediately before deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_WORKFLOW_SHA: ${{ github.sha }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          main_ref_record="$(gh api --method GET "repos/${GH_REPOSITORY}/git/ref/heads/main" --jq '[.ref, .object.sha] | @tsv')"
+          IFS=$'\t' read -r live_main_ref live_main_sha <<< "${main_ref_record}"
+          if [ "${live_main_ref}" != "refs/heads/main" ] || [ -z "${live_main_sha}" ] || [ "${live_main_sha}" != "${EXPECTED_WORKFLOW_SHA}" ]; then
+            echo "::error::Refusing payroll-administration deployment because workflow SHA is not immutable current main." >&2
             exit 1
           fi
 

@@ -703,6 +703,43 @@ Deno.test("distributed Edge limiter accepts TTL zero and emits a minimum Retry-A
   assertEquals((await response.json() as { code: string }).code, "rate_limited");
 });
 
+Deno.test("distributed Edge limiter accepts only a raw finite nonnegative integer TTL", async () => {
+  const invalidTtls: Array<{ name: string; entry: Record<string, unknown> }> = [
+    { name: "null", entry: { result: null } },
+    { name: "empty string", entry: { result: "" } },
+    { name: "numeric string", entry: { result: "17" } },
+    { name: "missing", entry: {} },
+    { name: "negative", entry: { result: -1 } },
+    { name: "float", entry: { result: 1.5 } },
+    { name: "positive infinity", entry: { result: Number.POSITIVE_INFINITY } },
+    { name: "not a number", entry: { result: Number.NaN } },
+  ];
+
+  for (const testCase of invalidTtls) {
+    const response = await handlePayrollAdministrationBase({
+      req: createRequest({ action: "get_administration", selectedLocalDate: "2026-08-12" }),
+      userContext: createUserContext("admin", `edge-invalid-ttl-${testCase.name}`),
+      db: createRpcClient(() => {
+        throw new Error("RPC should not execute when the limiter response is malformed");
+      }),
+      rateLimitDependencies: {
+        getEnv: allowedRateLimitDependencies.getEnv,
+        fetch: () => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve([
+            { result: 61 },
+            { result: 0 },
+            testCase.entry,
+          ]),
+        } as Response),
+      },
+    } as Parameters<typeof handlePayrollAdministrationBase>[0]);
+
+    assertEquals(response.status, 503, testCase.name);
+    assertEquals((await response.json() as { code: string }).code, "upstream_error", testCase.name);
+  }
+});
+
 Deno.test("distributed Edge limiter fails closed when Upstash configuration is missing", async () => {
   const response = await handlePayrollAdministrationBase({
     req: createRequest({ action: "get_administration", selectedLocalDate: "2026-08-12" }),
@@ -731,9 +768,6 @@ Deno.test("distributed Edge limiter fails closed on upstream and malformed respo
   for (const fetchImpl of [
     () => Promise.reject(new Error("redis unavailable")),
     () => Promise.resolve(new Response(JSON.stringify([{ result: "not-a-count" }]), { status: 200 })),
-    () => Promise.resolve(new Response(JSON.stringify([{ result: 61 }, { result: 0 }, { result: -1 }]), { status: 200 })),
-    () => Promise.resolve(new Response(JSON.stringify([{ result: 61 }, { result: 0 }, { result: "not-a-ttl" }]), { status: 200 })),
-    () => Promise.resolve(new Response(JSON.stringify([{ result: 61 }, { result: 0 }, {}]), { status: 200 })),
   ]) {
     const response = await handlePayrollAdministrationBase({
       req: createRequest({ action: "get_administration", selectedLocalDate: "2026-08-12" }),

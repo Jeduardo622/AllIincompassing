@@ -7,6 +7,7 @@ const FILL_DOCS_DEPLOY_COMMAND = "npm run ci:deploy:fill-docs-function";
 const AI_DEPLOY_COMMAND = "npm run ci:deploy:ai-agent-function";
 const PAYROLL_DEPLOY_COMMAND = "node scripts/ci/deploy-payroll-timesheets-function.mjs";
 const PAYROLL_ADMINISTRATION_DEPLOY_COMMAND = "node scripts/ci/deploy-payroll-administration-function.mjs";
+const PAYROLL_ADMINISTRATION_SECRET_VERIFY_COMMAND = "node scripts/ci/deploy-payroll-administration-function.mjs --verify-edge-secrets";
 const SESSION_DEPLOY_PREREQ_COMMAND =
   "node scripts/ci/check-edge-deploy-prerequisites.mjs session-edge";
 const AI_DEPLOY_PREREQ_COMMAND =
@@ -18,29 +19,47 @@ const PAYROLL_ADMINISTRATION_DEPLOY_PREREQ_COMMAND =
 const MAIN_PUSH_IF = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
 const PAYROLL_ACTIVATION_IF = "github.event_name == 'workflow_dispatch' && inputs.activate_payroll_timesheets == true";
 const PAYROLL_ADMINISTRATION_ACTIVATION_IF = "github.event_name == 'workflow_dispatch' && inputs.activate_payroll_administration == true && github.ref == 'refs/heads/main'";
-const PAYROLL_ADMINISTRATION_MAIN_VERIFICATION_STEP = "Verify payroll-administration immutable current main";
-const PAYROLL_ADMINISTRATION_MAIN_VERIFICATION_LINES = [
+const PAYROLL_ADMINISTRATION_FIRST_ATTESTATION_STEP = "Attest payroll-administration current main before credentials";
+const PAYROLL_ADMINISTRATION_FINAL_ATTESTATION_STEP = "Re-attest payroll-administration current main immediately before deploy";
+const PAYROLL_ADMINISTRATION_ATTESTATION_LINES = [
   "set -euo pipefail",
-  `live_main_sha="$(gh api --method GET "repos/\${GH_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"`,
-  `if [ -z "\${live_main_sha}" ] || [ "\${live_main_sha}" != "\${EXPECTED_WORKFLOW_SHA}" ]; then`,
-  `echo "::error::Refusing payroll-administration deployment because workflow SHA is not current origin/main." >&2`,
+  `main_ref_record="$(gh api --method GET "repos/\${GH_REPOSITORY}/git/ref/heads/main" --jq '[.ref, .object.sha] | @tsv')"`,
+  `IFS=$'\\t' read -r live_main_ref live_main_sha <<< "\${main_ref_record}"`,
+  `if [ "\${live_main_ref}" != "refs/heads/main" ] || [ -z "\${live_main_sha}" ] || [ "\${live_main_sha}" != "\${EXPECTED_WORKFLOW_SHA}" ]; then`,
+  `echo "::error::Refusing payroll-administration deployment because workflow SHA is not immutable current main." >&2`,
   "exit 1",
   "fi",
 ];
-const PAYROLL_ADMINISTRATION_UPSTASH_PREREQ_LINES = [
+const PAYROLL_ADMINISTRATION_ATTESTATION_ENV = {
+  GH_TOKEN: "${{ github.token }}",
+  EXPECTED_WORKFLOW_SHA: "${{ github.sha }}",
+  GH_REPOSITORY: "${{ github.repository }}",
+};
+const PAYROLL_ADMINISTRATION_SECRET_SYNC_STEP = "Sync payroll-administration Upstash Edge secrets";
+const PAYROLL_ADMINISTRATION_SECRET_SYNC_LINES = [
   "set -euo pipefail",
-  "missing=()",
-  "for key in UPSTASH_REDIS_REST_URL UPSTASH_REDIS_REST_TOKEN; do",
-  `if [ -z "\${!key:-}" ]; then`,
-  `missing+=("\${key}")`,
-  "fi",
-  "done",
-  `if [ "\${#missing[@]}" -gt 0 ]; then`,
-  `echo "::error::Missing required payroll-administration deploy configuration: \${missing[*]}" >&2`,
-  "exit 1",
-  "fi",
-  PAYROLL_ADMINISTRATION_DEPLOY_PREREQ_COMMAND,
+  `: "\${SUPABASE_PROJECT_REF:?Missing SUPABASE_PROJECT_REF}"`,
+  `: "\${SUPABASE_ACCESS_TOKEN:?Missing SUPABASE_ACCESS_TOKEN}"`,
+  `: "\${UPSTASH_REDIS_REST_URL:?Missing UPSTASH_REDIS_REST_URL}"`,
+  `: "\${UPSTASH_REDIS_REST_TOKEN:?Missing UPSTASH_REDIS_REST_TOKEN}"`,
+  "supabase secrets set \\",
+  `"UPSTASH_REDIS_REST_URL=\${UPSTASH_REDIS_REST_URL}" \\`,
+  `"UPSTASH_REDIS_REST_TOKEN=\${UPSTASH_REDIS_REST_TOKEN}" \\`,
+  `--project-ref "\${SUPABASE_PROJECT_REF}"`,
 ];
+const PAYROLL_ADMINISTRATION_SECRET_SYNC_ENV = {
+  SUPABASE_PROJECT_REF: "${{ secrets.SUPABASE_PROJECT_REF }}",
+  SUPABASE_ACCESS_TOKEN: "${{ secrets.SUPABASE_ACCESS_TOKEN }}",
+  UPSTASH_REDIS_REST_URL: "${{ secrets.UPSTASH_REDIS_REST_URL }}",
+  UPSTASH_REDIS_REST_TOKEN: "${{ secrets.UPSTASH_REDIS_REST_TOKEN }}",
+};
+const PAYROLL_ADMINISTRATION_DEPLOY_CREDENTIAL_NAMES = new Set([
+  "SUPABASE_URL",
+  "SUPABASE_PROJECT_REF",
+  "SUPABASE_ACCESS_TOKEN",
+  "UPSTASH_REDIS_REST_URL",
+  "UPSTASH_REDIS_REST_TOKEN",
+]);
 const RUNTIME_PARITY_IF = `(${MAIN_PUSH_IF}) || (github.event_name == 'workflow_dispatch' && (inputs.activate_payroll_timesheets == true || inputs.activate_payroll_administration == true))`;
 const AI_DEPLOY_IF =
   "github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.change_scope.outputs.ai_agent_changed == 'true'";
@@ -445,7 +464,8 @@ const isRawPayrollDeployInvocation = (line) =>
   line === PAYROLL_DEPLOY_COMMAND ||
   (isSupabaseDeployInvocation(line) && /\bpayroll-timesheets\b/i.test(line));
 const isRawPayrollAdministrationDeployInvocation = (line) =>
-  isDirectNodeDeployScript(line, "scripts/ci/deploy-payroll-administration-function.mjs") ||
+  (line !== PAYROLL_ADMINISTRATION_SECRET_VERIFY_COMMAND &&
+    isDirectNodeDeployScript(line, "scripts/ci/deploy-payroll-administration-function.mjs")) ||
   line === PAYROLL_ADMINISTRATION_DEPLOY_COMMAND ||
   (isSupabaseDeployInvocation(line) && /\bpayroll-administration\b/i.test(line));
 const isRawFillDocsDeployInvocation = (line) =>
@@ -458,6 +478,9 @@ const sameSet = (actual, expected) => {
 };
 const sameSequence = (actual, expected) =>
   actual.length === expected.length && actual.every((value, index) => value === expected[index]);
+const sameRecord = (actual, expected) =>
+  sameSet(Object.keys(actual ?? {}), Object.keys(expected)) &&
+  Object.entries(expected).every(([name, value]) => actual?.[name] === value);
 const hasSequence = (lines, sequence) =>
   lines.some((_, index) => sequence.every((value, offset) => lines[index + offset] === value));
 const hasOrderedSequence = (lines, sequence) => {
@@ -795,42 +818,77 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
       violations.push("deploy_payroll_administration must validate deploy prerequisites before deploying");
     }
     const prereqStep = deployPayrollAdministration.steps[prereqIndex];
-    if (!prereqStep || !stepHasExactCommand(prereqStep, PAYROLL_ADMINISTRATION_DEPLOY_PREREQ_COMMAND)) {
+    if (!prereqStep || !stepIsExactCommand(prereqStep, PAYROLL_ADMINISTRATION_DEPLOY_PREREQ_COMMAND)) {
       violations.push("deploy_payroll_administration must run the shared edge deploy prerequisite helper");
     }
-    const upstashBindings = {
-      UPSTASH_REDIS_REST_URL: "${{ secrets.UPSTASH_REDIS_REST_URL }}",
-      UPSTASH_REDIS_REST_TOKEN: "${{ secrets.UPSTASH_REDIS_REST_TOKEN }}",
-    };
-    const upstashBindingLocations = Object.entries(jobs).flatMap(([jobName, job]) =>
-      job.steps.flatMap((step) =>
-        Object.keys(upstashBindings)
-          .filter((name) => step.env?.[name] !== undefined)
-          .map((name) => ({ jobName, step, name, value: step.env[name] })),
-      ),
+
+    const firstAttestationIndex = deployPayrollAdministration.steps.findIndex(
+      (step) => step.name === PAYROLL_ADMINISTRATION_FIRST_ATTESTATION_STEP,
+    );
+    const firstAttestationStep = deployPayrollAdministration.steps[firstAttestationIndex];
+    const credentialStepIndexes = deployPayrollAdministration.steps.flatMap((step, index) =>
+      Object.keys(step.env ?? {}).some((name) => PAYROLL_ADMINISTRATION_DEPLOY_CREDENTIAL_NAMES.has(name))
+        ? [index]
+        : [],
     );
     if (
-      !prereqStep ||
-      !sameSequence(executableLines(prereqStep.run), PAYROLL_ADMINISTRATION_UPSTASH_PREREQ_LINES) ||
-      Object.entries(upstashBindings).some(([name, value]) => prereqStep.env?.[name] !== value) ||
-      upstashBindingLocations.length !== 2 ||
-      upstashBindingLocations.some(({ jobName, step, name, value }) =>
-        jobName !== "deploy_payroll_administration" || step !== prereqStep || value !== upstashBindings[name]
-      )
+      firstAttestationIndex === -1 ||
+      !firstAttestationStep ||
+      !sameRecord(firstAttestationStep.env, PAYROLL_ADMINISTRATION_ATTESTATION_ENV) ||
+      !sameSequence(executableLines(firstAttestationStep.run), PAYROLL_ADMINISTRATION_ATTESTATION_LINES) ||
+      credentialStepIndexes.length === 0 ||
+      credentialStepIndexes.some((index) => index <= firstAttestationIndex)
     ) {
-      violations.push("deploy_payroll_administration prerequisites must require both Upstash REST secrets");
+      violations.push("deploy_payroll_administration must attest current main before every deploy credential binding");
     }
-    const verifyIndex = deployPayrollAdministration.steps.findIndex(
-      (step) => step.name === PAYROLL_ADMINISTRATION_MAIN_VERIFICATION_STEP,
+
+    const syncIndex = deployPayrollAdministration.steps.findIndex(
+      (step) => step.name === PAYROLL_ADMINISTRATION_SECRET_SYNC_STEP,
     );
-    const verifyStep = deployPayrollAdministration.steps[verifyIndex];
+    const syncStep = deployPayrollAdministration.steps[syncIndex];
+    const secretVerifyIndex = deployPayrollAdministration.steps.findIndex(
+      (step) => stepIsExactCommand(step, PAYROLL_ADMINISTRATION_SECRET_VERIFY_COMMAND),
+    );
+    const secretVerifyStep = deployPayrollAdministration.steps[secretVerifyIndex];
     if (
-      verifyIndex !== deployIndex - 1 ||
-      !verifyStep ||
-      verifyStep.env?.GH_TOKEN !== "${{ github.token }}" ||
-      verifyStep.env?.EXPECTED_WORKFLOW_SHA !== "${{ github.sha }}" ||
-      verifyStep.env?.GH_REPOSITORY !== "${{ github.repository }}" ||
-      !sameSequence(executableLines(verifyStep.run), PAYROLL_ADMINISTRATION_MAIN_VERIFICATION_LINES)
+      syncIndex <= firstAttestationIndex ||
+      !syncStep ||
+      !sameRecord(syncStep.env, PAYROLL_ADMINISTRATION_SECRET_SYNC_ENV) ||
+      !sameSequence(executableLines(syncStep.run), PAYROLL_ADMINISTRATION_SECRET_SYNC_LINES) ||
+      !secretVerifyStep ||
+      secretVerifyIndex <= prereqIndex ||
+      secretVerifyIndex >= deployIndex ||
+      !sameRecord(secretVerifyStep.env, {
+        SUPABASE_PROJECT_REF: "${{ secrets.SUPABASE_PROJECT_REF }}",
+        SUPABASE_ACCESS_TOKEN: "${{ secrets.SUPABASE_ACCESS_TOKEN }}",
+      })
+    ) {
+      violations.push("deploy_payroll_administration must sync and verify the two required remote Edge secrets before deploy");
+    }
+
+    const upstashSecretReferenceLines = ciWorkflow
+      .split(/\r?\n/)
+      .map((line) => stripComment(line).trim())
+      .filter((line) =>
+        /\bsecrets\b[^\r\n]*(?:UPSTASH_REDIS_REST_URL|UPSTASH_REDIS_REST_TOKEN)/.test(line),
+      );
+    const allowedUpstashSecretReferenceLines = [
+      "UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}",
+      "UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}",
+    ];
+    if (!sameSet(upstashSecretReferenceLines, allowedUpstashSecretReferenceLines)) {
+      violations.push("Upstash GitHub secrets may be referenced only by the exact approved payroll-administration sync bindings");
+    }
+
+    const finalAttestationIndex = deployPayrollAdministration.steps.findIndex(
+      (step) => step.name === PAYROLL_ADMINISTRATION_FINAL_ATTESTATION_STEP,
+    );
+    const finalAttestationStep = deployPayrollAdministration.steps[finalAttestationIndex];
+    if (
+      finalAttestationIndex !== deployIndex - 1 ||
+      !finalAttestationStep ||
+      !sameRecord(finalAttestationStep.env, PAYROLL_ADMINISTRATION_ATTESTATION_ENV) ||
+      !sameSequence(executableLines(finalAttestationStep.run), PAYROLL_ADMINISTRATION_ATTESTATION_LINES)
     ) {
       violations.push("deploy_payroll_administration must verify github.sha equals live origin/main immediately before deploy");
     }

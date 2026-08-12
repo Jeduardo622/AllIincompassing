@@ -1,0 +1,628 @@
+{
+  "success": true,
+  "generatedAt": "2026-08-12T10:43:09.417Z",
+  "artifactVersion": "task-3-fix-round-1f",
+  "databaseTarget": {
+    "host": "127.0.0.1",
+    "port": 54322,
+    "database": "postgres"
+  },
+  "buckets": [
+    {
+      "bucketRowCount": 0,
+      "expectedBlocker": null,
+      "rpcOutcome": "success",
+      "rpcWallMs": 60.925,
+      "rowCounts": {
+        "beforeRpc": {
+          "mealResolutions": 0,
+          "employeeTimeEvents": 0,
+          "timeCorrectionRequests": 0,
+          "payrollMutationReceipts": 0
+        },
+        "afterRpc": {
+          "mealResolutions": 0,
+          "employeeTimeEvents": 0,
+          "timeCorrectionRequests": 0,
+          "payrollMutationReceipts": 1
+        }
+      },
+      "sourcePlans": [
+        {
+          "queryFamily": "employeeTimeEvents",
+          "planSummary": {
+            "queryFamily": "employeeTimeEvents",
+            "rootNodeType": "Index Only Scan",
+            "planningTimeMs": 0.172,
+            "executionTimeMs": 0.03,
+            "indexNames": [
+              "employee_time_events_org_employment_event_at_idx"
+            ],
+            "nodeTypes": [
+              "Index Only Scan"
+            ],
+            "sequentialScans": [],
+            "planRows": 1,
+            "actualRows": 0,
+            "sharedHitBlocks": 2,
+            "sharedReadBlocks": 0
+          }
+        },
+        {
+          "queryFamily": "timeCorrectionRequests",
+          "planSummary": {
+            "queryFamily": "timeCorrectionRequests",
+            "rootNodeType": "Sort",
+            "planningTimeMs": 0.257,
+            "executionTimeMs": 0.049,
+            "indexNames": [
+              "employee_time_events_org_employment_event_at_idx"
+            ],
+            "nodeTypes": [
+              "Index Only Scan",
+              "Nested Loop",
+              "Seq Scan",
+              "Sort"
+            ],
+            "sequentialScans": [
+              {
+                "relationName": "time_correction_requests",
+                "alias": "correction_row",
+                "actualRows": 0,
+                "planRows": 1,
+                "filter": "((organization_id = '10000000-0000-4000-8000-000000000001'::uuid) AND (employment_profile_id = '10000000-0000-4000-8000-000000000041'::uuid))"
+              }
+            ],
+            "planRows": 1,
+            "actualRows": 0,
+            "sharedHitBlocks": 1,
+            "sharedReadBlocks": 0
+          }
+        },
+        {
+          "queryFamily": "mealResolutions",
+          "planSummary": {
+            "queryFamily": "mealResolutions",
+            "rootNodeType": "Sort",
+            "planningTimeMs": 0.425,
+            "executionTimeMs": 0.061,
+            "indexNames": [
+              "employee_time_events_org_employment_event_at_idx"
+            ],
+            "nodeTypes": [
+              "Index Only Scan",
+              "Nested Loop",
+              "Seq Scan",
+              "Sort"
+            ],
+            "sequentialScans": [
+              {
+                "relationName": "timesheet_meal_resolutions",
+                "alias": "resolution_row",
+                "actualRows": 0,
+                "planRows": 1,
+                "filter": "((organization_id = '10000000-0000-4000-8000-000000000001'::uuid) AND (employment_profile_id = '10000000-0000-4000-8000-000000000041'::uuid) AND (pay_period_id = '90000000-0000-4000-8000-000000000003'::uuid))"
+              }
+            ],
+            "planRows": 1,
+            "actualRows": 0,
+            "sharedHitBlocks": 2,
+            "sharedReadBlocks": 0
+          }
+        },
+        {
+          "queryFamily": "payrollMutationReceipts",
+          "planSummary": {
+            "queryFamily": "payrollMutationReceipts",
+            "rootNodeType": "Seq Scan",
+            "planningTimeMs": 0.103,
+            "executionTimeMs": 0.05,
+            "indexNames": [],
+            "nodeTypes": [
+              "Seq Scan"
+            ],
+            "sequentialScans": [
+              {
+                "relationName": "payroll_mutation_receipts",
+                "alias": "receipt",
+                "actualRows": 1,
+                "planRows": 1,
+                "filter": "((organization_id = '10000000-0000-4000-8000-000000000001'::uuid) AND (actor_user_id = '10000000-0000-4000-8000-000000000011'::uuid) AND (operation = 'derive_timesheet_snapshot'::text) AND (idempotency_key = 'payroll-timesheet-derive-contract-0'::text))"
+              }
+            ],
+            "planRows": 1,
+            "actualRows": 1,
+            "sharedHitBlocks": 3,
+            "sharedReadBlocks": 0
+          }
+        }
+      ],
+      "indexUse": {
+        "employeeTimeEvents": [
+          "employee_time_events_org_employment_event_at_idx"
+        ],
+        "timeCorrectionRequests": [
+          "employee_time_events_org_employment_event_at_idx"
+        ],
+        "mealResolutions": [
+          "employee_time_events_org_employment_event_at_idx"
+        ],
+        "payrollMutationReceipts": []
+      },
+      "fixtureScope": {
+        "organizationId": "10000000-0000-4000-8000-000000000001",
+        "employmentId": "10000000-0000-4000-8000-000000000041",
+        "payPeriodId": "90000000-0000-4000-8000-000000000003",
+        "policyVersionId": "94a4e6f8-4036-4874-bfca-4113d14af1a6"
+      },
+      "rpcResultSummary": {
+        "state": "ok",
+        "sourceHash": "b0118ca8bb76c4c7bca5bb71557589d092480c8d0f0004daa560a315ae66eb86",
+        "snapshotId": "6b7e5f2a-5bbc-4c14-8252-aeec544d71fd",
+        "replayed": false
+      }
+    },
+    {
+      "bucketRowCount": 50,
+      "expectedBlocker": null,
+      "rpcOutcome": "success",
+      "rpcWallMs": 59.176,
+      "rowCounts": {
+        "beforeRpc": {
+          "mealResolutions": 0,
+          "employeeTimeEvents": 50,
+          "timeCorrectionRequests": 0,
+          "payrollMutationReceipts": 0
+        },
+        "afterRpc": {
+          "mealResolutions": 0,
+          "employeeTimeEvents": 50,
+          "timeCorrectionRequests": 0,
+          "payrollMutationReceipts": 1
+        }
+      },
+      "sourcePlans": [
+        {
+          "queryFamily": "employeeTimeEvents",
+          "planSummary": {
+            "queryFamily": "employeeTimeEvents",
+            "rootNodeType": "Index Only Scan",
+            "planningTimeMs": 0.196,
+            "executionTimeMs": 0.061,
+            "indexNames": [
+              "employee_time_events_org_employment_event_at_idx"
+            ],
+            "nodeTypes": [
+              "Index Only Scan"
+            ],
+            "sequentialScans": [],
+            "planRows": 1,
+            "actualRows": 50,
+            "sharedHitBlocks": 5,
+            "sharedReadBlocks": 0
+          }
+        },
+        {
+          "queryFamily": "timeCorrectionRequests",
+          "planSummary": {
+            "queryFamily": "timeCorrectionRequests",
+            "rootNodeType": "Sort",
+            "planningTimeMs": 0.269,
+            "executionTimeMs": 0.086,
+            "indexNames": [
+              "employee_time_events_id_org_employment_key"
+            ],
+            "nodeTypes": [
+              "Index Scan",
+              "Nested Loop",
+              "Seq Scan",
+              "Sort"
+            ],
+            "sequentialScans": [
+              {
+                "relationName": "time_correction_requests",
+                "alias": "correction_row",
+                "actualRows": 0,
+                "planRows": 1,
+                "filter": "((organization_id = '10000000-0000-4000-8000-000000000001'::uuid) AND (employment_profile_id = '10000000-0000-4000-8000-000000000041'::uuid))"
+              }
+            ],
+            "planRows": 1,
+            "actualRows": 0,
+            "sharedHitBlocks": 1,
+            "sharedReadBlocks": 0
+          }
+        },
+        {
+          "queryFamily": "mealResolutions",
+          "planSummary": {
+            "queryFamily": "mealResolutions",
+            "rootNodeType": "Sort",
+            "planningTimeMs": 0.348,
+            "executionTimeMs": 0.181,
+            "indexNames": [
+              "employee_time_events_org_employment_event_at_idx"
+            ],
+            "nodeTypes": [
+              "Index Only Scan",
+              "Nested Loop",
+              "Seq Scan",
+              "Sort"
+            ],
+            "sequentialScans": [
+              {
+                "relationName": "timesheet_meal_resolutions",
+                "alias": "resolution_row",
+                "actualRows": 0,
+                "planRows": 1,
+                "filter": "((organization_id = '10000000-0000-4000-8000-000000000001'::uuid) AND (employment_profile_id = '10000000-0000-4000-8000-000000000041'::uuid) AND (pay_period_id = '90000000-0000-4000-8000-000000000003'::uuid))"
+              }
+            ],
+            "planRows": 1,
+            "actualRows": 0,
+            "sharedHitBlocks": 55,
+            "sharedReadBlocks": 0
+          }
+        },
+        {
+          "queryFamily": "payrollMutationReceipts",
+          "planSummary": {
+            "queryFamily": "payrollMutationReceipts",
+            "rootNodeType": "Seq Scan",
+            "planningTimeMs": 0.122,
+            "executionTimeMs": 0.054,
+            "indexNames": [],
+            "nodeTypes": [
+              "Seq Scan"
+            ],
+            "sequentialScans": [
+              {
+                "relationName": "payroll_mutation_receipts",
+                "alias": "receipt",
+                "actualRows": 1,
+                "planRows": 1,
+                "filter": "((organization_id = '10000000-0000-4000-8000-000000000001'::uuid) AND (actor_user_id = '10000000-0000-4000-8000-000000000011'::uuid) AND (operation = 'derive_timesheet_snapshot'::text) AND (idempotency_key = 'payroll-timesheet-derive-contract-50'::text))"
+              }
+            ],
+            "planRows": 1,
+            "actualRows": 1,
+            "sharedHitBlocks": 3,
+            "sharedReadBlocks": 0
+          }
+        }
+      ],
+      "indexUse": {
+        "employeeTimeEvents": [
+          "employee_time_events_org_employment_event_at_idx"
+        ],
+        "timeCorrectionRequests": [
+          "employee_time_events_id_org_employment_key"
+        ],
+        "mealResolutions": [
+          "employee_time_events_org_employment_event_at_idx"
+        ],
+        "payrollMutationReceipts": []
+      },
+      "fixtureScope": {
+        "organizationId": "10000000-0000-4000-8000-000000000001",
+        "employmentId": "10000000-0000-4000-8000-000000000041",
+        "payPeriodId": "90000000-0000-4000-8000-000000000003",
+        "policyVersionId": "f400750a-a39b-4f57-bce7-e75f66a0cbee"
+      },
+      "rpcResultSummary": {
+        "state": "ok",
+        "sourceHash": "f4fcffff82977e625dbb3b2391cd6c0cd28f5acf8e41ffe5e0b71764dc0bca41",
+        "snapshotId": "a17629b9-ebaf-4e9a-9547-21b8acb4e9a5",
+        "replayed": false
+      }
+    },
+    {
+      "bucketRowCount": 200,
+      "expectedBlocker": null,
+      "rpcOutcome": "success",
+      "rpcWallMs": 35.669,
+      "rowCounts": {
+        "beforeRpc": {
+          "mealResolutions": 0,
+          "employeeTimeEvents": 200,
+          "timeCorrectionRequests": 0,
+          "payrollMutationReceipts": 0
+        },
+        "afterRpc": {
+          "mealResolutions": 0,
+          "employeeTimeEvents": 200,
+          "timeCorrectionRequests": 0,
+          "payrollMutationReceipts": 1
+        }
+      },
+      "sourcePlans": [
+        {
+          "queryFamily": "employeeTimeEvents",
+          "planSummary": {
+            "queryFamily": "employeeTimeEvents",
+            "rootNodeType": "Index Only Scan",
+            "planningTimeMs": 0.175,
+            "executionTimeMs": 0.112,
+            "indexNames": [
+              "employee_time_events_org_employment_event_at_idx"
+            ],
+            "nodeTypes": [
+              "Index Only Scan"
+            ],
+            "sequentialScans": [],
+            "planRows": 10,
+            "actualRows": 200,
+            "sharedHitBlocks": 12,
+            "sharedReadBlocks": 0
+          }
+        },
+        {
+          "queryFamily": "timeCorrectionRequests",
+          "planSummary": {
+            "queryFamily": "timeCorrectionRequests",
+            "rootNodeType": "Sort",
+            "planningTimeMs": 0.286,
+            "executionTimeMs": 0.06,
+            "indexNames": [
+              "employee_time_events_id_org_employment_key"
+            ],
+            "nodeTypes": [
+              "Index Scan",
+              "Nested Loop",
+              "Seq Scan",
+              "Sort"
+            ],
+            "sequentialScans": [
+              {
+                "relationName": "time_correction_requests",
+                "alias": "correction_row",
+                "actualRows": 0,
+                "planRows": 1,
+                "filter": "((organization_id = '10000000-0000-4000-8000-000000000001'::uuid) AND (employment_profile_id = '10000000-0000-4000-8000-000000000041'::uuid))"
+              }
+            ],
+            "planRows": 1,
+            "actualRows": 0,
+            "sharedHitBlocks": 1,
+            "sharedReadBlocks": 0
+          }
+        },
+        {
+          "queryFamily": "mealResolutions",
+          "planSummary": {
+            "queryFamily": "mealResolutions",
+            "rootNodeType": "Sort",
+            "planningTimeMs": 0.302,
+            "executionTimeMs": 0.07,
+            "indexNames": [
+              "employee_time_events_id_org_employment_key"
+            ],
+            "nodeTypes": [
+              "Index Scan",
+              "Nested Loop",
+              "Seq Scan",
+              "Sort"
+            ],
+            "sequentialScans": [
+              {
+                "relationName": "timesheet_meal_resolutions",
+                "alias": "resolution_row",
+                "actualRows": 0,
+                "planRows": 1,
+                "filter": "((organization_id = '10000000-0000-4000-8000-000000000001'::uuid) AND (employment_profile_id = '10000000-0000-4000-8000-000000000041'::uuid) AND (pay_period_id = '90000000-0000-4000-8000-000000000003'::uuid))"
+              }
+            ],
+            "planRows": 1,
+            "actualRows": 0,
+            "sharedHitBlocks": 1,
+            "sharedReadBlocks": 0
+          }
+        },
+        {
+          "queryFamily": "payrollMutationReceipts",
+          "planSummary": {
+            "queryFamily": "payrollMutationReceipts",
+            "rootNodeType": "Seq Scan",
+            "planningTimeMs": 0.105,
+            "executionTimeMs": 0.046,
+            "indexNames": [],
+            "nodeTypes": [
+              "Seq Scan"
+            ],
+            "sequentialScans": [
+              {
+                "relationName": "payroll_mutation_receipts",
+                "alias": "receipt",
+                "actualRows": 1,
+                "planRows": 1,
+                "filter": "((organization_id = '10000000-0000-4000-8000-000000000001'::uuid) AND (actor_user_id = '10000000-0000-4000-8000-000000000011'::uuid) AND (operation = 'derive_timesheet_snapshot'::text) AND (idempotency_key = 'payroll-timesheet-derive-contract-200'::text))"
+              }
+            ],
+            "planRows": 1,
+            "actualRows": 1,
+            "sharedHitBlocks": 3,
+            "sharedReadBlocks": 0
+          }
+        }
+      ],
+      "indexUse": {
+        "employeeTimeEvents": [
+          "employee_time_events_org_employment_event_at_idx"
+        ],
+        "timeCorrectionRequests": [
+          "employee_time_events_id_org_employment_key"
+        ],
+        "mealResolutions": [
+          "employee_time_events_id_org_employment_key"
+        ],
+        "payrollMutationReceipts": []
+      },
+      "fixtureScope": {
+        "organizationId": "10000000-0000-4000-8000-000000000001",
+        "employmentId": "10000000-0000-4000-8000-000000000041",
+        "payPeriodId": "90000000-0000-4000-8000-000000000003",
+        "policyVersionId": "37bbea38-83d5-4e4c-8330-41a3421f3367"
+      },
+      "rpcResultSummary": {
+        "state": "ok",
+        "sourceHash": "c8a3d7216ae347d0e5c435b72083c680e1b24f532606c3e74abd19085d3f96ba",
+        "snapshotId": "9409d62b-7731-4179-a2f4-cb26b7dfdfc0",
+        "replayed": false
+      }
+    },
+    {
+      "bucketRowCount": 500,
+      "expectedBlocker": null,
+      "rpcOutcome": "success",
+      "rpcWallMs": 98.026,
+      "rowCounts": {
+        "beforeRpc": {
+          "mealResolutions": 0,
+          "employeeTimeEvents": 500,
+          "timeCorrectionRequests": 0,
+          "payrollMutationReceipts": 0
+        },
+        "afterRpc": {
+          "mealResolutions": 0,
+          "employeeTimeEvents": 500,
+          "timeCorrectionRequests": 0,
+          "payrollMutationReceipts": 1
+        }
+      },
+      "sourcePlans": [
+        {
+          "queryFamily": "employeeTimeEvents",
+          "planSummary": {
+            "queryFamily": "employeeTimeEvents",
+            "rootNodeType": "Index Only Scan",
+            "planningTimeMs": 0.178,
+            "executionTimeMs": 0.262,
+            "indexNames": [
+              "employee_time_events_org_employment_event_at_idx"
+            ],
+            "nodeTypes": [
+              "Index Only Scan"
+            ],
+            "sequentialScans": [],
+            "planRows": 56,
+            "actualRows": 500,
+            "sharedHitBlocks": 25,
+            "sharedReadBlocks": 0
+          }
+        },
+        {
+          "queryFamily": "timeCorrectionRequests",
+          "planSummary": {
+            "queryFamily": "timeCorrectionRequests",
+            "rootNodeType": "Sort",
+            "planningTimeMs": 0.287,
+            "executionTimeMs": 0.059,
+            "indexNames": [
+              "employee_time_events_id_org_employment_key"
+            ],
+            "nodeTypes": [
+              "Index Scan",
+              "Nested Loop",
+              "Seq Scan",
+              "Sort"
+            ],
+            "sequentialScans": [
+              {
+                "relationName": "time_correction_requests",
+                "alias": "correction_row",
+                "actualRows": 0,
+                "planRows": 1,
+                "filter": "((organization_id = '10000000-0000-4000-8000-000000000001'::uuid) AND (employment_profile_id = '10000000-0000-4000-8000-000000000041'::uuid))"
+              }
+            ],
+            "planRows": 1,
+            "actualRows": 0,
+            "sharedHitBlocks": 1,
+            "sharedReadBlocks": 0
+          }
+        },
+        {
+          "queryFamily": "mealResolutions",
+          "planSummary": {
+            "queryFamily": "mealResolutions",
+            "rootNodeType": "Sort",
+            "planningTimeMs": 0.241,
+            "executionTimeMs": 0.063,
+            "indexNames": [
+              "employee_time_events_id_org_employment_key"
+            ],
+            "nodeTypes": [
+              "Index Scan",
+              "Nested Loop",
+              "Seq Scan",
+              "Sort"
+            ],
+            "sequentialScans": [
+              {
+                "relationName": "timesheet_meal_resolutions",
+                "alias": "resolution_row",
+                "actualRows": 0,
+                "planRows": 1,
+                "filter": "((organization_id = '10000000-0000-4000-8000-000000000001'::uuid) AND (employment_profile_id = '10000000-0000-4000-8000-000000000041'::uuid) AND (pay_period_id = '90000000-0000-4000-8000-000000000003'::uuid))"
+              }
+            ],
+            "planRows": 1,
+            "actualRows": 0,
+            "sharedHitBlocks": 1,
+            "sharedReadBlocks": 0
+          }
+        },
+        {
+          "queryFamily": "payrollMutationReceipts",
+          "planSummary": {
+            "queryFamily": "payrollMutationReceipts",
+            "rootNodeType": "Seq Scan",
+            "planningTimeMs": 0.109,
+            "executionTimeMs": 0.075,
+            "indexNames": [],
+            "nodeTypes": [
+              "Seq Scan"
+            ],
+            "sequentialScans": [
+              {
+                "relationName": "payroll_mutation_receipts",
+                "alias": "receipt",
+                "actualRows": 1,
+                "planRows": 1,
+                "filter": "((organization_id = '10000000-0000-4000-8000-000000000001'::uuid) AND (actor_user_id = '10000000-0000-4000-8000-000000000011'::uuid) AND (operation = 'derive_timesheet_snapshot'::text) AND (idempotency_key = 'payroll-timesheet-derive-contract-500'::text))"
+              }
+            ],
+            "planRows": 1,
+            "actualRows": 1,
+            "sharedHitBlocks": 3,
+            "sharedReadBlocks": 0
+          }
+        }
+      ],
+      "indexUse": {
+        "employeeTimeEvents": [
+          "employee_time_events_org_employment_event_at_idx"
+        ],
+        "timeCorrectionRequests": [
+          "employee_time_events_id_org_employment_key"
+        ],
+        "mealResolutions": [
+          "employee_time_events_id_org_employment_key"
+        ],
+        "payrollMutationReceipts": []
+      },
+      "fixtureScope": {
+        "organizationId": "10000000-0000-4000-8000-000000000001",
+        "employmentId": "10000000-0000-4000-8000-000000000041",
+        "payPeriodId": "90000000-0000-4000-8000-000000000003",
+        "policyVersionId": "76832e54-5a9e-4e82-89cf-ddb4baae7d6c"
+      },
+      "rpcResultSummary": {
+        "state": "ok",
+        "sourceHash": "cacec0cac88ec8e8203f3b3ec705334cf7ceb6a4662340d8e72a59e094967b6a",
+        "snapshotId": "1621dd8a-ebd0-4b0a-95a3-e225a32d9a3c",
+        "replayed": false
+      }
+    }
+  ]
+}

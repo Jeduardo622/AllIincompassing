@@ -4,6 +4,7 @@ import { parseJsonResponse } from "../../lib/sdk/contracts";
 import { toNormalizedApiError, type NormalizedApiError } from "../../lib/sdk/errors";
 
 const PAYROLL_TIME_ENDPOINT = "/api/payroll-time-events";
+const PAYROLL_TIMESHEET_ENDPOINT = "/api/payroll-timesheets";
 const FORBIDDEN_AUTHORITY_KEYS = new Set([
   "organization_id",
   "organizationId",
@@ -23,6 +24,15 @@ const payrollDayStateSchema = z.enum([
   "ok",
   "feature_disabled",
   "unsupported_jurisdiction",
+  "no_employment_profile",
+]);
+const payrollTimesheetStateSchema = z.enum([
+  "ok",
+  "blocked",
+  "feature_disabled",
+  "unsupported_jurisdiction",
+  "unsupported_policy",
+  "missing_prerequisite",
   "no_employment_profile",
 ]);
 
@@ -180,6 +190,114 @@ const payrollDayResponseSchema = z.object({
 const mutationSuccessSchema = z.object({
   idempotencyKey: z.string().min(1),
 }).passthrough();
+const payrollTimesheetSnapshotSchema = z.object({
+  id: z.string().uuid().optional(),
+  snapshotId: z.string().uuid().optional(),
+  sourceHash: z.string().min(1).optional(),
+  lockable: z.boolean().optional(),
+  totals: z.object({
+    regularSeconds: z.number().int(),
+    overtimeSeconds: z.number().int(),
+    doubleTimeSeconds: z.number().int(),
+    mealPremiumCents: z.number().int(),
+    grossEarningsCents: z.number().int(),
+  }).optional(),
+  createdAt: z.string().min(1).optional(),
+}).passthrough();
+const payrollTimesheetTotalsSchema = z.object({
+  regularSeconds: z.number().int(),
+  overtimeSeconds: z.number().int(),
+  doubleTimeSeconds: z.number().int(),
+  mealPremiumCents: z.number().int(),
+  grossEarningsCents: z.number().int(),
+});
+const payrollTimesheetReviewExceptionSchema = z.object({
+  id: z.string().min(1).optional(),
+  code: z.string().min(1).optional(),
+  exceptionCode: z.string().min(1).optional(),
+  blocking: z.boolean().optional(),
+  details: z.unknown().optional(),
+  createdAt: z.string().min(1).optional(),
+}).passthrough();
+const payrollTimesheetPeriodSchema = z.object({
+  selectedLocalDate: z.string().date().optional(),
+  periodStart: z.string().date().optional(),
+  periodEnd: z.string().date().optional(),
+  timezone: z.string().min(1).optional(),
+  workdayStartsAt: z.string().min(1).optional(),
+  workweekStartsOn: z.number().int().optional(),
+  policyVersionId: z.string().uuid().nullable().optional(),
+  payPeriodId: z.string().uuid().nullable().optional(),
+  events: z.array(z.object({
+    id: z.string().min(1),
+    source: z.string().min(1),
+    eventType: z.string().min(1),
+    occurredAt: z.string().min(1),
+    createdAt: z.string().min(1),
+    timezone: z.string().min(1),
+    workLocation: workLocationSchema.nullable(),
+    workCategory: workCategorySchema.nullable(),
+    sessionId: z.string().uuid().nullable().optional(),
+    employeeTimeEventId: z.string().uuid().nullable().optional(),
+    details: z.unknown().optional(),
+  })).optional(),
+  rateVersions: z.array(z.object({
+    id: z.string().uuid(),
+    effectiveFrom: z.string().min(1),
+    effectiveThrough: z.string().nullable(),
+  })).optional(),
+  timeCorrectionRequests: z.array(timeCorrectionRequestSchema).optional(),
+  sessionAttendanceCorrectionRequests: z.array(sessionAttendanceCorrectionRequestSchema).optional(),
+  exceptions: z.array(payrollTimesheetReviewExceptionSchema).optional(),
+});
+const payrollTimesheetPeriodResponseSchema = z.object({
+  state: payrollTimesheetStateSchema,
+  period: payrollTimesheetPeriodSchema,
+  totals: payrollTimesheetTotalsSchema.optional(),
+  exceptions: z.array(payrollTimesheetReviewExceptionSchema).optional(),
+  sourceHash: z.string().min(1).nullable().optional(),
+  snapshot: payrollTimesheetSnapshotSchema.nullable().optional(),
+}).passthrough();
+const payrollTimesheetDeriveSuccessSchema = z.object({
+  state: z.literal("ok"),
+  idempotencyKey: z.string().min(1),
+  snapshotId: z.string().uuid(),
+  sourceHash: z.string().min(1),
+  replayed: z.boolean(),
+  lockable: z.boolean().optional(),
+  period: payrollTimesheetPeriodSchema.optional(),
+  totals: payrollTimesheetTotalsSchema.optional(),
+  exceptions: z.array(payrollTimesheetReviewExceptionSchema).optional(),
+}).passthrough();
+const payrollTimesheetDeriveBlockedSchema = z.object({
+  state: z.literal("blocked"),
+  idempotencyKey: z.string().min(1),
+  snapshotId: z.null(),
+  sourceHash: z.string().min(1).nullable(),
+  replayed: z.boolean().optional(),
+  lockable: z.literal(false),
+  period: payrollTimesheetPeriodSchema,
+  totals: payrollTimesheetTotalsSchema,
+  exceptions: z.array(payrollTimesheetReviewExceptionSchema),
+}).passthrough();
+const payrollTimesheetDeriveLegacySuccessSchema = z.union([
+  z.object({
+    idempotencyKey: z.string().min(1),
+    snapshotId: z.string().uuid(),
+    sourceHash: z.string().min(1),
+    replayed: z.boolean(),
+  }).passthrough(),
+  z.object({
+    idempotencyKey: z.string().min(1),
+    snapshot_id: z.string().uuid(),
+    source_hash: z.string().min(1),
+    replayed: z.boolean(),
+  }).passthrough(),
+]);
+const payrollTimesheetDeriveResponseSchema = z.union([
+  payrollTimesheetDeriveSuccessSchema,
+  payrollTimesheetDeriveBlockedSchema,
+]);
 
 export type PayrollScope = {
   organizationId: string;
@@ -201,6 +319,12 @@ export type PayrollSessionAttendanceCorrectionRequest = z.infer<typeof sessionAt
 export type PayrollTimekeepingException = z.infer<typeof timekeepingExceptionSchema>;
 export type PayrollSessionContext = z.infer<typeof payrollSessionContextOkSchema>;
 export type PayrollSessionContextResponse = z.infer<typeof payrollSessionContextResponseSchema>;
+export type PayrollTimesheetState = z.infer<typeof payrollTimesheetStateSchema>;
+export type PayrollTimesheetSnapshot = z.infer<typeof payrollTimesheetSnapshotSchema>;
+export type PayrollTimesheetPeriodResponse = z.infer<typeof payrollTimesheetPeriodResponseSchema>;
+export type PayrollTimesheetDeriveResponse =
+  | z.infer<typeof payrollTimesheetDeriveSuccessSchema>
+  | z.infer<typeof payrollTimesheetDeriveBlockedSchema>;
 export type PayrollDayResponse = {
   state: PayrollDayState;
   bootstrap?: PayrollBootstrap;
@@ -396,6 +520,97 @@ export async function fetchPayrollDay(scope: PayrollScope): Promise<PayrollDayRe
       exceptions: parsed.day?.exceptions ?? [],
     },
     ...(parsed.totals?.label ? { totals: { label: parsed.totals.label } } : {}),
+  };
+}
+
+export async function fetchPayrollTimesheetPeriod(scope: PayrollScope): Promise<PayrollTimesheetPeriodResponse> {
+  const response = await callApi(PAYROLL_TIMESHEET_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      action: "get_period",
+      selectedLocalDate: z.string().date().parse(scope.localDate),
+    }),
+  });
+
+  if (!response.ok) {
+    throw await parseFailure(response, "Failed to fetch payroll timesheet period.");
+  }
+
+  const parsed = await parseJsonResponse(response.clone(), payrollTimesheetPeriodResponseSchema);
+  if (!parsed) {
+    throw toNormalizedApiError(
+      {
+        code: "invalid_response",
+        error: "Invalid payroll timesheet period response.",
+      },
+      502,
+      "Invalid payroll timesheet period response.",
+    );
+  }
+
+  return parsed;
+}
+
+export async function derivePayrollTimesheetSnapshot(scope: PayrollScope, input: {
+  selectedLocalDate: string;
+  idempotencyKey: string;
+}): Promise<PayrollTimesheetDeriveResponse> {
+  const idempotencyKey = assertNonEmptyIdempotencyKey(input.idempotencyKey);
+  const response = await callApi(PAYROLL_TIMESHEET_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify({
+      action: "derive_snapshot",
+      selectedLocalDate: z.string().date().parse(input.selectedLocalDate),
+    }),
+  });
+
+  if (!response.ok) {
+    throw await parseFailure(response, "Failed to derive payroll timesheet snapshot.");
+  }
+
+  const parsed = await parseJsonResponse(response.clone(), payrollTimesheetDeriveResponseSchema);
+  const legacyParsed = !parsed
+    ? await parseJsonResponse(response.clone(), payrollTimesheetDeriveLegacySuccessSchema)
+    : null;
+  if (!parsed && !legacyParsed) {
+    throw toNormalizedApiError(
+      {
+        code: "invalid_response",
+        error: "Invalid payroll timesheet derivation response.",
+      },
+      502,
+      "Invalid payroll timesheet derivation response.",
+    );
+  }
+
+  if (response.headers.get("Idempotency-Key")?.trim() !== idempotencyKey) {
+    throw toNormalizedApiError(
+      {
+        code: "idempotency_mismatch",
+        error: "Payroll confirmation key mismatch.",
+      },
+      502,
+      "Payroll confirmation key mismatch.",
+    );
+  }
+
+  if (parsed) {
+    return parsed;
+  }
+
+  return {
+    state: "ok",
+    idempotencyKey: legacyParsed.idempotencyKey,
+    snapshotId: "snapshotId" in legacyParsed ? legacyParsed.snapshotId : legacyParsed.snapshot_id,
+    sourceHash: "sourceHash" in legacyParsed ? legacyParsed.sourceHash : legacyParsed.source_hash,
+    replayed: legacyParsed.replayed,
   };
 }
 

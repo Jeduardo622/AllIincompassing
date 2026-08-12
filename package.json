@@ -123,6 +123,7 @@
     "agent-work:trace-index-contract": "tsx scripts/agent-work-ledger-local-env.ts run -- node scripts/agent-work-ledger-trace-index-contract.mjs",
     "agent-work:queue-scheduler:smoke": "tsx scripts/agent-work-ledger-local-env.ts run -- node scripts/agent-work-ledger-local-scheduler.mjs smoke",
     "agent-work:hosted-scheduler:contract": "tsx scripts/agent-work-ledger-local-env.ts run -- node scripts/agent-work-ledger-hosted-scheduler-contract.mjs",
+    "payroll:timesheet-derive-contract": "node scripts/payroll-timesheet-derive-contract.mjs",
     "agent-work:hosted-shadow-proof:contract": "npm test -- --run tests/agentWorkLedgerHostedShadowProof.test.ts",
     "migration:new": "node scripts/migrations/new-migration-with-header.mjs",
     "validate:tenant": "npx tsx scripts/check-tenant-safety.ts",

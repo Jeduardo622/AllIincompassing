@@ -5,11 +5,16 @@ import { pathToFileURL } from "node:url";
 const DEPLOY_COMMAND = "npm run ci:deploy:session-edge-bundle";
 const FILL_DOCS_DEPLOY_COMMAND = "npm run ci:deploy:fill-docs-function";
 const AI_DEPLOY_COMMAND = "npm run ci:deploy:ai-agent-function";
+const PAYROLL_DEPLOY_COMMAND = "node scripts/ci/deploy-payroll-timesheets-function.mjs";
 const SESSION_DEPLOY_PREREQ_COMMAND =
   "node scripts/ci/check-edge-deploy-prerequisites.mjs session-edge";
 const AI_DEPLOY_PREREQ_COMMAND =
   "node scripts/ci/check-edge-deploy-prerequisites.mjs ai-agent-optimized";
+const PAYROLL_DEPLOY_PREREQ_COMMAND =
+  "node scripts/ci/check-edge-deploy-prerequisites.mjs payroll-timesheets";
 const MAIN_PUSH_IF = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
+const PAYROLL_ACTIVATION_IF = "github.event_name == 'workflow_dispatch' && inputs.activate_payroll_timesheets == true";
+const RUNTIME_PARITY_IF = `(${MAIN_PUSH_IF}) || (${PAYROLL_ACTIVATION_IF})`;
 const AI_DEPLOY_IF =
   "github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.change_scope.outputs.ai_agent_changed == 'true'";
 const AUTH_SMOKE_IF =
@@ -24,7 +29,16 @@ const DEPLOY_NEEDS = [
   "build",
 ];
 const AI_DEPLOY_NEEDS = ["deploy_session_edge", "change_scope"];
+const PAYROLL_DEPLOY_NEEDS = [
+  "policy",
+  "tenant_safety",
+  "runtime_migration_parity",
+  "lint_typecheck",
+  "unit_tests",
+  "build",
+];
 const AUTH_SMOKE_NEEDS = ["policy", "change_scope", "deploy_session_edge"];
+const PAYROLL_FUNCTION_PARITY_SCOPE_ENTRY = "payroll-timesheets";
 export const AI_AGENT_BUNDLE_PATH_PATTERN =
   "^supabase/functions/(ai-agent-optimized/|_shared/(database|auth|org|logging|cors|supabaseEnv|requestAuthHeaders)\\.ts$|lib/http/error\\.ts$)";
 const AI_AGENT_BUNDLE_PATH_REGEX = new RegExp(AI_AGENT_BUNDLE_PATH_PATTERN);
@@ -398,6 +412,10 @@ const isRawAiDeployInvocation = (line) =>
   isDirectNodeDeployScript(line, "scripts/ci/deploy-ai-agent-function.mjs") ||
   normalizeScriptCommand(line) === AI_DEPLOY_COMMAND ||
   (isSupabaseDeployInvocation(line) && /\bai-agent-optimized\b/i.test(line));
+const isRawPayrollDeployInvocation = (line) =>
+  isDirectNodeDeployScript(line, "scripts/ci/deploy-payroll-timesheets-function.mjs") ||
+  line === PAYROLL_DEPLOY_COMMAND ||
+  (isSupabaseDeployInvocation(line) && /\bpayroll-timesheets\b/i.test(line));
 const isRawFillDocsDeployInvocation = (line) =>
   isDirectNodeDeployScript(line, "scripts/ci/deploy-fill-docs-function.mjs") ||
   normalizeScriptCommand(line) === FILL_DOCS_DEPLOY_COMMAND;
@@ -431,6 +449,9 @@ const requireJob = (jobs, name, violations) => {
 
 export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
   const violations = [];
+  if (!/workflow_dispatch:\s*\n\s+inputs:\s*\n\s+activate_payroll_timesheets:\s*\n\s+description:[^\n]+\n\s+required:\s*true\s*\n\s+type:\s*boolean\s*\n\s+default:\s*false/.test(ciWorkflow)) {
+    violations.push("workflow_dispatch must define a required default-false boolean activate_payroll_timesheets input");
+  }
   const jobs = parseWorkflowJobs(ciWorkflow);
   const tenantJobs = parseWorkflowJobs(tenantWorkflow);
 
@@ -440,6 +461,7 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
   const runtimeContract = requireJob(jobs, "start_session_runtime_contract", violations);
   const deploy = requireJob(jobs, "deploy_session_edge", violations);
   const deployAiAgent = requireJob(jobs, "deploy_ai_agent_edge", violations);
+  const deployPayroll = requireJob(jobs, "deploy_payroll_timesheets", violations);
   const authSmoke = requireJob(jobs, "auth_browser_smoke", violations);
   const ciGate = requireJob(jobs, "ci_gate", violations);
 
@@ -451,6 +473,9 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
     const mergeGroupContract = /elif\s+\[\s*"\$\{GITHUB_EVENT_NAME\}"\s*=\s*"merge_group"\s*\]\s*;\s*then[\s\S]*?base_sha="\$\{\{\s*github\.event\.merge_group\.base_sha\s*\}\}"[\s\S]*?head_sha="\$\{\{\s*github\.event\.merge_group\.head_sha\s*\}\}"/;
     if (!mergeGroupContract.test(executableLines(detectRun).join("\n"))) {
       violations.push("change_scope must map merge_group base_sha and head_sha from the merge-group event");
+    }
+    if (!/elif\s+\[\s*"\$\{GITHUB_EVENT_NAME\}"\s*=\s*"workflow_dispatch"\s*\]\s*;\s*then[\s\S]*?base_sha="\$\{GITHUB_SHA\}\^"[\s\S]*?head_sha="\$\{GITHUB_SHA\}"/.test(detectRun)) {
+      violations.push("change_scope must map workflow_dispatch to the selected commit and its first parent");
     }
     if (!detectRun.includes(`grep -Eq '${AI_AGENT_BUNDLE_PATH_PATTERN}'`)) {
       violations.push(
@@ -480,6 +505,9 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
   const aiDeploySteps = Object.entries(jobs).flatMap(([jobName, job]) =>
     job.steps.filter((step) => stepIsExactCommand(step, AI_DEPLOY_COMMAND)).map((step) => ({ jobName, step })),
   );
+  const payrollDeploySteps = Object.entries(jobs).flatMap(([jobName, job]) =>
+    job.steps.filter((step) => stepIsExactCommand(step, PAYROLL_DEPLOY_COMMAND)).map((step) => ({ jobName, step })),
+  );
   const fillDocsDeploySteps = Object.entries(jobs).flatMap(([jobName, job]) =>
     job.steps.filter((step) => stepIsExactCommand(step, FILL_DOCS_DEPLOY_COMMAND)).map((step) => ({ jobName, step })),
   );
@@ -494,6 +522,13 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
     job.steps.flatMap((step) =>
       executableLines(step.run)
         .filter((line) => line === AI_DEPLOY_COMMAND || isRawAiDeployInvocation(line))
+        .map((line) => ({ jobName, line })),
+    ),
+  );
+  const payrollDeployInvocations = Object.entries(jobs).flatMap(([jobName, job]) =>
+    job.steps.flatMap((step) =>
+      executableLines(step.run)
+        .filter((line) => line === PAYROLL_DEPLOY_COMMAND || isRawPayrollDeployInvocation(line))
         .map((line) => ({ jobName, line })),
     ),
   );
@@ -536,20 +571,39 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
   ) {
     violations.push("CI workflow must contain exactly one ai-agent deploy command");
   }
+  if (payrollDeploySteps.length !== 1 || payrollDeploySteps[0]?.jobName !== "deploy_payroll_timesheets") {
+    violations.push("CI workflow must contain exactly one payroll-timesheets deploy command");
+  }
+  if (
+    payrollDeployInvocations.some(
+      ({ jobName, line }) => jobName !== "deploy_payroll_timesheets" || line !== PAYROLL_DEPLOY_COMMAND,
+    )
+  ) {
+    violations.push("CI workflow must contain exactly one payroll-timesheets deploy command");
+  }
 
   if (policy) {
     const policyRuns = runText(policy);
-    for (const forbidden of [DEPLOY_COMMAND, FILL_DOCS_DEPLOY_COMMAND, AI_DEPLOY_COMMAND, "npm run validate:tenant", "check-runtime-migration-parity.mjs", "check-session-runtime-contract.mjs"]) {
+    for (const forbidden of [DEPLOY_COMMAND, FILL_DOCS_DEPLOY_COMMAND, AI_DEPLOY_COMMAND, PAYROLL_DEPLOY_COMMAND, "npm run validate:tenant", "check-runtime-migration-parity.mjs", "check-session-runtime-contract.mjs"]) {
       if (policyRuns.includes(forbidden)) {
         violations.push("policy job must stay read-only and may not run `" + forbidden + "`");
       }
     }
+    const parityStep = policy.steps.find((step) => stepHasExactCommand(step, "npm run ci:check-focused"));
+    const parityScope = parityStep?.env?.SUPABASE_FUNCTION_PARITY_SCOPE ?? "";
+    const scopeEntries = parityScope
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    if (!scopeEntries.includes(PAYROLL_FUNCTION_PARITY_SCOPE_ENTRY)) {
+      violations.push("SUPABASE_FUNCTION_PARITY_SCOPE must include payroll-timesheets");
+    }
   }
 
   if (runtimeParity) {
-    if (runtimeParity.if !== MAIN_PUSH_IF) {
+    if (runtimeParity.if !== RUNTIME_PARITY_IF) {
       violations.push(
-        "runtime_migration_parity must be restricted to push on refs/heads/main",
+        "runtime_migration_parity must be restricted to main pushes or explicit payroll activation",
       );
     }
     const parityStep = runtimeParity.steps.find((step) => stepHasExactCommand(step, "node scripts/ci/check-runtime-migration-parity.mjs"));
@@ -617,6 +671,26 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
     }
   }
 
+  if (deployPayroll) {
+    if (deployPayroll.if !== PAYROLL_ACTIVATION_IF) {
+      violations.push("deploy_payroll_timesheets must require explicit manual activation");
+    }
+    if (!sameSet(deployPayroll.needs, PAYROLL_DEPLOY_NEEDS)) {
+      violations.push(`deploy_payroll_timesheets needs must exactly equal ${PAYROLL_DEPLOY_NEEDS.join(", ")}`);
+    }
+    const prereqIndex = deployPayroll.steps.findIndex((step) => step.name === "Validate payroll-timesheets deploy prerequisites");
+    const deployIndex = deployPayroll.steps.findIndex((step) => stepIsExactCommand(step, PAYROLL_DEPLOY_COMMAND));
+    if (prereqIndex === -1 || deployIndex === -1 || prereqIndex > deployIndex) {
+      violations.push("deploy_payroll_timesheets must validate deploy prerequisites before deploying");
+    }
+    const prereqStep = deployPayroll.steps[prereqIndex];
+    if (!prereqStep || !stepIsExactCommand(prereqStep, PAYROLL_DEPLOY_PREREQ_COMMAND)) {
+      violations.push(
+        "deploy_payroll_timesheets must run the shared edge deploy prerequisite helper",
+      );
+    }
+  }
+
   if (authSmoke) {
     if (!sameSet(authSmoke.needs, AUTH_SMOKE_NEEDS)) {
       if (!authSmoke.needs.includes("deploy_session_edge")) {
@@ -634,21 +708,23 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
   }
 
   if (ciGate) {
-    const requiredNeeds = ["tenant_safety", "runtime_migration_parity", "start_session_runtime_contract", "deploy_session_edge", "deploy_ai_agent_edge"];
+    const requiredNeeds = ["tenant_safety", "runtime_migration_parity", "start_session_runtime_contract", "deploy_session_edge", "deploy_ai_agent_edge", "deploy_payroll_timesheets"];
     if (!requiredNeeds.every((need) => ciGate.needs.includes(need))) {
-      violations.push("ci_gate must include tenant_safety, runtime_migration_parity, start_session_runtime_contract, deploy_session_edge, and deploy_ai_agent_edge");
+      violations.push("ci_gate must include tenant_safety, runtime_migration_parity, start_session_runtime_contract, deploy_session_edge, deploy_ai_agent_edge, and deploy_payroll_timesheets");
     }
 
     const gateStep = ciGate.steps.find((step) => step.name === "Enforce lane-specific CI results") ?? ciGate.steps[0];
     const expectedEnv = {
       GITHUB_EVENT_NAME: "${{ github.event_name }}",
       GITHUB_REF: "${{ github.ref }}",
+      ACTIVATE_PAYROLL_TIMESHEETS: "${{ inputs.activate_payroll_timesheets || false }}",
       AI_AGENT_CHANGED: "${{ needs.change_scope.outputs.ai_agent_changed }}",
       TENANT_SAFETY_RESULT: "${{ needs.tenant_safety.result }}",
       RUNTIME_PARITY_RESULT: "${{ needs.runtime_migration_parity.result }}",
       START_SESSION_RUNTIME_CONTRACT_RESULT: "${{ needs.start_session_runtime_contract.result }}",
       DEPLOY_SESSION_EDGE_RESULT: "${{ needs.deploy_session_edge.result }}",
       DEPLOY_AI_AGENT_EDGE_RESULT: "${{ needs.deploy_ai_agent_edge.result }}",
+      DEPLOY_PAYROLL_TIMESHEETS_RESULT: "${{ needs.deploy_payroll_timesheets.result }}",
     };
     for (const [name, value] of Object.entries(expectedEnv)) {
       if (gateStep?.env?.[name] !== value) {
@@ -667,12 +743,12 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
       }
     }
     if (!hasSequence(gateLines, [
-      'if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF}" = "refs/heads/main" ] && [ "${RUNTIME_PARITY_RESULT}" != "success" ]; then',
-      'failed+=("runtime-migration-parity=${RUNTIME_PARITY_RESULT}")',
+      'if { [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF}" = "refs/heads/main" ]; } || { [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "${ACTIVATE_PAYROLL_TIMESHEETS}" = "true" ]; }; then',
+      '[ "${RUNTIME_PARITY_RESULT}" = "success" ] || failed+=("runtime-migration-parity=${RUNTIME_PARITY_RESULT}")',
       "fi",
     ])) {
       violations.push(
-        "ci_gate must enforce runtime_migration_parity success only on main pushes",
+        "ci_gate must enforce runtime_migration_parity success on main pushes and explicit payroll activation",
       );
     }
     if (!hasSequence(gateLines, [
@@ -688,6 +764,13 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
       "fi",
     ])) {
       violations.push("ci_gate must enforce deploy_ai_agent_edge success when ai_agent_changed is true on main pushes");
+    }
+    if (!hasSequence(gateLines, [
+      'if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "${ACTIVATE_PAYROLL_TIMESHEETS}" = "true" ] && [ "${DEPLOY_PAYROLL_TIMESHEETS_RESULT}" != "success" ]; then',
+      'failed+=("deploy-payroll-timesheets=${DEPLOY_PAYROLL_TIMESHEETS_RESULT}")',
+      "fi",
+    ])) {
+      violations.push("ci_gate must enforce deploy_payroll_timesheets success for explicit manual activation");
     }
     if (!hasOrderedSequence(gateLines, ['if [ "${#failed[@]}" -gt 0 ]; then', "exit 1", "fi"])) {
       violations.push("ci_gate must exit nonzero when any required result fails");

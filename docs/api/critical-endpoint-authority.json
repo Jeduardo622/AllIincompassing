@@ -161,6 +161,14 @@
       "owner": "Backend Platform",
       "wave": "B",
       "authoritativeTarget": "payroll-time-events"
+    },
+    {
+      "publicApiPath": "/api/payroll-timesheets",
+      "functionFile": "payroll-timesheets.ts",
+      "status": "migrating",
+      "owner": "Backend Platform",
+      "wave": "B",
+      "authoritativeTarget": "payroll-timesheets"
     }
   ]
 }

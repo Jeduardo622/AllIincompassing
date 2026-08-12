@@ -180,13 +180,6 @@ const containsForbiddenAuthority = (value: unknown): boolean => {
   );
 };
 
-const containsForbiddenTopLevelAuthority = (value: unknown): boolean => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-  return Object.keys(value as Record<string, unknown>).some((key) => FORBIDDEN_AUTHORITY_KEYS.has(key));
-};
-
 const getNestedIdempotencyKey = (value: unknown): string | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -351,7 +344,7 @@ export async function handlePayrollTimeEvents({ req, userContext: _userContext, 
     return jsonResponse(req, 400, { error: "Invalid JSON body" });
   }
 
-  if (containsForbiddenTopLevelAuthority(payload)) {
+  if (containsForbiddenAuthority(payload)) {
     return jsonResponse(req, 400, { error: "Authority fields are not allowed in payroll requests." });
   }
 

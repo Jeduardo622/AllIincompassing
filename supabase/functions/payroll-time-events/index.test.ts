@@ -64,6 +64,29 @@ const validCorrection = {
   },
 };
 
+const maliciousNestedSessionAuthorityObjects = [
+  {
+    authority: {
+      organization: {
+        organizationId: "33333333-3333-3333-3333-333333333333",
+      },
+      actor: {
+        actorUserId: "malicious-user",
+      },
+    },
+  },
+  {
+    derivedAuthority: {
+      shift: {
+        activeShiftEventId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      },
+      location: {
+        canonicalWorkLocation: "office",
+      },
+    },
+  },
+];
+
 Deno.test("OPTIONS returns CORS headers for allowed origins", async () => {
   const response = await handler(
     new Request("https://example.com/functions/v1/payroll-time-events", {
@@ -216,6 +239,30 @@ Deno.test("get_session_context rejects raw authority fields before schema stripp
   const body = await response.json() as { error: string };
   assertEquals(response.status, 400);
   assertMatch(body.error, /authority/i);
+});
+
+Deno.test("get_session_context rejects malicious nested authority objects before RPC execution", async () => {
+  let rpcCalls = 0;
+
+  for (const nestedAuthority of maliciousNestedSessionAuthorityObjects) {
+    const response = await handlePayrollTimeEvents({
+      req: createRequest({
+        action: "get_session_context",
+        sessionId: "77777777-7777-7777-7777-777777777777",
+        ...nestedAuthority,
+      }),
+      userContext: createUserContext(),
+      db: createRpcClient(() => {
+        rpcCalls += 1;
+        return { data: null, error: null };
+      }),
+    });
+
+    const body = await response.json() as { error: string };
+    assertEquals(response.status, 400);
+    assertMatch(body.error, /authority/i);
+    assertEquals(rpcCalls, 0);
+  }
 });
 
 Deno.test("mutation requires Idempotency-Key and echoes replay information from the RPC response", async () => {

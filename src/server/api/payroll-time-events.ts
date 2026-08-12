@@ -148,13 +148,6 @@ const containsForbiddenAuthority = (value: unknown): boolean => {
   );
 };
 
-const containsForbiddenTopLevelAuthority = (value: unknown): boolean => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-  return Object.keys(value as Record<string, unknown>).some((key) => FORBIDDEN_AUTHORITY_KEYS.has(key));
-};
-
 const getNestedIdempotencyKey = (value: unknown): string | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -426,6 +419,21 @@ export async function payrollTimeEventsHandler(request: Request): Promise<Respon
       return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
     }
 
+    let payload: unknown;
+    let payloadParsed = false;
+    try {
+      payload = await request.clone().json();
+      payloadParsed = true;
+    } catch {
+      // Preserve edge ownership of malformed JSON while keeping the original request body unread.
+    }
+
+    if (payloadParsed && containsForbiddenAuthority(payload)) {
+      return errorResponse(request, "validation_error", "Authority fields are not allowed in payroll requests.", {
+        headers: traceHeaders,
+      });
+    }
+
     if (getApiAuthorityMode() === "edge") {
       const forwarded = await proxyToEdgeAuthority(request, {
         functionName: "payroll-time-events",
@@ -449,17 +457,12 @@ export async function payrollTimeEventsHandler(request: Request): Promise<Respon
       });
     }
 
-    let payload: unknown;
-    try {
-      payload = await request.json();
-    } catch {
-      return errorResponse(request, "validation_error", "Invalid JSON body", { headers: traceHeaders });
-    }
-
-    if (containsForbiddenTopLevelAuthority(payload)) {
-      return errorResponse(request, "validation_error", "Authority fields are not allowed in payroll requests.", {
-        headers: traceHeaders,
-      });
+    if (!payloadParsed) {
+      try {
+        payload = await request.json();
+      } catch {
+        return errorResponse(request, "validation_error", "Invalid JSON body", { headers: traceHeaders });
+      }
     }
 
     const parsed = payrollActionSchema.safeParse(payload);

@@ -50,6 +50,29 @@ const validMutationPayload = {
   },
 };
 
+const maliciousNestedSessionAuthorityObjects = [
+  {
+    authority: {
+      organization: {
+        organizationId: "33333333-3333-3333-3333-333333333333",
+      },
+      actor: {
+        actorUserId: "malicious-user",
+      },
+    },
+  },
+  {
+    derivedAuthority: {
+      shift: {
+        activeShiftEventId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      },
+      location: {
+        canonicalWorkLocation: "office",
+      },
+    },
+  },
+];
+
 describe("payrollTimeEventsHandler", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -271,6 +294,62 @@ describe("payrollTimeEventsHandler", () => {
 
     expect(response.status).toBe(400);
     expect(vi.mocked(fetchJson)).not.toHaveBeenCalled();
+  });
+
+  it("rejects malicious nested get_session_context authority objects in legacy mode before any RPC call", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
+
+    for (const nestedAuthority of maliciousNestedSessionAuthorityObjects) {
+      const response = await payrollTimeEventsHandler(
+        new Request("http://localhost/api/payroll-time-events", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${createAuthToken()}`,
+          },
+          body: JSON.stringify({
+            action: "get_session_context",
+            sessionId: "77777777-7777-7777-7777-777777777777",
+            ...nestedAuthority,
+          }),
+        }),
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual(expect.objectContaining({
+        code: "validation_error",
+        message: expect.stringMatching(/authority/i),
+      }));
+      expect(vi.mocked(fetchJson)).not.toHaveBeenCalled();
+      expect(vi.mocked(proxyToEdgeAuthority)).not.toHaveBeenCalled();
+    }
+  });
+
+  it("rejects malicious nested get_session_context authority objects in edge mode before proxying", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
+
+    for (const nestedAuthority of maliciousNestedSessionAuthorityObjects) {
+      const response = await payrollTimeEventsHandler(
+        new Request("http://localhost/api/payroll-time-events", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${createAuthToken()}`,
+          },
+          body: JSON.stringify({
+            action: "get_session_context",
+            sessionId: "77777777-7777-7777-7777-777777777777",
+            ...nestedAuthority,
+          }),
+        }),
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual(expect.objectContaining({
+        code: "validation_error",
+        message: expect.stringMatching(/authority/i),
+      }));
+      expect(vi.mocked(proxyToEdgeAuthority)).not.toHaveBeenCalled();
+      expect(vi.mocked(fetchJson)).not.toHaveBeenCalled();
+    }
   });
 
   it("rejects forbidden authority fields in legacy mode before any RPC call", async () => {

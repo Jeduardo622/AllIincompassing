@@ -87,7 +87,7 @@ Task 1 establishes a default-disabled payroll timekeeping schema and stable RPC 
 - Behavior added:
   - extends the action union with only `{ action: 'get_session_context', sessionId: uuid }`
   - invokes `get_session_payroll_context(session_id)` under the authenticated caller in both the Edge function and the local caller-JWT server path
-  - rejects raw authority response fields such as organization, user, actor, employment, shift, timezone, and canonical location fields before schema stripping
+  - rejects raw authority request fields such as organization, user, actor, employment, shift, timezone, and canonical location fields before schema stripping
   - validates the context response strictly and fails closed on drift
   - adds `fetchSessionPayrollContext(sessionId)` with request-body minimalism and exact nullable-field parsing
 - Verification:

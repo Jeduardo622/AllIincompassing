@@ -103,3 +103,28 @@ Task 1 establishes a default-disabled payroll timekeeping schema and stable RPC 
   - `npm run test:ci`: blocked by repository-wide coverage heap exhaustion after broad suite progress; process terminates with Node out-of-memory and `ERR_IPC_CHANNEL_CLOSED`
   - `npm run verify:local`: blocked by the same `test:ci` heap exhaustion in its umbrella run
 - Residual risk: the bounded payroll transport slice is green in focused coverage, but exact-head critical-lane closure still depends on CI or an environment-adjusted repo-wide coverage run that avoids the existing local heap failure.
+
+## Task 2E-C1 Progress
+
+- Date: 2026-08-12
+- Slice: session attendance domain orchestration for payroll lifecycle capture
+- Scope: `src/features/scheduling/domain/sessionPayrollLifecycle.ts`, `src/features/payroll/outbox.ts`, `src/features/payroll/usePayrollTime.ts`, `src/features/scheduling/domain/sessionStart.ts`, `src/features/scheduling/domain/sessionComplete.ts`, focused tests, and this handoff/progress note
+- Behavior added:
+  - fetches protected payroll session context before every start or close orchestration step and uses only canonical timezone/work-location fields from that context
+  - discovers and reuses retained `session_started` and `session_ended` rows by exact scoped `sessionId` plus `eventType`, preserving the original `occurredAt` across retry or reload
+  - returns an explicit `clock_choice_required` preparation only for the assigned employee without an active shift; delegated attendance never offers clock-in
+  - keeps start execution fail-closed: `clock_in` records `shift_started` with its own stable key, confirms it, refetches context for the authoritative shift link, then records retained `session_started`; `active`, `delegated`, and `continue_without_clock_in` record retained attendance first and never invoke clinical start until attendance is confirmed
+  - preserves retained attendance rows on clinical failure, clears the exact retained row only after compatible clinical success, and keeps `ALREADY_STARTED` compatible with existing clinical start behavior
+  - adds org-scoped exact terminal-status revalidation for close orchestration so `ALREADY_TERMINAL` clears retained `session_ended` only when the stored session status exactly matches the requested `completed` or `no-show` outcome
+  - never emits `shift_ended` from session start or close orchestration
+- Verification:
+  - `npx vitest run src/features/payroll/__tests__/api.test.ts src/features/payroll/__tests__/outbox.test.ts src/features/payroll/__tests__/usePayrollTime.test.tsx src/features/scheduling/domain/__tests__/sessionStart.test.ts src/features/scheduling/domain/__tests__/sessionComplete.test.ts src/features/scheduling/domain/__tests__/sessionPayrollLifecycle.test.ts --reporter=dot`: pass, 61 tests
+  - `npm run ci:check-focused`: pass on 2026-08-12; DB/CI-backed probes skipped as documented by the script
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run build`: pass
+  - `npm run test:ci`: not run by explicit user instruction to avoid broad runs; still required for full critical-lane closure
+  - `npm run test:routes:tier0`: not run by explicit user instruction to avoid browser runs; still required for full auth/session flow closure
+  - `npm run ci:playwright`: not run by explicit user instruction to avoid browser runs; still required for full auth/session flow closure
+  - `npm run verify:local`: not run because it would widen to blocked broad/browser checks for this bounded slice
+- Residual risk: the bounded orchestration slice is green in focused coverage and non-browser verification, but critical-lane closure still depends on the broader `test:ci`, `test:routes:tier0`, `ci:playwright`, `verify:local`, reviewer, and human review gates outside this local implementation pass.

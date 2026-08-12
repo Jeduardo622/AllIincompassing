@@ -24,7 +24,7 @@ import {
 
 let defaultPayrollOutboxStore: PayrollOutboxStore | null = null;
 
-const getDefaultPayrollOutboxStore = (): PayrollOutboxStore => {
+export const getDefaultPayrollOutboxStore = (): PayrollOutboxStore => {
   if (!defaultPayrollOutboxStore) {
     defaultPayrollOutboxStore = typeof indexedDB === "undefined"
       ? createInMemoryPayrollOutboxStore()
@@ -32,6 +32,8 @@ const getDefaultPayrollOutboxStore = (): PayrollOutboxStore => {
   }
   return defaultPayrollOutboxStore;
 };
+
+export const isPayrollTransportOnline = (): boolean => onlineManager.isOnline();
 
 export const payrollTimeQueryKey = (organizationId: string, userId: string, localDate: string) =>
   ["payroll-time", organizationId, userId, localDate] as const;

@@ -55,6 +55,11 @@ type ClearRetainedPayrollOutboxEventInput = ScopedOutbox & {
   idempotencyKey: string;
   confirmedServerIdempotencyKey: string;
 };
+type FindRetainedSessionAttendanceEventInput = ScopedOutbox & {
+  store: PayrollOutboxStore;
+  sessionId: string;
+  eventType: "session_started" | "session_ended";
+};
 
 const PAYROLL_OUTBOX_DB_NAME = "allincompassing-payroll-time-outbox";
 const PAYROLL_OUTBOX_STORE_NAME = "payroll-time-events";
@@ -441,6 +446,25 @@ export async function recoverPayrollOutbox(
       }
     }
   });
+}
+
+export async function findRetainedSessionAttendanceEvent(
+  input: FindRetainedSessionAttendanceEventInput,
+): Promise<PendingPayrollEvent | null> {
+  const events = await listPayrollOutboxEvents(input.store, input);
+  const retained = events.find((event) => {
+    if (!isRetainedSessionAttendanceEvent(event)) {
+      return false;
+    }
+    try {
+      const payload = canonicalizeRetainedSessionAttendancePayload(event.payload);
+      return payload.data.sessionId === input.sessionId && payload.data.eventType === input.eventType;
+    } catch {
+      return false;
+    }
+  });
+
+  return retained ?? null;
 }
 
 export async function enqueuePayrollOutboxEvent(

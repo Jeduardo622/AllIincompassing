@@ -7,6 +7,7 @@ import type {
   PayrollTimeEventPayload,
 } from "../../payroll/api";
 import {
+  buildPayrollSessionAttendancePayload,
   fetchSessionPayrollContext,
   payrollSessionContextResponseSchema,
   recordSessionAttendance,
@@ -204,16 +205,10 @@ const buildAttendancePayload = (
   context: PayrollSessionContext,
   eventType: SessionAttendanceEventType,
   occurredAt: string,
-  employeeTimeEventId?: string | null,
-): PayrollSessionAttendancePayload => ({
+): PayrollSessionAttendancePayload => buildPayrollSessionAttendancePayload({
   occurredAt,
-  timezone: context.employmentTimezone,
-  workLocation: context.canonicalWorkLocation,
-  data: {
-    eventType,
-    sessionId: context.sessionId,
-    ...(employeeTimeEventId === undefined ? {} : { employeeTimeEventId }),
-  },
+  eventType,
+  sessionId: context.sessionId,
 });
 
 const buildShiftStartedPayload = (
@@ -255,11 +250,6 @@ const assertRetainedNotNeedsAttention = (retained: PendingPayrollEvent | null): 
     throw new Error("Retained payroll outbox event requires attention.");
   }
 };
-
-const getRetainedAttendanceLink = (
-  retained: PendingPayrollEvent | null,
-): string | null | undefined =>
-  (retained?.payload as { data?: { employeeTimeEventId?: string | null } } | undefined)?.data?.employeeTimeEventId;
 
 const assertPreparedSessionMatchesRequest = (
   prepared: ActiveStartPreparation,
@@ -418,7 +408,6 @@ export function createSessionPayrollLifecycle(
     scope: PayrollScope,
     context: PayrollSessionContext,
     eventType: SessionAttendanceEventType,
-    employeeTimeEventId: string | null | undefined,
     retained: PendingPayrollEvent | null,
     attendance: AttendanceDescriptor,
   ): Promise<PendingPayrollEvent | null> => {
@@ -436,7 +425,7 @@ export function createSessionPayrollLifecycle(
       action: "record_session_attendance",
       idempotencyKey: attendance.idempotencyKey,
       occurredAt: attendance.occurredAt,
-      payload: buildAttendancePayload(context, eventType, attendance.occurredAt, employeeTimeEventId),
+      payload: buildAttendancePayload(context, eventType, attendance.occurredAt),
       retainForClinical: true,
     });
 
@@ -447,37 +436,6 @@ export function createSessionPayrollLifecycle(
       sessionId: context.sessionId,
       eventType,
     })) ?? buildSyntheticRetainedEvent(scope, attendance, localDate);
-  };
-
-  const rewriteRetainedAttendance = async (
-    scope: PayrollScope,
-    context: PayrollSessionContext,
-    eventType: SessionAttendanceEventType,
-    employeeTimeEventId: string | null | undefined,
-    retained: PendingPayrollEvent,
-  ): Promise<PendingPayrollEvent | null> => {
-    await deps.enqueueOutboxEvent({
-      store: deps.store,
-      organizationId: scope.organizationId,
-      userId: scope.userId,
-      localDate: retained.localDate,
-      action: "record_session_attendance",
-      idempotencyKey: retained.idempotencyKey,
-      occurredAt: retained.occurredAt,
-      payload: buildAttendancePayload(context, eventType, retained.occurredAt, employeeTimeEventId),
-      retainForClinical: true,
-    });
-
-    return (await deps.findRetainedEvent({
-      store: deps.store,
-      organizationId: scope.organizationId,
-      userId: scope.userId,
-      sessionId: context.sessionId,
-      eventType,
-    })) ?? buildSyntheticRetainedEvent(scope, {
-      idempotencyKey: retained.idempotencyKey,
-      occurredAt: retained.occurredAt,
-    }, retained.localDate);
   };
 
   const confirmRetainedAttendance = async (
@@ -552,7 +510,6 @@ export function createSessionPayrollLifecycle(
       input.scope,
       context,
       "session_ended",
-      undefined,
       retained,
       attendance,
     );
@@ -728,7 +685,6 @@ export function createSessionPayrollLifecycle(
       const initialContext = freshContext;
       let shiftIdempotencyKey: string | undefined;
       let contextForAttendance = initialContext;
-      let employeeTimeEventId: string | null | undefined;
       let retained = await deps.findRetainedEvent({
         store: deps.store,
         organizationId: input.scope.organizationId,
@@ -778,6 +734,7 @@ export function createSessionPayrollLifecycle(
           store: deps.store,
           organizationId: input.scope.organizationId,
           userId: input.scope.userId,
+          ...(retained ? { deferRetainedAttendanceKey: retained.idempotencyKey } : {}),
           recordTimeEvent: deps.recordTimeEvent,
           recordSessionAttendance: deps.recordSessionAttendance,
         });
@@ -801,35 +758,14 @@ export function createSessionPayrollLifecycle(
         if (!contextForAttendance.activeShiftEventId) {
           throw new Error("Clock-in start requires an authoritative active shift after confirmation.");
         }
-        employeeTimeEventId = contextForAttendance.activeShiftEventId;
-      } else if (input.choice === "active") {
-        employeeTimeEventId = initialContext.activeShiftEventId;
-      } else {
-        employeeTimeEventId = undefined;
       }
-      const retainedLink = getRetainedAttendanceLink(retained);
-      if (retained?.state === "confirmed_pending_clinical" && retainedLink !== employeeTimeEventId) {
-        throw new Error("A confirmed retained session start cannot be retroactively relinked.");
-      }
-
-      if (retained && retained.state !== "confirmed_pending_clinical" && retainedLink !== employeeTimeEventId) {
-        retained = await rewriteRetainedAttendance(
-          input.scope,
-          contextForAttendance,
-          "session_started",
-          employeeTimeEventId,
-          retained,
-        );
-      } else {
-        retained = await ensureRetainedAttendance(
-          input.scope,
-          contextForAttendance,
-          "session_started",
-          employeeTimeEventId,
-          retained,
-          attendanceDescriptor,
-        );
-      }
+      retained = await ensureRetainedAttendance(
+        input.scope,
+        contextForAttendance,
+        "session_started",
+        retained,
+        attendanceDescriptor,
+      );
       if (retained) {
         attendanceDescriptor = {
           idempotencyKey: retained.idempotencyKey,

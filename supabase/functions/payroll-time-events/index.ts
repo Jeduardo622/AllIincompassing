@@ -1,13 +1,8 @@
 // deno-lint-ignore-file no-import-prefix
 import { z } from "npm:zod";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.50.0";
+import type { Role, UserContext } from "../_shared/auth-middleware.ts";
 import { corsHeadersForRequest, resolveAllowedOriginForRequest } from "../_shared/cors.ts";
-
-type Role = "bt" | "therapist" | "midtier" | "admin_schedule" | "admin" | "bcba" | "super_admin";
-type UserContext = {
-  user: { id: string; email: string | null };
-  profile: { id: string; email: string | null; role: Role; is_active: boolean };
-};
 
 type ProtectedRouteFactory = (
   handler: (req: Request, userContext: UserContext) => Promise<Response>,
@@ -79,15 +74,15 @@ const timeEventSchema = eventEnvelopeBaseSchema.extend({
   }).passthrough(),
 }).passthrough();
 
-const sessionAttendanceSchema = eventEnvelopeBaseSchema.extend({
+const sessionAttendanceSchema = z.object({
+  occurredAt: z.string().min(1),
   data: z.object({
     eventType: z.enum(["session_started", "session_ended"]),
     sessionId: z.string().uuid(),
-    employeeTimeEventId: z.string().uuid().nullable().optional(),
     idempotencyKey: z.string().min(1).optional(),
     note: z.string().optional(),
-  }).passthrough(),
-}).passthrough();
+  }).strict(),
+}).strict();
 
 const correctionSchema = z.object({
   data: z.object({

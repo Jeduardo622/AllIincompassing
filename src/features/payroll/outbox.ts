@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   isRetryablePayrollTransportError,
   type PayrollScope,
@@ -42,6 +43,7 @@ type EnqueuePayrollOutboxEventInput = PayrollScope & {
 };
 type DrainPayrollOutboxInput = ScopedOutbox & {
   store: PayrollOutboxStore;
+  deferRetainedAttendanceKey?: string;
   recordTimeEvent: (input: PayrollScope & { idempotencyKey: string; event: PayrollTimeEventPayload }) => Promise<PayrollMutationSuccess>;
   recordSessionAttendance: (input: PayrollScope & { idempotencyKey: string; event: PayrollSessionAttendancePayload }) => Promise<PayrollMutationSuccess>;
 };
@@ -65,6 +67,15 @@ const PAYROLL_OUTBOX_DB_NAME = "allincompassing-payroll-time-outbox";
 const PAYROLL_OUTBOX_STORE_NAME = "payroll-time-events";
 const PAYROLL_OUTBOX_DB_VERSION = 2;
 const INVALID_RETAINED_PAYLOAD_SAFE_CODE = "invalid_retained_payload";
+
+const legacyRetainedSessionAttendancePayloadSchema = z.object({
+  occurredAt: z.string().min(1),
+  data: z.object({
+    eventType: z.enum(["session_started", "session_ended"]),
+    sessionId: z.string().uuid(),
+    note: z.string().optional(),
+  }).passthrough(),
+}).passthrough();
 
 const operationChains = new Map<string, Promise<void>>();
 
@@ -122,21 +133,15 @@ const validateOutboxPayload = (
 const canonicalizeRetainedSessionAttendancePayload = (
   payload: Record<string, unknown>,
 ): Record<string, unknown> => {
-  const validated = validatePayrollSessionAttendancePayload(
-    payload as PayrollSessionAttendancePayload,
-  );
+  const validated = legacyRetainedSessionAttendancePayloadSchema.parse(payload);
   const data = {
     eventType: validated.data.eventType,
     sessionId: validated.data.sessionId,
-    ...(validated.data.employeeTimeEventId !== undefined
-      ? { employeeTimeEventId: validated.data.employeeTimeEventId }
-      : {}),
+    ...(validated.data.note === undefined ? {} : { note: validated.data.note }),
   };
 
   return {
     occurredAt: validated.occurredAt,
-    timezone: validated.timezone,
-    workLocation: validated.workLocation,
     data,
   };
 };
@@ -182,6 +187,15 @@ const withPendingState = (event: PendingPayrollEvent): PendingPayrollEvent => ({
   state: "pending",
   safeCode: null,
 });
+
+const getNonRetryablePayrollTransportSafeCode = (error: unknown): string | null => {
+  if (isRetryablePayrollTransportError(error)) {
+    return null;
+  }
+
+  const safeCode = (error as { code?: unknown })?.code;
+  return typeof safeCode === "string" && safeCode.length > 0 ? safeCode : null;
+};
 
 const buildKeyMismatchError = (requestedKey: string, responseKey: string): Error => Object.assign(
   new Error(`Payroll confirmation key mismatch for ${requestedKey}.`),
@@ -515,12 +529,25 @@ export async function drainPayrollOutbox(
   return runScopedOperation(input, async () => {
     const confirmedKeys: string[] = [];
     const events = await listPayrollOutboxEvents(input.store, input);
+    const deferredKey = input.deferRetainedAttendanceKey === undefined
+      ? null
+      : assertNonEmptyKey(input.deferRetainedAttendanceKey);
+
+    if (deferredKey) {
+      const deferredEvent = events.find((event) => event.idempotencyKey === deferredKey);
+      if (!deferredEvent || !isRetainedSessionAttendanceEvent(deferredEvent)) {
+        throw new Error("Deferred payroll outbox key must identify retained session attendance.");
+      }
+    }
 
     for (const event of events) {
       if (event.state === "needs_attention") {
         break;
       }
       if (isRetainedConfirmedEvent(event)) {
+        continue;
+      }
+      if (event.idempotencyKey === deferredKey) {
         continue;
       }
 
@@ -563,15 +590,13 @@ export async function drainPayrollOutbox(
         }
         confirmedKeys.push(event.idempotencyKey);
       } catch (error) {
-        if ((error as { code?: unknown })?.code === "state_conflict") {
-          await input.store.markFailed(event.storageKey, "state_conflict");
+        const safeCode = getNonRetryablePayrollTransportSafeCode(error);
+        if (safeCode) {
+          await input.store.markFailed(event.storageKey, safeCode);
           break;
         }
 
         await input.store.put(withPendingState(event));
-        if (isRetryablePayrollTransportError(error)) {
-          break;
-        }
         break;
       }
     }
@@ -616,8 +641,10 @@ export async function reconfirmRetainedPayrollOutboxEvent(
       });
       return result;
     } catch (error) {
-      const safeCode = (error as { code?: unknown })?.code;
-      if (safeCode === "state_conflict" || safeCode === "idempotency_mismatch") {
+      const safeCode = (error as { code?: unknown })?.code === "idempotency_mismatch"
+        ? "idempotency_mismatch"
+        : getNonRetryablePayrollTransportSafeCode(error);
+      if (safeCode) {
         await input.store.markFailed(event.storageKey, safeCode);
         throw error;
       }

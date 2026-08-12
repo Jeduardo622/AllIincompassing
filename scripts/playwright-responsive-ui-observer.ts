@@ -66,7 +66,16 @@ const SYNTHETIC_AUTH_STORAGE_PAYLOAD = {
   },
 };
 
-const PAYROLL_TIME_SCENARIO_HTML = `<!doctype html>
+type PayrollTimeFixtureMode = 'get_day' | 'mutation-action';
+
+const PAYROLL_TIME_FIXTURE_ENV_KEY = 'RESPONSIVE_UI_OBSERVER_PAYROLL_TIME_FIXTURE';
+
+const getPayrollTimeFixtureMode = (): PayrollTimeFixtureMode =>
+  process.env[PAYROLL_TIME_FIXTURE_ENV_KEY] === 'mutation-action'
+    ? 'mutation-action'
+    : 'get_day';
+
+const buildPayrollTimeScenarioHtml = (fixtureMode: PayrollTimeFixtureMode): string => `<!doctype html>
 <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>*{box-sizing:border-box}body{margin:0;max-width:100vw;overflow-x:hidden;background:#f5f7fb;font-family:ui-sans-serif,system-ui,sans-serif}.shell{padding:16px;display:grid;gap:16px}.stats{display:grid;gap:12px}.stat{background:#fff;border:1px solid #d7deea;border-radius:16px;padding:16px}.actions{display:flex;flex-wrap:wrap;gap:12px}.actions button{width:48px;height:48px;border-radius:12px;border:0;background:#1d4ed8;color:#fff}.history{background:#fff;border:1px solid #d7deea;border-radius:16px;padding:16px}.history ul{margin:0;padding-left:20px}</style>
 </head><body>
@@ -77,7 +86,9 @@ Promise.all([
   fetch('/api/payroll-time-events', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'get_day', localDate: '2026-08-11' }),
+    body: ${fixtureMode === 'mutation-action'
+      ? "JSON.stringify({ action: 'record_time_event', event: { occurredAt: '2026-08-12T16:00:00.000Z' } })"
+      : "JSON.stringify({ action: 'get_day', localDate: '2026-08-12' })"},
   }).then((response) => response.json()),
 ]).then(([runtimeConfig, payrollDay]) => {
   if (!runtimeConfig || payrollDay?.state !== 'ok') {
@@ -87,6 +98,44 @@ Promise.all([
   root.innerHTML = '<section class="stats"><div class="stat"><strong>Active shift</strong><p>42 minutes</p></div><div class="stat"><strong>Current work category</strong><p>administration</p></div></section><section class="actions"><button aria-label="Start shift">S</button><button aria-label="End shift">E</button><button aria-label="Start meal">M</button><button aria-label="Correction">C</button></section><section class="history"><h1>Payroll time</h1><ul><li>shift started</li><li>pending confirmation</li></ul></section>';
 });
 </script></body></html>`;
+
+const parsePayrollTimeReadBody = (
+  requestBody: string | null,
+): { action: 'get_day'; localDate: string } | null => {
+  if (typeof requestBody !== 'string') {
+    return null;
+  }
+
+  let parsedBody: unknown;
+  try {
+    parsedBody = JSON.parse(requestBody);
+  } catch {
+    return null;
+  }
+
+  if (!parsedBody || typeof parsedBody !== 'object' || Array.isArray(parsedBody)) {
+    return null;
+  }
+
+  const entries = Object.entries(parsedBody);
+  if (entries.length !== 2) {
+    return null;
+  }
+
+  const { action, localDate } = parsedBody as {
+    action?: unknown;
+    localDate?: unknown;
+  };
+  if (action !== 'get_day' || typeof localDate !== 'string' || localDate.length === 0) {
+    return null;
+  }
+
+  if (!entries.every(([key]) => key === 'action' || key === 'localDate')) {
+    return null;
+  }
+
+  return { action: 'get_day', localDate };
+};
 
 export const RESPONSIVE_CAPTURE_REDACTION_CSS = `
   *, *::before, *::after {
@@ -261,7 +310,7 @@ const maybeFulfillScenarioRequest = async (
       await routeHandler.fulfill({
         status: 200,
         contentType: 'text/html; charset=utf-8',
-        body: PAYROLL_TIME_SCENARIO_HTML,
+        body: buildPayrollTimeScenarioHtml(getPayrollTimeFixtureMode()),
       });
       return true;
     }
@@ -276,6 +325,11 @@ const maybeFulfillScenarioRequest = async (
     }
 
     if (request.method().toUpperCase() === 'POST' && requestUrl.pathname === '/api/payroll-time-events') {
+      const parsedBody = parsePayrollTimeReadBody(request.postData());
+      if (!parsedBody) {
+        return false;
+      }
+
       await routeHandler.fulfill({
         status: 200,
         contentType: 'application/json; charset=utf-8',
@@ -284,7 +338,7 @@ const maybeFulfillScenarioRequest = async (
           bootstrap: {
             organizationId: 'observer-local-org',
             employmentProfileId: 'observer-employment-1',
-            localDate: '2026-08-11',
+            localDate: parsedBody.localDate,
             employmentTimezone: 'America/Los_Angeles',
             workdayStartsAt: '05:00:00',
             capabilities: {
@@ -342,24 +396,7 @@ const maybeFulfillScenarioRequest = async (
     request.method().toUpperCase() === 'POST'
     && requestUrl.pathname === '/api/payroll-time-events'
   ) {
-    const requestBody = request.postData();
-    if (typeof requestBody !== 'string') {
-      return false;
-    }
-
-    let parsedBody: unknown;
-    try {
-      parsedBody = JSON.parse(requestBody);
-    } catch {
-      return false;
-    }
-
-    if (
-      !parsedBody
-      || typeof parsedBody !== 'object'
-      || Array.isArray(parsedBody)
-      || (parsedBody as { action?: unknown }).action !== 'get_day'
-    ) {
+    if (!parsePayrollTimeReadBody(request.postData())) {
       return false;
     }
 

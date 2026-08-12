@@ -128,3 +128,70 @@ Task 1 establishes a default-disabled payroll timekeeping schema and stable RPC 
   - `npm run ci:playwright`: not run by explicit user instruction to avoid browser runs; still required for full auth/session flow closure
   - `npm run verify:local`: not run because it would widen to blocked broad/browser checks for this bounded slice
 - Residual risk: the bounded orchestration slice is green in focused coverage and non-browser verification, but critical-lane closure still depends on the broader `test:ci`, `test:routes:tier0`, `ci:playwright`, `verify:local`, reviewer, and human review gates outside this local implementation pass.
+
+## Task 2 Capture Closure
+
+- Date: 2026-08-12
+- Branch: `codex/payroll-timekeeping-capture`
+- Slice: employee payroll clock, session attendance integration, offline replay, and protected capture transport
+- Linear issue: `WIN-219` reused per owner direction
+
+### Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: UI/session lifecycle, server/API/Edge transport, tenant-scoped RPC integration, IndexedDB outbox, and local database contract proof
+- required checks:
+  - focused payroll API/outbox/lifecycle/server/browser tests
+  - loopback PostgreSQL migration/RLS/runtime tests
+  - Edge Deno tests
+  - responsive observer at desktop `1440x900` and mobile `390x844` for `/time` and `/schedule`
+  - `npm run ci:check-focused`
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm run test:ci`
+  - `npm run ci:verify-coverage`
+  - `npm run validate:tenant`
+  - `npm run build`
+  - `npm run test:routes:tier0`
+  - `npm run ci:playwright`
+- executed checks:
+  - focused payroll API/outbox/lifecycle/server tests: pass, 4 files / 91 tests
+  - native IndexedDB offline/reconnect browser proof: pass, 2 tests
+  - responsive observer runtime: pass, 15 tests; mutation actions remain fail-closed
+  - loopback PostgreSQL migration/RLS/runtime contract: pass, 4 files / 45 tests, including minimal attendance payload with server-derived shift, timezone, and work location
+  - `deno test --allow-env --allow-net supabase/functions/payroll-time-events/index.test.ts`: pass, 15 tests
+  - `npm run ci:check-focused`: pass
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci`: pass, 499 files / 4,346 tests; 11 environment-gated skips
+  - `npm run ci:verify-coverage`: pass, 92.87% line coverage against 86% requirement
+  - `npm run validate:tenant`: pass
+  - `npm run build`: pass
+  - `npm run test:routes:tier0`: pass, 228/228
+  - `/time` responsive observer: pass at `1440x900` and `390x844`
+  - `/schedule` responsive observer: pass at `1440x900` and `390x844` on the warmed local server
+  - `git diff --check`: pass; line-ending notices only
+- blocked checks:
+  - `npm run ci:playwright`: missing `PW_SUPERADMIN_*` or `PW_ADMIN_*` credential pair; no `.env` files were read
+- result: `pass-with-blocked-checks`
+- residual risk: critical-lane human review and CI remain mandatory; the credential-backed auth/session Playwright gate must run in CI or an approved credentialed environment before merge.
+
+### PR Hygiene
+
+- pr-ready: yes
+- lane: `critical`
+- branch-ready: yes; dedicated `codex/` branch
+- linear-ready: yes; existing `WIN-219` linkage is authoritative
+- single-purpose: yes; capture, attendance, offline replay, and their protected transport contract
+- unrelated changes: none
+- generated artifact drift: none; transient `deno.lock` and reliability timestamp changes were excluded
+- protected-path drift: expected `src/server/**` and `supabase/functions/**` changes only; no new migration or grant widening
+- change summary: present
+- verification summary: present
+- reviewer: code, security, and Supabase re-reviews approve with no open findings
+- required follow-up: push, open the critical-lane PR, run required CI, and obtain human review; do not merge or deploy autonomously
+
+### Handoff Summary
+
+Task 2 delivers separate payroll and insurance/audit clocks without allowing session close to end paid time. Live attendance transport is strict and minimal, server authority derives employment/shift/timezone/location, legacy outbox rows are canonicalized only during recovery, non-retryable events stop in `needs_attention`, and a pending attendance row is deferred until clock-in is confirmed. Full local coverage, build, tenant, route, Edge, responsive, browser-offline, and loopback database gates pass; only the credential-backed `ci:playwright` gate remains blocked locally.

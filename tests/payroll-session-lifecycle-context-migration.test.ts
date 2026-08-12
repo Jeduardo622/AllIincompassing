@@ -4,6 +4,7 @@ import process from "node:process";
 
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildPayrollSessionAttendancePayload } from "../src/features/payroll/api";
 
 const migrationsDir = path.join(process.cwd(), "supabase", "migrations");
 const baseMigrationName = "20260812103000_payroll_session_lifecycle_context.sql";
@@ -132,6 +133,18 @@ describe("payroll session lifecycle context migration contract", () => {
     expect(definition).toMatch(/app\.payroll_feature_enabled\(v_actor_org,\s*v_employment\.home_jurisdiction,\s*null\)/i);
     expect(definition).toMatch(/raise exception using errcode = '42501', message = 'payroll timekeeping feature is disabled'/i);
     expect(definition).not.toMatch(/public\.get_session_payroll_context/i);
+    expect(baseMigrationSql).toMatch(
+      /revoke all on function public\.record_session_attendance_event\(jsonb, text\) from public, anon, authenticated/i,
+    );
+    expect(baseMigrationSql).toMatch(
+      /revoke all on function public\.record_session_attendance_event\(jsonb, text\) from service_role/i,
+    );
+    expect(baseMigrationSql).toMatch(
+      /grant execute on function public\.record_session_attendance_event\(jsonb, text\) to authenticated/i,
+    );
+    expect(baseMigrationSql).not.toMatch(
+      /grant execute on function public\.record_session_attendance_event\(jsonb, text\) to service_role/i,
+    );
   });
 });
 
@@ -288,6 +301,7 @@ describe.skipIf(!hasSafeLocalDatabase)(
       userId: string,
       sessionId: string,
       key: string,
+      commit = false,
     ) =>
       withRole(
         admin,
@@ -298,14 +312,39 @@ describe.skipIf(!hasSafeLocalDatabase)(
             await admin.query(
               "select public.record_session_attendance_event($1::jsonb, $2::text) as result",
               [
-                {
+                buildPayrollSessionAttendancePayload({
                   occurredAt: "2026-08-11T16:05:00Z",
-                  data: { eventType: "session_started", sessionId },
+                  eventType: "session_started",
+                  sessionId,
+                }),
+                key,
+              ],
+            )
+          ).rows[0].result,
+        commit,
+      );
+
+    const recordShiftStart = async (userId: string, key: string) =>
+      withRole(
+        admin,
+        "authenticated",
+        userId,
+        async () =>
+          (
+            await admin.query(
+              "select public.record_employee_time_event($1::jsonb, $2::text) as result",
+              [
+                {
+                  occurredAt: "2026-08-11T16:00:00Z",
+                  timezone: "America/Los_Angeles",
+                  workLocation: "community",
+                  data: { eventType: "shift_started" },
                 },
                 key,
               ],
             )
           ).rows[0].result,
+        true,
       );
 
     beforeAll(async () => {
@@ -486,6 +525,48 @@ describe.skipIf(!hasSafeLocalDatabase)(
         () => recordAttendance(IDS.userA, IDS.sessionA, "disabled-attendance"),
         /payroll timekeeping feature is disabled/i,
       );
+    });
+
+    it("records the production minimal payload with server-derived shift, timezone, and work location", async () => {
+      await seed();
+      await admin.query(
+        "update public.organization_feature_flags set is_enabled = true where organization_id = $1",
+        [IDS.orgA],
+      );
+
+      const shift = await recordShiftStart(IDS.userA, "derived-shift-start");
+      const attendance = await recordAttendance(
+        IDS.userA,
+        IDS.sessionA,
+        "derived-session-attendance",
+        true,
+      );
+
+      expect(attendance).toMatchObject({
+        operation: "record_session_attendance_event",
+        replayed: false,
+        employee_time_event_id: shift.event_id,
+        exception_id: null,
+        source_timezone: "America/Los_Angeles",
+        work_location: "community",
+      });
+      const persisted = (
+        await admin.query(
+          `select organization_id, employment_profile_id, session_id,
+                  employee_time_event_id, source_timezone, work_location
+             from public.session_attendance_events
+            where id = $1::uuid`,
+          [attendance.event_id],
+        )
+      ).rows[0];
+      expect(persisted).toEqual({
+        organization_id: IDS.orgA,
+        employment_profile_id: IDS.employmentA,
+        session_id: IDS.sessionA,
+        employee_time_event_id: shift.event_id,
+        source_timezone: "America/Los_Angeles",
+        work_location: "community",
+      });
     });
   },
 );

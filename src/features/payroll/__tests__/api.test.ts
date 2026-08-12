@@ -347,6 +347,63 @@ describe("payroll api client", () => {
     });
   });
 
+  it("sends session attendance with only the server-accepted production payload", async () => {
+    mockedCallApi.mockResolvedValueOnce(
+      jsonResponse(
+        { id: "attendance-1", idempotencyKey: "attendance-key-1" },
+        200,
+        { "Idempotency-Key": "attendance-key-1" },
+      ),
+    );
+
+    await recordSessionAttendance({
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-11",
+      idempotencyKey: "attendance-key-1",
+      event: {
+        occurredAt: "2026-08-11T16:10:00.000Z",
+        data: {
+          eventType: "session_started",
+          sessionId: "11111111-1111-1111-1111-111111111111",
+        },
+      },
+    });
+
+    const [, init] = mockedCallApi.mock.calls[0] ?? [];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      action: "record_session_attendance",
+      event: {
+        occurredAt: "2026-08-11T16:10:00.000Z",
+        data: {
+          eventType: "session_started",
+          sessionId: "11111111-1111-1111-1111-111111111111",
+        },
+      },
+    });
+  });
+
+  it("rejects legacy session attendance authority fields instead of stripping them", async () => {
+    await expect(recordSessionAttendance({
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-11",
+      idempotencyKey: "legacy-attendance-key",
+      event: {
+        occurredAt: "2026-08-11T16:10:00.000Z",
+        timezone: "America/Los_Angeles",
+        workLocation: "client_site",
+        data: {
+          eventType: "session_started",
+          sessionId: "11111111-1111-1111-1111-111111111111",
+          employeeTimeEventId: "22222222-2222-2222-2222-222222222222",
+        },
+      } as never,
+    })).rejects.toThrow();
+
+    expect(mockedCallApi).not.toHaveBeenCalled();
+  });
+
   it("rejects forbidden authority fields recursively before network", async () => {
     await expect(
       recordSessionAttendance({
@@ -428,8 +485,6 @@ describe("payroll api client", () => {
         idempotencyKey: "attendance-key-conflict",
         event: {
           occurredAt: "2026-08-11T16:20:00.000Z",
-          timezone: "America/Los_Angeles",
-          workLocation: "client_site",
           data: {
             eventType: "session_started",
             sessionId: "11111111-1111-1111-1111-111111111111",
@@ -547,8 +602,6 @@ describe("payroll api client", () => {
       idempotencyKey: "attendance-body-key",
       event: {
         occurredAt: "2026-08-11T16:05:00.000Z",
-        timezone: "America/Los_Angeles",
-        workLocation: "client_site",
         data: {
           eventType: "session_started",
           sessionId: "11111111-1111-1111-1111-111111111111",

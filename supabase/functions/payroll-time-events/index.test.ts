@@ -46,8 +46,6 @@ const validTimeEvent = {
 
 const validAttendanceEvent = {
   occurredAt: "2026-08-11T16:05:00.000Z",
-  timezone: "America/Los_Angeles",
-  workLocation: "client_site",
   data: {
     eventType: "session_started",
     sessionId: "11111111-1111-1111-1111-111111111111",

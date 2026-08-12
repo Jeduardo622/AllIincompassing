@@ -35,8 +35,6 @@ const baseAttendanceEvent = {
   occurredAt: "2026-08-11T16:05:00.000Z",
   payload: {
     occurredAt: "2026-08-11T16:05:00.000Z",
-    timezone: "America/Los_Angeles",
-    workLocation: "client_site",
     data: {
       eventType: "session_started",
       sessionId: "11111111-1111-1111-1111-111111111111",
@@ -219,6 +217,67 @@ describe("payroll outbox", () => {
     ]);
   });
 
+  it("defers only the selected retained attendance while replaying a later clock-in", async () => {
+    const store = createInMemoryPayrollOutboxStore();
+    const sendOrder: string[] = [];
+
+    await enqueuePayrollOutboxEvent({
+      store,
+      action: "record_session_attendance",
+      idempotencyKey: "retained-attendance-key",
+      retainForClinical: true,
+      ...baseAttendanceEvent,
+    });
+    await enqueuePayrollOutboxEvent({
+      store,
+      action: "record_time_event",
+      idempotencyKey: "clock-in-key",
+      ...baseEvent,
+    });
+
+    await expect(drainPayrollOutbox({
+      store,
+      organizationId: "org-1",
+      userId: "user-1",
+      deferRetainedAttendanceKey: "retained-attendance-key",
+      recordTimeEvent: vi.fn(async (event) => {
+        sendOrder.push(event.idempotencyKey);
+        return { idempotencyKey: event.idempotencyKey };
+      }),
+      recordSessionAttendance: vi.fn(async (event) => {
+        sendOrder.push(event.idempotencyKey);
+        return { idempotencyKey: event.idempotencyKey };
+      }),
+    })).resolves.toEqual({ confirmedKeys: ["clock-in-key"] });
+
+    expect(sendOrder).toEqual(["clock-in-key"]);
+    await expect(listPayrollOutboxEvents(store, baseAttendanceEvent)).resolves.toEqual([
+      expect.objectContaining({
+        idempotencyKey: "retained-attendance-key",
+        state: "pending",
+      }),
+    ]);
+  });
+
+  it("rejects a deferred key that is not retained session attendance", async () => {
+    const store = createInMemoryPayrollOutboxStore();
+    await enqueuePayrollOutboxEvent({
+      store,
+      action: "record_time_event",
+      idempotencyKey: "time-key-not-retained",
+      ...baseEvent,
+    });
+
+    await expect(drainPayrollOutbox({
+      store,
+      organizationId: "org-1",
+      userId: "user-1",
+      deferRetainedAttendanceKey: "time-key-not-retained",
+      recordTimeEvent: vi.fn(),
+      recordSessionAttendance: vi.fn(),
+    })).rejects.toThrow("Deferred payroll outbox key must identify retained session attendance.");
+  });
+
   it("marks state conflicts as needs_attention and stops the drain", async () => {
     const store = createInMemoryPayrollOutboxStore();
     const attendanceTransport = vi.fn();
@@ -263,6 +322,57 @@ describe("payroll outbox", () => {
         state: "pending",
       }),
     ]);
+  });
+
+  it("marks non-retryable transport failures needs_attention with safe codes during drain", async () => {
+    const cases = [
+      { code: "validation_error", status: 422 },
+      { code: "forbidden", status: 403 },
+    ] as const;
+
+    for (const failure of cases) {
+      const store = createInMemoryPayrollOutboxStore();
+      const attendanceTransport = vi.fn();
+
+      await enqueuePayrollOutboxEvent({
+        store,
+        action: "record_time_event",
+        idempotencyKey: `time-key-${failure.code}`,
+        ...baseEvent,
+      });
+      await enqueuePayrollOutboxEvent({
+        store,
+        action: "record_session_attendance",
+        idempotencyKey: `attendance-key-after-${failure.code}`,
+        ...baseAttendanceEvent,
+      });
+
+      await drainPayrollOutbox({
+        store,
+        organizationId: "org-1",
+        userId: "user-1",
+        recordTimeEvent: vi.fn(async () => {
+          throw Object.assign(new Error(`Payroll ${failure.code}.`), failure);
+        }),
+        recordSessionAttendance: attendanceTransport,
+      });
+
+      expect(attendanceTransport).not.toHaveBeenCalled();
+      await expect(
+        listPayrollOutboxEvents(store, { organizationId: "org-1", userId: "user-1" }),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          idempotencyKey: `time-key-${failure.code}`,
+          state: "needs_attention",
+          safeCode: failure.code,
+        }),
+        expect.objectContaining({
+          idempotencyKey: `attendance-key-after-${failure.code}`,
+          state: "pending",
+          safeCode: null,
+        }),
+      ]);
+    }
   });
 
   it("resets stale replaying rows to pending on recovery and isolates scope by org and user", async () => {
@@ -671,12 +781,10 @@ describe("payroll outbox", () => {
     const store = createInMemoryPayrollOutboxStore();
     const canonicalPayload = {
       occurredAt: "2026-08-11T16:05:00.000Z",
-      timezone: "America/Los_Angeles",
-      workLocation: "client_site",
       data: {
         eventType: "session_started",
         sessionId: "11111111-1111-1111-1111-111111111111",
-        employeeTimeEventId: "22222222-2222-2222-2222-222222222222",
+        note: "nested clinical note",
       },
     };
 
@@ -688,11 +796,13 @@ describe("payroll outbox", () => {
       ...baseAttendanceEvent,
       payload: {
         ...canonicalPayload,
+        timezone: "America/Los_Angeles",
+        workLocation: "client_site",
         note: "top-level clinical note",
         unbounded: { nested: { value: "drop-me" } },
         data: {
           ...canonicalPayload.data,
-          note: "nested clinical note",
+          employeeTimeEventId: "22222222-2222-2222-2222-222222222222",
           nestedExtra: { value: "drop-me-too" },
         },
       },
@@ -777,7 +887,14 @@ describe("payroll outbox", () => {
   });
 
   it("canonicalizes and rewrites a legacy retained attendance row during recovery", async () => {
-    const canonicalPayload = { ...baseAttendanceEvent.payload };
+    const canonicalPayload = {
+      occurredAt: baseAttendanceEvent.payload.occurredAt,
+      data: {
+        eventType: baseAttendanceEvent.payload.data.eventType,
+        sessionId: baseAttendanceEvent.payload.data.sessionId,
+        note: "legacy nested note",
+      },
+    };
     const legacyEvent = {
       storageKey: '["org-1","user-1","legacy-retained-key"]',
       idempotencyKey: "legacy-retained-key",
@@ -787,11 +904,11 @@ describe("payroll outbox", () => {
       localDate: "2026-08-11",
       occurredAt: "2026-08-11T16:05:00.000Z",
       payload: {
-        ...canonicalPayload,
+        ...baseAttendanceEvent.payload,
         note: "legacy top-level note",
         topLevelExtra: { nested: "remove" },
         data: {
-          ...canonicalPayload.data,
+          ...baseAttendanceEvent.payload.data,
           note: "legacy nested note",
           nestedExtra: { remove: true },
         },
@@ -823,7 +940,14 @@ describe("payroll outbox", () => {
   });
 
   it("canonicalizes a legacy retained attendance payload immediately before reconfirm replay", async () => {
-    const canonicalPayload = { ...baseAttendanceEvent.payload };
+    const canonicalPayload = {
+      occurredAt: baseAttendanceEvent.payload.occurredAt,
+      data: {
+        eventType: baseAttendanceEvent.payload.data.eventType,
+        sessionId: baseAttendanceEvent.payload.data.sessionId,
+        note: "legacy nested note",
+      },
+    };
     const legacyEvent = {
       storageKey: '["org-1","user-1","legacy-reconfirm-key"]',
       idempotencyKey: "legacy-reconfirm-key",
@@ -833,10 +957,10 @@ describe("payroll outbox", () => {
       localDate: "2026-08-11",
       occurredAt: "2026-08-11T16:05:00.000Z",
       payload: {
-        ...canonicalPayload,
+        ...baseAttendanceEvent.payload,
         note: "legacy top-level note",
         data: {
-          ...canonicalPayload.data,
+          ...baseAttendanceEvent.payload.data,
           note: "legacy nested note",
           nestedExtra: ["remove"],
         },
@@ -1127,6 +1251,53 @@ describe("payroll outbox", () => {
     await expect(retryStore.list()).resolves.toEqual([
       expect.objectContaining({ state: "confirmed_pending_clinical", safeCode: null }),
     ]);
+  });
+
+  it("marks retained reconfirm non-retryable transport failures needs_attention with safe codes", async () => {
+    const retainedEvent = {
+      storageKey: '["org-1","user-1","retained-key"]',
+      idempotencyKey: "retained-key",
+      action: "record_session_attendance",
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-11",
+      occurredAt: "2026-08-11T16:05:00.000Z",
+      payload: { ...baseAttendanceEvent.payload },
+      enqueueSequence: 1,
+      enqueuedAt: "2026-08-11T16:05:01.000Z",
+      state: "confirmed_pending_clinical",
+      safeCode: null,
+      retainForClinical: true,
+    } satisfies PendingPayrollEvent;
+    const cases = [
+      { code: "validation_error", status: 422 },
+      { code: "forbidden", status: 403 },
+    ] as const;
+
+    for (const failure of cases) {
+      const store = createInMemoryPayrollOutboxStore([retainedEvent]);
+      const error = Object.assign(new Error(`Attendance ${failure.code}`), failure);
+
+      await expect(
+        reconfirmRetainedPayrollOutboxEvent({
+          store,
+          organizationId: "org-1",
+          userId: "user-1",
+          idempotencyKey: "retained-key",
+          recordSessionAttendance: vi.fn(async () => {
+            throw error;
+          }),
+        }),
+      ).rejects.toBe(error);
+
+      await expect(store.list()).resolves.toEqual([
+        expect.objectContaining({
+          storageKey: '["org-1","user-1","retained-key"]',
+          state: "needs_attention",
+          safeCode: failure.code,
+        }),
+      ]);
+    }
   });
 
   it("rejects retained replay on wrong scope, wrong state, and needs_attention", async () => {

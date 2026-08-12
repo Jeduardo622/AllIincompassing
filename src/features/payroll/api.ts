@@ -45,15 +45,12 @@ const timeEventPayloadSchema = z.object({
 
 const sessionAttendancePayloadSchema = z.object({
   occurredAt: z.string().min(1),
-  timezone: z.string().min(1),
-  workLocation: workLocationSchema,
   data: z.object({
     eventType: z.enum(["session_started", "session_ended"]),
     sessionId: z.string().uuid(),
-    employeeTimeEventId: z.string().uuid().nullable().optional(),
     note: z.string().optional(),
-  }).passthrough(),
-}).passthrough();
+  }).strict(),
+}).strict();
 
 const timeCorrectionPayloadSchema = z.object({
   data: z.object({
@@ -353,6 +350,18 @@ export const validatePayrollSessionAttendancePayload = (
   assertNoAuthorityFields(payload);
   return sessionAttendancePayloadSchema.parse(payload);
 };
+
+export const buildPayrollSessionAttendancePayload = (input: {
+  occurredAt: string;
+  eventType: "session_started" | "session_ended";
+  sessionId: string;
+}): PayrollSessionAttendancePayload => validatePayrollSessionAttendancePayload({
+  occurredAt: input.occurredAt,
+  data: {
+    eventType: input.eventType,
+    sessionId: input.sessionId,
+  },
+});
 
 export async function fetchPayrollDay(scope: PayrollScope): Promise<PayrollDayResponse> {
   const response = await postPayrollAction({

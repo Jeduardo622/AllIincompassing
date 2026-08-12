@@ -392,7 +392,7 @@ describe("sessionPayrollLifecycle", () => {
       .mockResolvedValueOnce({ ...baseContext, activeShiftEventId: null })
       .mockResolvedValueOnce({ ...baseContext, activeShiftEventId: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee" });
     const timeEventTypes: string[] = [];
-    const attendanceLinks: Array<string | null | undefined> = [];
+    const attendancePayloads: unknown[] = [];
 
     const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
     const lifecycle = createSessionPayrollLifecycle({
@@ -417,7 +417,7 @@ describe("sessionPayrollLifecycle", () => {
         return confirmed(input.idempotencyKey);
       }),
       recordSessionAttendance: vi.fn(async (input) => {
-        attendanceLinks.push(input.event.data.employeeTimeEventId);
+        attendancePayloads.push(input.event);
         return confirmed(input.idempotencyKey);
       }),
       startClinicalSession: vi.fn(async () => ({ outcome: "started" as const })),
@@ -444,7 +444,13 @@ describe("sessionPayrollLifecycle", () => {
     expect(fetchSessionContext).toHaveBeenCalledTimes(3);
     expect(timeEventTypes).toEqual(["shift_started"]);
     expect(timeEventTypes).not.toContain("shift_ended");
-    expect(attendanceLinks).toEqual(["eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"]);
+    expect(attendancePayloads).toEqual([{
+      occurredAt: "2026-08-12T16:10:00.000Z",
+      data: {
+        eventType: "session_started",
+        sessionId: baseContext.sessionId,
+      },
+    }]);
   });
 
   it("rejects invalid executeStart choices before enqueueing any payroll or clinical side effects", async () => {
@@ -691,7 +697,7 @@ describe("sessionPayrollLifecycle", () => {
     await expect(listPayrollOutboxEvents(store, baseScope)).resolves.toEqual([]);
   });
 
-  it("rewrites a pending retained continue-without-clock-in attendance with the linked payload after clock-in confirmation", async () => {
+  it("defers pending retained attendance until clock-in is confirmed without caller-supplied authority", async () => {
     const store = createInMemoryPayrollOutboxStore();
     const initialLifecycleFetch = vi.fn(async () => ({ ...baseContext, activeShiftEventId: null }));
     const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
@@ -793,13 +799,13 @@ describe("sessionPayrollLifecycle", () => {
 
     expect(recordSessionAttendance).toHaveBeenCalledWith(expect.objectContaining({
       idempotencyKey: "retained-upgrade-key",
-      event: expect.objectContaining({
+      event: {
         occurredAt: "2026-08-12T16:18:00.000Z",
-        data: expect.objectContaining({
+        data: {
           eventType: "session_started",
-          employeeTimeEventId: "f1f1f1f1-f1f1-f1f1-f1f1-f1f1f1f1f1f1",
-        }),
-      }),
+          sessionId: baseContext.sessionId,
+        },
+      },
     }));
     expect(await listPayrollOutboxEvents(store, baseScope)).toEqual([]);
   });

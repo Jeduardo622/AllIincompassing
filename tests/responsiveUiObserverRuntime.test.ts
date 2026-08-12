@@ -323,6 +323,39 @@ describe('responsive UI observer browser runtime', () => {
     }
   }, 60_000);
 
+  it('keeps payroll mutation actions fail-closed in the payroll-time scenario', async () => {
+    const previousMode = process.env.RESPONSIVE_UI_OBSERVER_PAYROLL_TIME_FIXTURE;
+    process.env.RESPONSIVE_UI_OBSERVER_PAYROLL_TIME_FIXTURE = 'mutation-action';
+    const requestStart = receivedRequests.length;
+    try {
+      const summary = await runResponsiveUiObserver([
+        'node',
+        'scripts/playwright-responsive-ui-observer.ts',
+        `--base-url=${baseUrl}`,
+        '--route=/time',
+        '--scenario=payroll-time',
+      ]);
+
+      expect(summary.ok).toBe(false);
+      expect(summary.results).toHaveLength(2);
+      expect(receivedRequests.slice(requestStart)).toEqual([]);
+      for (const result of summary.results) {
+        artifactPaths.add(result.screenshotPath);
+        artifactPaths.add(result.evidencePath);
+        expect(result.result).toBe('fail');
+        expect(result.failureCodes).toContain('non-read-method');
+        expect(result.failureCodes).toContain('same-origin-request-failed');
+        expect(result.failureCodes).toContain('console-error');
+      }
+    } finally {
+      if (previousMode === undefined) {
+        delete process.env.RESPONSIVE_UI_OBSERVER_PAYROLL_TIME_FIXTURE;
+      } else {
+        process.env.RESPONSIVE_UI_OBSERVER_PAYROLL_TIME_FIXTURE = previousMode;
+      }
+    }
+  }, 60_000);
+
   it('keeps clipped fixed-control checks document-wide in the schedule scenario', async () => {
     scheduleFixtureMode = 'clipped-control';
     const summary = await runResponsiveUiObserver([

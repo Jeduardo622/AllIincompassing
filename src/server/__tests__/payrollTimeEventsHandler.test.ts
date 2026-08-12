@@ -309,6 +309,49 @@ describe("payrollTimeEventsHandler", () => {
     });
   });
 
+  it("forwards the minimal session attendance payload unchanged to the protected RPC", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
+    vi.mocked(fetchJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        event_id: "77777777-7777-7777-7777-777777777777",
+        operation: "record_session_attendance_event",
+        replayed: false,
+      },
+    });
+    const event = {
+      occurredAt: "2026-08-11T16:05:00.000Z",
+      data: {
+        eventType: "session_started",
+        sessionId: "11111111-1111-1111-1111-111111111111",
+      },
+    };
+
+    const response = await payrollTimeEventsHandler(
+      new Request("http://localhost/api/payroll-time-events", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${createAuthToken()}`,
+          "Idempotency-Key": "attendance-runtime-key",
+        },
+        body: JSON.stringify({ action: "record_session_attendance", event }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(vi.mocked(fetchJson)).toHaveBeenCalledWith(
+      "https://example.supabase.co/rest/v1/rpc/record_session_attendance_event",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          event_payload: event,
+          idempotency_key: "attendance-runtime-key",
+        }),
+      }),
+    );
+  });
+
   it("passes through explicit feature_disabled session context responses in legacy mode", async () => {
     vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
     vi.mocked(fetchJson).mockResolvedValue({

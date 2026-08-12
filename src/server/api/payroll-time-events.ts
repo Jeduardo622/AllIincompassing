@@ -77,15 +77,15 @@ const timeEventSchema = eventEnvelopeBaseSchema.extend({
   }).passthrough(),
 }).passthrough();
 
-const sessionAttendanceSchema = eventEnvelopeBaseSchema.extend({
+const sessionAttendanceSchema = z.object({
+  occurredAt: z.string().min(1),
   data: z.object({
     eventType: z.enum(["session_started", "session_ended"]),
     sessionId: z.string().uuid(),
-    employeeTimeEventId: z.string().uuid().nullable().optional(),
     idempotencyKey: z.string().min(1).optional(),
     note: z.string().optional(),
-  }).passthrough(),
-}).passthrough();
+  }).strict(),
+}).strict();
 
 const correctionSchema = z.object({
   data: z.object({

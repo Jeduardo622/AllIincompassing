@@ -16,6 +16,9 @@ describe("payroll timekeeping security runner", () => {
     expect(script).toContain("session_outside_shift");
     expect(script).toContain("timekeeping_exceptions");
     expect(script).toContain("actorIsAssignedEmployee");
+    expect(script).toContain('disabledSessionContext.state === "feature_disabled"');
+    expect(script).toContain("Object.keys(disabledSessionContext).length === 3");
+    expect(script).toContain("feature-disabled therapist-link-only actor context denied");
     expect(script).toContain("requires the exact local Supabase loopback database");
   });
 

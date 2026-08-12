@@ -328,9 +328,24 @@ const main = async () => {
       "Disabled payroll day read did not preserve the canonical organization.",
     );
     await expectReject(
-      () => getSessionPayrollContext(admin, IDS.userA, IDS.sessionA),
-      /42501|feature is disabled/i,
-      "feature-disabled session payroll context",
+      () => getSessionPayrollContext(admin, IDS.linkOnlyA, IDS.linkOnlySessionA),
+      /42501|record_assigned|out of scope/i,
+      "feature-disabled therapist-link-only actor context denied",
+    );
+    const disabledSessionContext = await getSessionPayrollContext(
+      admin,
+      IDS.userA,
+      IDS.sessionA,
+    );
+    assert(
+      disabledSessionContext.state === "feature_disabled",
+      "Disabled session payroll context did not return feature_disabled.",
+    );
+    assert(
+      disabledSessionContext.sessionId === IDS.sessionA
+        && disabledSessionContext.organizationId === IDS.orgA
+        && Object.keys(disabledSessionContext).length === 3,
+      "Disabled session payroll context exposed fields beyond canonical scope identifiers.",
     );
 
     await expectReject(

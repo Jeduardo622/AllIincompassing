@@ -48,9 +48,12 @@ describe("payroll approval workflow repair migration contract", () => {
     expect(sql).toMatch(/'approval_invalidated'/i);
     expect(sql).toMatch(/previous_transition_id/i);
     expect(sql).toMatch(/actor_user_id[\s\S]*p_source_actor_user_id/i);
+    expect(sql).toMatch(/v_idempotency_key := app\.payroll_hash_payload\(/i);
+    expect(sql).toMatch(/'sourceTable',\s*p_source_table/i);
+    expect(sql).toMatch(/'sourceRowId',\s*p_source_row_id/i);
     expect(sql).toMatch(/target_table[\s\S]*'timesheet_approvals'/i);
     expect(sql).toMatch(/resolvedAction',\s*'approval_invalidated'/i);
-    expect(sql).not.toMatch(/sourceRowId/i);
+    expect(sql).not.toMatch(/format\('approval-invalidated:%s:%s'/i);
     expect(sql).not.toMatch(/sourceActorUserId/i);
     expect(sql).not.toMatch(/sourcePayload/i);
   });
@@ -70,6 +73,8 @@ describe("payroll approval workflow repair migration contract", () => {
     expect(sql).toMatch(/organization_id = new\.organization_id/i);
     expect(sql).toMatch(/select attendance_row\.event_at,\s*attendance_row\.actor_user_id/i);
     expect(sql).toMatch(/source_session_attendance_event_id is not null/i);
+    expect(sql).toMatch(/employment_profile_id = new\.employment_profile_id/i);
+    expect(sql).toMatch(/linked session attendance event is out of scope/i);
     expect(sql).toMatch(/v_source_actor_user_id := auth\.uid\(\)/i);
     expect(sql).toMatch(/drop policy if exists payroll_audit_events_authenticated_select/i);
     expect(sql).toMatch(/operation <> 'append_payroll_approval_invalidation'/i);

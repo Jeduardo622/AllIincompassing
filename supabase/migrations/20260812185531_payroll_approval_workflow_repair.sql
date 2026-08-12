@@ -138,6 +138,7 @@ declare
   v_latest public.timesheet_approvals%rowtype;
   v_transition_id uuid;
   v_now timestamptz := timezone('utc', now());
+  v_idempotency_key text;
   v_payload jsonb;
   v_payload_hash text;
 begin
@@ -179,6 +180,13 @@ begin
   v_payload := jsonb_build_object(
     'resolvedAction', 'approval_invalidated'
   );
+  v_idempotency_key := app.payroll_hash_payload(
+    jsonb_build_object(
+      'operation', 'approval_invalidated',
+      'sourceTable', p_source_table,
+      'sourceRowId', p_source_row_id
+    )
+  );
   v_payload_hash := app.payroll_hash_payload(v_payload);
 
   insert into public.timesheet_approvals (
@@ -209,7 +217,7 @@ begin
     null,
     null,
     null,
-    format('approval-invalidated:%s:%s', p_source_table, p_source_row_id),
+    v_idempotency_key,
     v_payload_hash,
     v_now,
     v_now
@@ -379,6 +387,10 @@ begin
       and attendance_row.employment_profile_id = new.employment_profile_id
       and attendance_row.id = new.source_session_attendance_event_id
     limit 1;
+
+    if v_event_at is null or v_source_actor_user_id is null then
+      raise exception using errcode = '23514', message = 'linked session attendance event is out of scope';
+    end if;
   else
     v_event_at := new.created_at;
     v_source_actor_user_id := auth.uid();

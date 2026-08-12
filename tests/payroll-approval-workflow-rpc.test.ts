@@ -18,6 +18,7 @@ const IDS = {
   sessionA: "10000000-0000-4000-8000-000000000031",
   employmentA: "10000000-0000-4000-8000-000000000041",
   employmentB: "10000000-0000-4000-8000-000000000042",
+  employmentLinkedA: "10000000-0000-4000-8000-000000000045",
   payGroupA: "90000000-0000-4000-8000-000000000002",
   payPeriodA: "90000000-0000-4000-8000-000000000003",
   policyA: "90000000-0000-4000-8000-000000000001",
@@ -258,6 +259,56 @@ const insertSessionAttendanceEvent = async (
     )
   ).rows[0].id as string;
 
+const insertEmploymentProfile = async (
+  client: Client,
+  {
+    id,
+    organizationId,
+    userId,
+    employeeNumber,
+    payrollEmployeeId,
+    therapistId,
+    activeFrom = "2026-07-01",
+  }: {
+    id: string;
+    organizationId: string;
+    userId: string;
+    employeeNumber: string;
+    payrollEmployeeId: string;
+    therapistId: string | null;
+    activeFrom?: string;
+  },
+) => {
+  await client.query(
+    `insert into public.employment_profiles (
+       id,
+       organization_id,
+       user_id,
+       employee_number,
+       payroll_employee_id,
+       classification,
+       home_jurisdiction,
+       timezone,
+       active_from,
+       active_through,
+       therapist_id
+     ) values (
+       $1::uuid,
+       $2::uuid,
+       $3::uuid,
+       $4::text,
+       $5::text,
+       'nonexempt',
+       'CA',
+       'America/Los_Angeles',
+       $6::date,
+       null,
+       $7::uuid
+     )`,
+    [id, organizationId, userId, employeeNumber, payrollEmployeeId, activeFrom, therapistId],
+  );
+};
+
 const deriveSnapshot = async (client: Client, idempotencyKey: string, userId = IDS.employeeA) =>
   withRole(
     client,
@@ -351,6 +402,47 @@ const readInvalidationAudits = async (client: Client) =>
       [IDS.orgA],
     )
   ).rows;
+
+const readApprovalRowsVisibleToExportOnly = async (client: Client) =>
+  withRole(client, "authenticated", IDS.schedulerA, async () =>
+    (
+      await client.query(
+        `select action, idempotency_key, payload_hash
+         from public.timesheet_approvals
+         where organization_id = $1::uuid
+           and employment_profile_id = $2::uuid
+           and pay_period_id = $3::uuid
+         order by occurred_at asc, received_at asc, id asc`,
+        [IDS.orgA, IDS.employmentA, IDS.payPeriodA],
+      )
+    ).rows,
+  );
+
+const readApprovalRowsAsAdmin = async (client: Client) =>
+  (
+    await client.query(
+      `select action, actor_user_id, idempotency_key, payload_hash
+       from public.timesheet_approvals
+       where organization_id = $1::uuid
+         and employment_profile_id = $2::uuid
+         and pay_period_id = $3::uuid
+       order by occurred_at asc, received_at asc, id asc`,
+      [IDS.orgA, IDS.employmentA, IDS.payPeriodA],
+    )
+  ).rows;
+
+const readInvalidationAuditsVisibleToExportOnly = async (client: Client) =>
+  withRole(client, "authenticated", IDS.schedulerA, async () =>
+    (
+      await client.query(
+        `select operation, payload
+         from public.payroll_audit_events
+         where organization_id = $1::uuid
+         order by created_at asc, id asc`,
+        [IDS.orgA],
+      )
+    ).rows,
+  );
 
 const readLatestResolution = async (client: Client) =>
   (
@@ -984,13 +1076,19 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
   });
 
   it("appends one invalidation audit for session attendance correction requests and preserves prior approval rows", async () => {
-    await seedApprovalChain(admin, "manager_approved");
     const sourceEventId = await insertSessionAttendanceEvent(
       admin,
       "session_started",
       "2026-08-12T18:00:00Z",
       IDS.employeeA,
     );
+    expect(await readInvalidationAudits(admin)).toEqual([]);
+
+    await seedApprovalChain(admin, "manager_approved");
+    const beforeHistory = await readApprovalHistory(admin);
+    const beforeAudits = await readInvalidationAudits(admin);
+    expect(beforeHistory.at(-1)?.action).toBe("manager_approved");
+    expect(beforeAudits).toEqual([]);
 
     await admin.query(
       `insert into public.session_attendance_correction_requests (
@@ -1000,6 +1098,10 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
     );
 
     const history = await readApprovalHistory(admin);
+    const invalidationAudits = await readInvalidationAudits(admin);
+    expect(history).toHaveLength(beforeHistory.length + 1);
+    expect(invalidationAudits).toHaveLength(beforeAudits.length + 1);
+    expect(history.slice(0, -1)).toEqual(beforeHistory);
     expect(history).toHaveLength(3);
     expect(history[0]).toMatchObject({
       action: "submitted",
@@ -1016,7 +1118,7 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
       actor_user_id: IDS.employeeA,
       previous_transition_id: history[1].id,
     });
-    expect(await readInvalidationAudits(admin)).toEqual([
+    expect(invalidationAudits).toEqual([
       {
         id: expect.any(String),
         actor_user_id: IDS.employeeA,
@@ -1028,6 +1130,15 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
         },
       },
     ]);
+
+    await admin.query(
+      `insert into public.session_attendance_correction_requests (
+         organization_id, employment_profile_id, session_attendance_event_id, requested_by, reason_code, replacement_payload
+       ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'missed_punch', '{}'::jsonb)`,
+      [IDS.orgA, IDS.employmentA, sourceEventId, IDS.employeeA],
+    );
+    expect((await readApprovalHistory(admin)).filter((row) => row.action === "approval_invalidated")).toHaveLength(1);
+    expect(await readInvalidationAudits(admin)).toHaveLength(1);
   });
 
   it("uses auth actor fallback for unlinked timekeeping exceptions, allows no-chain inserts, and fails closed when invalidation requires an authoritative actor", async () => {
@@ -1085,14 +1196,19 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
   });
 
   it("derives linked timekeeping exception actor provenance from the attendance row and resolves the pay period from that same source event", async () => {
-    await seedApprovalChain(admin, "manager_approved");
-
     const attendanceEventId = await insertSessionAttendanceEvent(
       admin,
       "session_started",
       "2026-08-12T18:30:00Z",
       IDS.managerA,
     );
+    expect(await readInvalidationAudits(admin)).toEqual([]);
+
+    await seedApprovalChain(admin, "manager_approved");
+    const beforeHistory = await readApprovalHistory(admin);
+    const beforeAudits = await readInvalidationAudits(admin);
+    expect(beforeHistory.at(-1)?.action).toBe("manager_approved");
+    expect(beforeAudits).toEqual([]);
 
     await admin.query(
       `insert into public.timekeeping_exceptions (
@@ -1109,18 +1225,22 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
          '{}'::jsonb,
          $3::uuid,
          '2026-09-01T12:00:00Z'::timestamptz
-       )`,
+      )`,
       [IDS.orgA, IDS.employmentA, attendanceEventId],
     );
 
     const history = await readApprovalHistory(admin);
+    const invalidationAudits = await readInvalidationAudits(admin);
+    expect(history).toHaveLength(beforeHistory.length + 1);
+    expect(invalidationAudits).toHaveLength(beforeAudits.length + 1);
+    expect(history.slice(0, -1)).toEqual(beforeHistory);
     expect(history).toHaveLength(3);
     expect(history[2]).toMatchObject({
       action: "approval_invalidated",
       actor_user_id: IDS.managerA,
       previous_transition_id: history[1].id,
     });
-    expect(await readInvalidationAudits(admin)).toEqual([
+    expect(invalidationAudits).toEqual([
       {
         id: expect.any(String),
         actor_user_id: IDS.managerA,
@@ -1132,6 +1252,131 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
         },
       },
     ]);
+
+  });
+
+  it("rejects linked timekeeping exceptions when the source attendance event is not in the same tenant and employment scope", async () => {
+    await insertEmploymentProfile(admin, {
+      id: IDS.employmentLinkedA,
+      organizationId: IDS.orgA,
+      userId: IDS.linkOnlyA,
+      employeeNumber: "SYN-A-LINKED",
+      payrollEmployeeId: "PAY-A-LINKED",
+      therapistId: IDS.employeeA,
+    });
+
+    const attendanceEventId = await insertSessionAttendanceEvent(
+      admin,
+      "session_started",
+      "2026-08-12T18:45:00Z",
+      IDS.employeeA,
+    );
+    const exceptionCountBefore = (
+      await admin.query(
+        `select count(*)::int as count
+         from public.timekeeping_exceptions
+         where organization_id = $1::uuid`,
+        [IDS.orgA],
+      )
+    ).rows[0].count as number;
+
+    await expect(
+      admin.query(
+        `insert into public.timekeeping_exceptions (
+           organization_id,
+           employment_profile_id,
+           exception_code,
+           details,
+           source_session_attendance_event_id,
+           created_at
+         ) values (
+           $1::uuid,
+           $2::uuid,
+           'session_outside_shift',
+           '{}'::jsonb,
+           $3::uuid,
+           '2026-09-01T12:00:00Z'::timestamptz
+         )`,
+        [IDS.orgA, IDS.employmentLinkedA, attendanceEventId],
+      ),
+    ).rejects.toThrow(/linked session attendance event is out of scope/i);
+
+    expect(
+      (
+        await admin.query(
+          `select count(*)::int as count
+           from public.timekeeping_exceptions
+           where organization_id = $1::uuid`,
+          [IDS.orgA],
+        )
+      ).rows[0].count,
+    ).toBe(exceptionCountBefore);
+    expect(await readInvalidationAudits(admin)).toEqual([]);
+  });
+
+  it("stores opaque invalidation idempotency keys and leaves no invalidation source details reachable to export-only actors", async () => {
+    const attendanceEventId = await insertSessionAttendanceEvent(
+      admin,
+      "session_started",
+      "2026-08-12T18:50:00Z",
+      IDS.managerA,
+    );
+    await seedApprovalChain(admin, "manager_approved");
+    await admin.query(
+      `insert into public.payroll_capability_grants (
+         organization_id, user_id, capability, effective_from, granted_by
+       ) values ($1::uuid, $2::uuid, 'payroll.export_period', '2026-08-01T00:00:00Z', $3::uuid)
+       on conflict do nothing`,
+      [IDS.orgA, IDS.schedulerA, IDS.adminA],
+    );
+    await admin.query(
+      `delete from public.payroll_capability_grants
+       where organization_id = $1::uuid
+         and user_id = $2::uuid
+         and capability <> 'payroll.export_period'`,
+      [IDS.orgA, IDS.schedulerA],
+    );
+
+    await admin.query(
+      `insert into public.timekeeping_exceptions (
+         organization_id,
+         employment_profile_id,
+         exception_code,
+         details,
+         source_session_attendance_event_id,
+         created_at
+       ) values (
+         $1::uuid,
+         $2::uuid,
+         'session_outside_shift',
+         jsonb_build_object('clientId', 'must-not-leak'),
+         $3::uuid,
+         '2026-09-01T12:00:00Z'::timestamptz
+       )`,
+      [IDS.orgA, IDS.employmentA, attendanceEventId],
+    );
+
+    const adminApprovals = await readApprovalRowsAsAdmin(admin);
+    const exportOnlyApprovals = await readApprovalRowsVisibleToExportOnly(admin);
+    const exportOnlyAudits = await readInvalidationAuditsVisibleToExportOnly(admin);
+    const serializedVisibility = JSON.stringify({
+      approvals: exportOnlyApprovals,
+      audits: exportOnlyAudits,
+    });
+
+    expect(adminApprovals.at(-1)).toMatchObject({
+      action: "approval_invalidated",
+      actor_user_id: IDS.managerA,
+      idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/i),
+      payload_hash: expect.stringMatching(/^[0-9a-f]{64}$/i),
+    });
+    expect(exportOnlyApprovals).toEqual([]);
+    expect(exportOnlyAudits.every((row) => row.operation !== "append_payroll_approval_invalidation")).toBe(true);
+    expect(serializedVisibility).not.toContain("timekeeping_exceptions");
+    expect(serializedVisibility).not.toContain(attendanceEventId);
+    expect(serializedVisibility).not.toContain(IDS.managerA);
+    expect(serializedVisibility).not.toContain("must-not-leak");
+    expect(serializedVisibility).not.toContain("session_outside_shift");
   });
 
   it("requires blocker resolution before payroll lock, preserves projection columns, and allows reopen with reason", async () => {

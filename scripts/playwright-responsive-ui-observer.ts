@@ -340,6 +340,41 @@ const maybeFulfillScenarioRequest = async (
 
   if (
     request.method().toUpperCase() === 'POST'
+    && requestUrl.pathname === '/api/payroll-time-events'
+  ) {
+    const requestBody = request.postData();
+    if (typeof requestBody !== 'string') {
+      return false;
+    }
+
+    let parsedBody: unknown;
+    try {
+      parsedBody = JSON.parse(requestBody);
+    } catch {
+      return false;
+    }
+
+    if (
+      !parsedBody
+      || typeof parsedBody !== 'object'
+      || Array.isArray(parsedBody)
+      || (parsedBody as { action?: unknown }).action !== 'get_day'
+    ) {
+      return false;
+    }
+
+    await routeHandler.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify({
+        state: 'feature_disabled',
+      }),
+    });
+    return true;
+  }
+
+  if (
+    request.method().toUpperCase() === 'POST'
     && requestUrl.pathname === '/rest/v1/rpc/get_schedule_data_batch'
   ) {
     await routeHandler.fulfill({

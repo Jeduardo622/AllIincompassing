@@ -46,7 +46,8 @@ type ScheduleFixtureMode =
   | 'clipped-control'
   | 'missing-dialog'
   | 'missing-trigger'
-  | 'unexpected-read';
+  | 'unexpected-read'
+  | 'mutation-action';
 
 let scheduleFixtureMode: ScheduleFixtureMode = 'pass';
 
@@ -61,11 +62,18 @@ ${mode === 'clipped-control' ? '<button style="position:fixed;left:-10px;top:500
 ${mode === 'unexpected-read' ? "fetch('/unexpected-read').catch(() => {});" : ''}
 Promise.all([
   fetch('/api/runtime-config').then((response) => response.json()),
+  fetch('/api/payroll-time-events', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: ${mode === 'mutation-action'
+      ? "JSON.stringify({ action: 'record_time_event', event: { occurredAt: '2026-08-12T16:00:00.000Z' } })"
+      : "JSON.stringify({ action: 'get_day', localDate: '2026-08-12' })"},
+  }).then((response) => response.json()),
   fetch('/rest/v1/rpc/get_schedule_data_batch', { method: 'POST' }).then((response) => response.json()),
   fetch('/rest/v1/rpc/get_dropdown_data', { method: 'POST' }).then((response) => response.json()),
   fetch('/rest/v1/rpc/get_sessions_optimized', { method: 'POST' }).then((response) => response.json()),
   fetch('/rest/v1/message_thread_participants').then((response) => response.json()),
-]).then(([runtimeConfig, schedule, dropdowns, optimizedSessions, messageParticipants]) => {
+]).then(([runtimeConfig, payrollDay, schedule, dropdowns, optimizedSessions, messageParticipants]) => {
   const auth = JSON.parse(localStorage.getItem('auth-storage') || '{}');
   const authIsValid = auth.user?.role === 'admin_schedule'
     && auth.roleAssignments?.includes('admin_schedule')
@@ -74,6 +82,7 @@ Promise.all([
   const runtimeConfigIsValid = runtimeConfig.supabaseUrl === location.origin
     && typeof runtimeConfig.supabaseAnonKey === 'string'
     && typeof runtimeConfig.defaultOrganizationId === 'string';
+  const payrollDayIsValid = payrollDay?.state === 'feature_disabled';
   const scheduleIsValid = schedule.sessions.length === 12
     && schedule.sessions.every((session) => session.start_time && session.end_time)
     && schedule.therapists.length === 12
@@ -82,7 +91,7 @@ Promise.all([
     && dropdowns.clients.length === 12
     && Array.isArray(optimizedSessions)
     && Array.isArray(messageParticipants);
-  if (!authIsValid || !runtimeConfigIsValid || !scheduleIsValid || !fallbacksAreValid) {
+  if (!authIsValid || !runtimeConfigIsValid || !payrollDayIsValid || !scheduleIsValid || !fallbacksAreValid) {
     throw new Error('synthetic schedule bootstrap failed');
   }
   setTimeout(() => {
@@ -264,7 +273,7 @@ describe('responsive UI observer browser runtime', () => {
     }
   }, 60_000);
 
-  it('runs the fixed synthetic schedule scenario without sending its synthetic requests to the server', async () => {
+  it('runs the fixed synthetic schedule scenario with fulfilled payroll get_day bootstrap and without sending synthetic requests to the server', async () => {
     scheduleFixtureMode = 'pass';
     const requestStart = receivedRequests.length;
     const summary = await runResponsiveUiObserver([
@@ -347,6 +356,26 @@ describe('responsive UI observer browser runtime', () => {
       artifactPaths.add(result.screenshotPath);
       artifactPaths.add(result.evidencePath);
       expect(result.failureCodes).toContain('unexpected-scenario-request');
+    }
+  }, 60_000);
+
+  it('keeps payroll mutation actions fail-closed in the schedule scenario', async () => {
+    scheduleFixtureMode = 'mutation-action';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/schedule',
+      '--scenario=schedule-overlap',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('non-read-method');
+      expect(result.failureCodes).toContain('same-origin-request-failed');
+      expect(result.failureCodes).toContain('console-error');
     }
   }, 60_000);
 

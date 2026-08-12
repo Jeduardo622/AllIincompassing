@@ -336,3 +336,12 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - A Task 4 Supabase audit found that the snapshot migration header named `20260812113000_payroll_session_lifecycle_context_disabled_state.sql`, which sorts after the snapshot migration and cannot be a valid replay dependency.
 - The snapshot SQL consumes attendance and correction tables established by `20260811214856_payroll_timekeeping_capture_read_model.sql` and does not consume objects added by either later session-context migration.
 - The dependency header now names the capture read-model migration. No runtime SQL, migration filename, hosted state, or activation behavior changed.
+
+### Task 4 Approval Authority Checkpoint
+
+- Branch: `codex/payroll-timekeeping-approval`; database head: `ca0bc55b`.
+- Authority: immutable canonical snapshot hashes, append-only employee submission/manager decision/payroll lock transitions, append-only blocker resolutions, exact effective manager assignment, explicit payroll grants, no self approval, and actor-bound authenticated RPCs.
+- Locking: current per-employee approval state is authoritative; shared `pay_periods.locked_at` is not mutated. Existing `exported_at` remains a fail-closed compatibility guard until Task 5 owns export authority.
+- Verification: clean local reset/typegen; 46/46 real loopback, migration, and RLS contracts; policy, tenant validation, typecheck, build; 8 GB aggregate `test:ci` with 507 files and 4,436 tests passed, 37 environment-gated skips.
+- Review: code, security, Supabase, test, and performance reviewers approved the fix range after one complete critical finding batch.
+- State: database checkpoint complete; protected approval transport is the next bounded checkpoint. No hosted migration, deploy, activation, merge, or export work occurred.

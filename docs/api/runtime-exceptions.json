@@ -106,6 +106,13 @@
       "expiresAt": "2026-09-01T23:59:59.999Z"
     },
     {
+      "functionFile": "payroll-administration.ts",
+      "publicApiPath": "/api/payroll-administration",
+      "reason": "The public API adapter remains for contract stability while payroll administration authority converges on the reviewed Edge boundary; retire this exception after the Netlify shim, redirect, and compatibility transport are removed and the public route targets Edge directly.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-09-01T23:59:59.999Z"
+    },
+    {
       "functionFile": "payroll-time-events.ts",
       "publicApiPath": "/api/payroll-time-events",
       "reason": "The public API adapter remains for contract stability while direct Edge convergence is reviewed.",

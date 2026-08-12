@@ -18,6 +18,7 @@
   "boundaryExceptions": [
     "admin-invite-email.ts",
     "assessment-documents-extract-background.ts",
+    "payroll-administration.ts",
     "payroll-approvals.ts",
     "payroll-time-events.ts",
     "payroll-timesheets.ts",

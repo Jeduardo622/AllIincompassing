@@ -679,6 +679,9 @@ const IEHP_BHT_AVAILABILITY_HEADING = /\bBHT\s+Availability\b/i;
 const IEHP_BHT_SERVICES_AVAILABILITY_HEADING = /\bAvailability\s+for\s+BHT\s+Services\b/i;
 const IEHP_BEHAVIOR_HEALTH_TREATMENT_AVAILABILITY_HEADING =
   /\bAvailability\s+for\s+Behavior\s+Health\s+Treatment\s+Services\b/i;
+const IEHP_BEHAVIOR_SUMMARY_END_HEADING = /(?:\n\s*[IVX]+\.\s*)?\n?\s*BACKGROUND INFORMATION\b/i;
+const IEHP_GOAL_SUBSECTION_HEADER_PATTERN =
+  /(?:^|[^\w])((?:short\s*(?:[-–—]?\s*)term)|(?:intermediate)|(?:progress))\s*:\s*/gim;
 
 const extractIeHpSection = (
   text: string,
@@ -1324,8 +1327,7 @@ const splitIeHpGoalSubsections = (
   sectionGoalType?: "child" | "parent",
   sectionPageNumber?: number,
 ): StructuredSectionResult[] => {
-  const headerPattern = /(?:^|[^\w])((?:short\s*(?:[-–—]?\s*)term)|(?:intermediate)|(?:progress))\s*:\s*/gim;
-  const matches = [...sectionText.matchAll(headerPattern)];
+  const matches = [...sectionText.matchAll(IEHP_GOAL_SUBSECTION_HEADER_PATTERN)];
   if (matches.length === 0) {
     const section_index = sectionIndexByFieldKey.get(fieldKey) ?? 0;
     sectionIndexByFieldKey.set(fieldKey, section_index + 1);
@@ -1459,7 +1461,7 @@ const extractIeHpGoalSections = (
         /(?:^|\n)\s*(?:[IVX]+\.\s*)?BEHAVIORS\s*:\s*(?:The\s+behaviors\s+and\s+functional\s+skills\s+to\s+be\s+addressed\b)?/i,
         /(?:^|\n)\s*The\s+behaviors\s+and\s+functional\s+skills\s+to\s+be\s+addressed\b/i,
       ],
-      end: [/\bBACKGROUND INFORMATION\b/i, /\bPersons\s+in\s+Household\b/i],
+      end: [IEHP_BEHAVIOR_SUMMARY_END_HEADING, /\bPersons\s+in\s+Household\b/i],
     },
     {
       field_key: "IEHP_FBA_HOUSEHOLD_MEMBERS",
@@ -1670,7 +1672,8 @@ const extractIeHpGoalSections = (
     [/BEHAVIOR INTERVENTION PLAN/i, /Target behavior and intervention/i],
     [/PARENT GOAL/i, /Safety Procedure/i, /Safety\s*\/\s*Crisis Procedure/i, /\bCoordination of Care\b/i],
   );
-  if (legacyTreatmentGoalSpan) {
+  if (legacyTreatmentGoalSpan && IEHP_GOAL_SUBSECTION_HEADER_PATTERN.test(legacyTreatmentGoalSpan)) {
+    IEHP_GOAL_SUBSECTION_HEADER_PATTERN.lastIndex = 0;
     sections.push(
       ...splitIeHpGoalSubsections(
         legacyTreatmentGoalSpan,

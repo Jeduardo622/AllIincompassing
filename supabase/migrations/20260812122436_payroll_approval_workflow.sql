@@ -809,7 +809,8 @@ begin
     'action', v_new_action,
     'previousTransitionId', v_latest.id,
     'replayed', false,
-    'occurredAt', v_now
+    'occurredAt', v_now,
+    'idempotencyKey', btrim(p_idempotency_key)
   );
 
   insert into public.payroll_audit_events (
@@ -864,6 +865,8 @@ as $$
 declare
   v_actor uuid := auth.uid();
   v_actor_org uuid;
+  v_snapshot_id uuid;
+  v_snapshot_hash text;
   v_blocker_type text;
   v_blocker_id uuid;
   v_pay_period_id uuid;
@@ -874,10 +877,12 @@ declare
   v_payload_hash text;
   v_receipt public.payroll_mutation_receipts%rowtype;
   v_previous public.payroll_blocker_resolutions%rowtype;
+  v_snapshot public.timesheet_snapshots%rowtype;
   v_employment_id uuid;
   v_target_period_id uuid;
   v_event_at timestamptz;
   v_resolution_id uuid;
+  v_snapshot_current boolean := false;
   v_now timestamptz := timezone('utc', now());
   v_result jsonb;
 begin
@@ -912,6 +917,8 @@ begin
     raise exception using errcode = '42501', message = 'payroll.resolve_exceptions capability is required';
   end if;
 
+  v_snapshot_id := nullif(btrim(p_payload ->> 'snapshotId'), '')::uuid;
+  v_snapshot_hash := nullif(btrim(p_payload ->> 'snapshotHash'), '');
   v_blocker_type := lower(coalesce(nullif(btrim(p_payload ->> 'blockerType'), ''), ''));
   v_blocker_id := nullif(btrim(p_payload ->> 'blockerId'), '')::uuid;
   v_pay_period_id := nullif(btrim(p_payload ->> 'payPeriodId'), '')::uuid;
@@ -919,14 +926,29 @@ begin
   v_comment := nullif(btrim(p_payload ->> 'comment'), '');
   v_reason := nullif(btrim(p_payload ->> 'reason'), '');
 
-  if v_blocker_type not in ('time_correction_request', 'session_attendance_correction_request', 'timekeeping_exception')
+  if v_snapshot_id is null
+    or v_snapshot_hash is null
+    or v_blocker_type not in ('time_correction_request', 'session_attendance_correction_request', 'timekeeping_exception')
     or v_blocker_id is null
     or v_action not in ('resolved', 'reopened')
   then
     raise exception using errcode = '22023', message = 'invalid payroll blocker payload';
   end if;
 
+  select snapshot_row.*
+  into v_snapshot
+  from public.timesheet_snapshots snapshot_row
+  where snapshot_row.organization_id = v_actor_org
+    and snapshot_row.id = v_snapshot_id
+    and snapshot_row.canonical_snapshot_hash = v_snapshot_hash;
+
+  if not found then
+    raise exception using errcode = '23514', message = 'blocker snapshot hash mismatch';
+  end if;
+
   v_payload := jsonb_build_object(
+    'snapshotId', v_snapshot_id,
+    'snapshotHash', v_snapshot_hash,
     'blockerType', v_blocker_type,
     'blockerId', v_blocker_id,
     'payPeriodId', v_pay_period_id,
@@ -1011,6 +1033,26 @@ begin
     raise exception using errcode = '23514', message = 'blocker does not resolve to a payroll period';
   end if;
 
+  if v_snapshot.employment_profile_id <> v_employment_id then
+    raise exception using errcode = '23514', message = 'blocker snapshot employment mismatch';
+  end if;
+
+  if v_snapshot.pay_period_id <> v_target_period_id then
+    raise exception using errcode = '23514', message = 'blocker snapshot pay period mismatch';
+  end if;
+
+  v_snapshot_current := app.timesheet_snapshot_is_current(
+    v_actor_org,
+    v_snapshot.employment_profile_id,
+    v_snapshot.pay_period_id,
+    v_snapshot.id,
+    v_snapshot_hash
+  );
+
+  if not v_snapshot_current then
+    raise exception using errcode = '23514', message = 'snapshot is no longer current';
+  end if;
+
   if v_pay_period_id is not null and v_pay_period_id <> v_target_period_id then
     raise exception using errcode = '23514', message = 'blocker payPeriodId mismatch';
   end if;
@@ -1088,7 +1130,8 @@ begin
     'action', v_action,
     'previousResolutionId', v_previous.id,
     'replayed', false,
-    'occurredAt', v_now
+    'occurredAt', v_now,
+    'idempotencyKey', btrim(p_idempotency_key)
   );
 
   insert into public.payroll_audit_events (

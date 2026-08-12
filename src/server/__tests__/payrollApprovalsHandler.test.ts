@@ -111,11 +111,12 @@ describe("payrollApprovalsHandler", () => {
         previousTransitionId: null,
         replayed: false,
         occurredAt: "2026-08-12T18:00:00.000Z",
+        idempotencyKey: "client-approval-key",
       }), {
         status: 200,
         headers: {
           "Content-Type": "application/json",
-          "Idempotency-Key": "edge-approval-key",
+          "Idempotency-Key": "client-approval-key",
           "Idempotent-Replay": "false",
           "x-request-id": "edge-request-id",
         },
@@ -140,7 +141,7 @@ describe("payrollApprovalsHandler", () => {
     const response = await payrollApprovalsHandler(request);
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("Idempotency-Key")).toBe("edge-approval-key");
+    expect(response.headers.get("Idempotency-Key")).toBe("client-approval-key");
     expect(response.headers.get("Idempotent-Replay")).toBe("false");
     expect(response.headers.get("x-request-id")).toBe("edge-request-id");
   });
@@ -184,6 +185,7 @@ describe("payrollApprovalsHandler", () => {
         previousTransitionId: null,
         replayed: false,
         occurredAt: "2026-08-12T18:00:00.000Z",
+        idempotencyKey: "approval-submit-key",
       },
     });
 
@@ -239,6 +241,7 @@ describe("payrollApprovalsHandler", () => {
         previousResolutionId: null,
         replayed: false,
         occurredAt: "2026-08-12T18:05:00.000Z",
+        idempotencyKey: "approval-blocker-key",
       },
     });
 
@@ -268,6 +271,8 @@ describe("payrollApprovalsHandler", () => {
         method: "POST",
         body: JSON.stringify({
           p_payload: {
+            snapshotId: "11111111-1111-1111-1111-111111111111",
+            snapshotHash: "a".repeat(64),
             blockerType: "timekeeping_exception",
             blockerId: "55555555-5555-5555-5555-555555555555",
             action: "resolved",
@@ -277,6 +282,51 @@ describe("payrollApprovalsHandler", () => {
         }),
       }),
     );
+  });
+
+  it("fails closed when the legacy blocker RPC response omits the authoritative idempotency echo", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
+    vi.mocked(fetchJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        resolutionId: "44444444-4444-4444-4444-444444444444",
+        blockerType: "timekeeping_exception",
+        blockerId: "55555555-5555-5555-5555-555555555555",
+        payPeriodId: "66666666-6666-6666-6666-666666666666",
+        action: "resolved",
+        previousResolutionId: null,
+        replayed: false,
+        occurredAt: "2026-08-12T18:05:00.000Z",
+      },
+    });
+
+    const response = await payrollApprovalsHandler(
+      new Request("http://localhost/api/payroll-approvals", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${createAuthToken()}`,
+          "Idempotency-Key": "approval-blocker-key",
+        },
+        body: JSON.stringify({
+          action: "resolve_blocker",
+          snapshotId: "11111111-1111-1111-1111-111111111111",
+          snapshotHash: "a".repeat(64),
+          blockerType: "timekeeping_exception",
+          blockerId: "55555555-5555-5555-5555-555555555555",
+          resolution: "resolved",
+          reason: "Reviewed and corrected.",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      code: "invalid_response",
+      error: "Invalid payroll approval response.",
+    }));
+    expect(response.headers.get("Idempotency-Key")).toBeNull();
+    expect(response.headers.get("Idempotent-Replay")).toBeNull();
   });
 
   it("maps feature_disabled approval failures to an explicit typed response", async () => {
@@ -311,6 +361,254 @@ describe("payrollApprovalsHandler", () => {
       idempotencyKey: "approval-feature-key",
     }));
     expect(response.status).toBe(403);
+  });
+
+  it.each([
+    {
+      name: "feature_disabled",
+      response: new Response(JSON.stringify({
+        success: false,
+        error: "Payroll approval workflow is unavailable.",
+        requestId: "edge-feature",
+        code: "feature_disabled",
+        message: "Payroll approval workflow is unavailable.",
+        state: "feature_disabled",
+        classification: {
+          category: "feature",
+          severity: "medium",
+          retryable: false,
+          httpStatus: 403,
+        },
+        idempotencyKey: "approval-feature-key",
+      }), {
+        status: 403,
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": "approval-feature-key",
+        },
+      }),
+      expectedStatus: 403,
+      expectedBody: {
+        code: "feature_disabled",
+        state: "feature_disabled",
+        idempotencyKey: "approval-feature-key",
+      },
+    },
+    {
+      name: "conflict",
+      response: new Response(JSON.stringify({
+        success: false,
+        error: "Idempotency conflict.",
+        requestId: "edge-conflict",
+        code: "conflict",
+        message: "Idempotency conflict.",
+        classification: {
+          category: "request",
+          severity: "medium",
+          retryable: false,
+          httpStatus: 409,
+        },
+        idempotencyKey: "approval-conflict-key",
+      }), {
+        status: 409,
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": "approval-conflict-key",
+        },
+      }),
+      expectedStatus: 409,
+      expectedBody: {
+        code: "conflict",
+        idempotencyKey: "approval-conflict-key",
+      },
+    },
+    {
+      name: "validation",
+      response: new Response(JSON.stringify({
+        success: false,
+        error: "Invalid payroll approval request.",
+        requestId: "edge-validation",
+        code: "validation_error",
+        message: "Invalid payroll approval request.",
+        classification: {
+          category: "validation",
+          severity: "low",
+          retryable: false,
+          httpStatus: 400,
+        },
+        idempotencyKey: "approval-validation-key",
+      }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": "approval-validation-key",
+        },
+      }),
+      expectedStatus: 400,
+      expectedBody: {
+        code: "validation_error",
+        idempotencyKey: "approval-validation-key",
+      },
+    },
+    {
+      name: "forbidden",
+      response: new Response(JSON.stringify({
+        success: false,
+        error: "Forbidden",
+        requestId: "edge-forbidden",
+        code: "forbidden",
+        message: "Forbidden",
+        classification: {
+          category: "auth",
+          severity: "medium",
+          retryable: false,
+          httpStatus: 403,
+        },
+        idempotencyKey: "approval-forbidden-key",
+      }), {
+        status: 403,
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": "approval-forbidden-key",
+        },
+      }),
+      expectedStatus: 403,
+      expectedBody: {
+        code: "forbidden",
+        idempotencyKey: "approval-forbidden-key",
+      },
+    },
+    {
+      name: "upstream",
+      response: new Response(JSON.stringify({
+        success: false,
+        error: "Payroll transport failed.",
+        requestId: "edge-upstream",
+        code: "upstream_error",
+        message: "Payroll transport failed.",
+        classification: {
+          category: "upstream",
+          severity: "high",
+          retryable: true,
+          httpStatus: 502,
+        },
+        idempotencyKey: "approval-upstream-key",
+      }), {
+        status: 502,
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": "approval-upstream-key",
+        },
+      }),
+      expectedStatus: 502,
+      expectedBody: {
+        code: "upstream_error",
+        idempotencyKey: "approval-upstream-key",
+      },
+    },
+  ])("keeps exact edge-authority error parity for $name envelopes", async ({ response, expectedStatus, expectedBody }) => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
+    vi.mocked(proxyToEdgeAuthority).mockResolvedValue(response);
+
+    const forwarded = await payrollApprovalsHandler(
+      new Request("http://localhost/api/payroll-approvals", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${createAuthToken()}`,
+          "Idempotency-Key": String(expectedBody.idempotencyKey),
+        },
+        body: JSON.stringify({
+          action: "lock",
+          snapshotId: "11111111-1111-1111-1111-111111111111",
+          snapshotHash: "a".repeat(64),
+        }),
+      }),
+    );
+
+    expect(forwarded.status).toBe(expectedStatus);
+    await expect(forwarded.json()).resolves.toEqual(expect.objectContaining(expectedBody));
+  });
+
+  it("maps ad hoc edge-authority error bodies back into the protected approval envelope", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
+    vi.mocked(proxyToEdgeAuthority).mockResolvedValue(
+      new Response(JSON.stringify({ nope: true }), {
+        status: 403,
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": "approval-forbidden-key",
+        },
+      }),
+    );
+
+    const response = await payrollApprovalsHandler(
+      new Request("http://localhost/api/payroll-approvals", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${createAuthToken()}`,
+          "Idempotency-Key": "approval-forbidden-key",
+        },
+        body: JSON.stringify({
+          action: "lock",
+          snapshotId: "11111111-1111-1111-1111-111111111111",
+          snapshotHash: "a".repeat(64),
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      code: "forbidden",
+      error: "Forbidden",
+      idempotencyKey: "approval-forbidden-key",
+    }));
+  });
+
+  it("fails closed in edge-authority mode when the upstream success echo is missing", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
+    vi.mocked(proxyToEdgeAuthority).mockResolvedValue(
+      new Response(JSON.stringify({
+        transitionId: "22222222-2222-2222-2222-222222222222",
+        snapshotId: "11111111-1111-1111-1111-111111111111",
+        snapshotHash: "a".repeat(64),
+        canonicalSnapshotHash: "a".repeat(64),
+        action: "submitted",
+        previousTransitionId: null,
+        replayed: false,
+        occurredAt: "2026-08-12T18:00:00.000Z",
+      }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": "approval-submit-key",
+          "Idempotent-Replay": "false",
+        },
+      }),
+    );
+
+    const response = await payrollApprovalsHandler(
+      new Request("http://localhost/api/payroll-approvals", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${createAuthToken()}`,
+          "Idempotency-Key": "approval-submit-key",
+        },
+        body: JSON.stringify({
+          action: "submit",
+          snapshotId: "11111111-1111-1111-1111-111111111111",
+          snapshotHash: "a".repeat(64),
+          attestation: true,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      code: "invalid_response",
+      error: "Invalid payroll approval response.",
+    }));
+    expect(response.headers.get("Idempotency-Key")).toBeNull();
+    expect(response.headers.get("Idempotent-Replay")).toBeNull();
   });
 
   it("fails closed when the approval response leaks unexpected fields", async () => {

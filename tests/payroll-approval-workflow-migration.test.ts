@@ -77,6 +77,19 @@ describe("payroll approval workflow migration contract", () => {
     expect(sql).toMatch(/grant execute on function public\.resolve_payroll_blocker\(jsonb, text\) to authenticated/i);
   });
 
+  it("binds blocker resolution RPCs to the exact current snapshot and includes that binding in the idempotency payload hash", () => {
+    expect(sql).toMatch(/v_snapshot_id uuid/i);
+    expect(sql).toMatch(/v_snapshot_hash text/i);
+    expect(sql).toMatch(/v_snapshot_current boolean/i);
+    expect(sql).toMatch(/v_snapshot_id := nullif\(btrim\(p_payload ->> 'snapshotId'\), ''\)::uuid/i);
+    expect(sql).toMatch(/v_snapshot_hash := nullif\(btrim\(p_payload ->> 'snapshotHash'\), ''\)/i);
+    expect(sql).toMatch(/jsonb_build_object\([\s\S]*'snapshotId', v_snapshot_id[\s\S]*'snapshotHash', v_snapshot_hash[\s\S]*'blockerType', v_blocker_type/i);
+    expect(sql).toMatch(/app\.timesheet_snapshot_is_current\([\s\S]*v_snapshot_id[\s\S]*v_snapshot_hash/i);
+    expect(sql).toMatch(/if not v_snapshot_current then[\s\S]*snapshot is no longer current/i);
+    expect(sql).toMatch(/v_snapshot\.employment_profile_id <> v_employment_id[\s\S]*blocker snapshot employment mismatch/i);
+    expect(sql).toMatch(/v_snapshot\.pay_period_id <> v_target_period_id[\s\S]*blocker snapshot pay period mismatch/i);
+  });
+
   it("fails closed on snapshot freshness, exact authority, unresolved blockers, and payload conflicts", () => {
     expect(sql).toMatch(/attestation.*true/i);
     expect(sql).toMatch(/current lockable snapshot/i);

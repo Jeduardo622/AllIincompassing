@@ -1010,6 +1010,82 @@ describe("payroll api client", () => {
     });
   });
 
+  it("fails closed when an approval success response omits the authoritative idempotency echo", async () => {
+    mockedCallApi.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          transitionId: "22222222-2222-2222-2222-222222222222",
+          snapshotId: "11111111-1111-1111-1111-111111111111",
+          snapshotHash: "a".repeat(64),
+          canonicalSnapshotHash: "a".repeat(64),
+          action: "submitted",
+          previousTransitionId: null,
+          replayed: false,
+          occurredAt: "2026-08-12T18:00:00.000Z",
+        },
+        200,
+        {
+          "Idempotency-Key": "approval-submit-key",
+        },
+      ),
+    );
+
+    await expect(
+      submitPayrollApproval({
+        organizationId: "org-1",
+        userId: "user-1",
+        localDate: "2026-08-12",
+        idempotencyKey: "approval-submit-key",
+        snapshotId: "11111111-1111-1111-1111-111111111111",
+        snapshotHash: "a".repeat(64),
+        attestation: true,
+      }),
+    ).rejects.toMatchObject({
+      code: "invalid_response",
+      status: 502,
+    });
+  });
+
+  it("fails closed when an approval success echo mismatches the request key", async () => {
+    mockedCallApi.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          resolutionId: "44444444-4444-4444-4444-444444444444",
+          blockerType: "timekeeping_exception",
+          blockerId: "55555555-5555-5555-5555-555555555555",
+          payPeriodId: "66666666-6666-6666-6666-666666666666",
+          action: "resolved",
+          previousResolutionId: null,
+          replayed: false,
+          occurredAt: "2026-08-12T18:05:00.000Z",
+          idempotencyKey: "different-body-key",
+        },
+        200,
+        {
+          "Idempotency-Key": "different-header-key",
+        },
+      ),
+    );
+
+    await expect(
+      resolvePayrollBlocker({
+        organizationId: "org-1",
+        userId: "user-1",
+        localDate: "2026-08-12",
+        idempotencyKey: "approval-blocker-key",
+        snapshotId: "11111111-1111-1111-1111-111111111111",
+        snapshotHash: "a".repeat(64),
+        blockerType: "timekeeping_exception",
+        blockerId: "55555555-5555-5555-5555-555555555555",
+        resolution: "resolved",
+        reason: "Reviewed and corrected.",
+      }),
+    ).rejects.toMatchObject({
+      code: "idempotency_mismatch",
+      status: 502,
+    });
+  });
+
   it("rejects payroll approval authority injection recursively before network", async () => {
     await expect(
       approvePayrollTimesheet({

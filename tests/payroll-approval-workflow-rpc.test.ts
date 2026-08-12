@@ -679,6 +679,8 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
     const resolution = await resolveBlocker(
       admin,
       {
+        snapshotId: snapshot.snapshotId,
+        snapshotHash,
         blockerType: "time_correction_request",
         blockerId,
         payPeriodId: IDS.payPeriodA,
@@ -951,12 +953,16 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
         [IDS.orgA, IDS.employmentA],
       )
     ).rows[0].id;
+    const snapshot = await deriveSnapshot(admin, "blocker-graph-snapshot");
+    const snapshotHash = await readSnapshotHash(admin, snapshot.snapshotId);
 
     const beforeReopen = await countWorkflowRows(admin);
     await expect(
       resolveBlocker(
         admin,
         {
+          snapshotId: snapshot.snapshotId,
+          snapshotHash,
           blockerType: "time_correction_request",
           blockerId,
           payPeriodId: IDS.payPeriodA,
@@ -972,6 +978,8 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
     const resolved = await resolveBlocker(
       admin,
       {
+        snapshotId: snapshot.snapshotId,
+        snapshotHash,
         blockerType: "time_correction_request",
         blockerId,
         payPeriodId: IDS.payPeriodA,
@@ -985,6 +993,8 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
     const resolvedReplay = await resolveBlocker(
       admin,
       {
+        snapshotId: snapshot.snapshotId,
+        snapshotHash,
         blockerType: "time_correction_request",
         blockerId,
         payPeriodId: IDS.payPeriodA,
@@ -1000,6 +1010,8 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
       resolveBlocker(
         admin,
         {
+          snapshotId: snapshot.snapshotId,
+          snapshotHash,
           blockerType: "time_correction_request",
           blockerId,
           payPeriodId: IDS.payPeriodA,
@@ -1016,6 +1028,8 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
       resolveBlocker(
         admin,
         {
+          snapshotId: snapshot.snapshotId,
+          snapshotHash,
           blockerType: "time_correction_request",
           blockerId,
           payPeriodId: IDS.payPeriodA,
@@ -1030,6 +1044,8 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
     const reopened = await resolveBlocker(
       admin,
       {
+        snapshotId: snapshot.snapshotId,
+        snapshotHash,
         blockerType: "time_correction_request",
         blockerId,
         payPeriodId: IDS.payPeriodA,
@@ -1046,6 +1062,8 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
       resolveBlocker(
         admin,
         {
+          snapshotId: snapshot.snapshotId,
+          snapshotHash,
           blockerType: "time_correction_request",
           blockerId,
           payPeriodId: IDS.payPeriodA,
@@ -1061,6 +1079,8 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
     const resolvedAgain = await resolveBlocker(
       admin,
       {
+        snapshotId: snapshot.snapshotId,
+        snapshotHash,
         blockerType: "time_correction_request",
         blockerId,
         payPeriodId: IDS.payPeriodA,
@@ -1071,6 +1091,107 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
     );
     expect(resolvedAgain).toMatchObject({ action: "resolved", replayed: false });
     expect((await readLatestResolution(admin)).action).toBe("resolved");
+  });
+
+  it("rejects mismatched or superseded blocker snapshots with zero writes and binds idempotency replay to the snapshot payload", async () => {
+    const originalEventId = (
+      await admin.query(
+        `select id
+         from public.employee_time_events
+         where organization_id = $1::uuid and employment_profile_id = $2::uuid
+         order by event_at asc, created_at asc, id asc
+         limit 1`,
+        [IDS.orgA, IDS.employmentA],
+      )
+    ).rows[0].id;
+    await admin.query(
+      `insert into public.time_correction_requests (
+         organization_id, employment_profile_id, original_event_id, requested_by, reason_code, replacement_payload
+       ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'missed_punch', '{}'::jsonb)`,
+      [IDS.orgA, IDS.employmentA, originalEventId, IDS.employeeA],
+    );
+    const blockerId = (
+      await admin.query(
+        `select id
+         from public.time_correction_requests
+         where organization_id = $1::uuid and employment_profile_id = $2::uuid
+         order by created_at desc, id desc
+         limit 1`,
+        [IDS.orgA, IDS.employmentA],
+      )
+    ).rows[0].id;
+    const firstSnapshot = await deriveSnapshot(admin, "blocker-snapshot-bind-v1");
+    const firstHash = await readSnapshotHash(admin, firstSnapshot.snapshotId);
+
+    const beforeMismatch = await countWorkflowRows(admin);
+    await expect(
+      resolveBlocker(
+        admin,
+        {
+          snapshotId: firstSnapshot.snapshotId,
+          snapshotHash: "f".repeat(64),
+          blockerType: "time_correction_request",
+          blockerId,
+          action: "resolved",
+        },
+        "resolve-blocker-mismatch",
+        IDS.adminA,
+      ),
+    ).rejects.toThrow();
+    expect(await countWorkflowRows(admin)).toEqual(beforeMismatch);
+
+    const resolved = await resolveBlocker(
+      admin,
+      {
+        snapshotId: firstSnapshot.snapshotId,
+        snapshotHash: firstHash,
+        blockerType: "time_correction_request",
+        blockerId,
+        action: "resolved",
+      },
+      "resolve-blocker-snapshot-bind",
+      IDS.adminA,
+    );
+    expect(resolved).toMatchObject({ action: "resolved", replayed: false });
+
+    await insertTimeEvent(admin, "shift_started", "2026-08-12T16:00:00Z");
+    await insertTimeEvent(admin, "shift_ended", "2026-08-12T20:00:00Z");
+    const secondSnapshot = await deriveSnapshot(admin, "blocker-snapshot-bind-v2");
+    const secondHash = await readSnapshotHash(admin, secondSnapshot.snapshotId);
+    expect(secondSnapshot.snapshotId).not.toBe(firstSnapshot.snapshotId);
+
+    await expect(
+      resolveBlocker(
+        admin,
+        {
+          snapshotId: secondSnapshot.snapshotId,
+          snapshotHash: secondHash,
+          blockerType: "time_correction_request",
+          blockerId,
+          action: "resolved",
+        },
+        "resolve-blocker-snapshot-bind",
+        IDS.adminA,
+      ),
+    ).rejects.toMatchObject({ code: "23505" });
+
+    const beforeStale = await countWorkflowRows(admin);
+    await expect(
+      resolveBlocker(
+        admin,
+        {
+          snapshotId: firstSnapshot.snapshotId,
+          snapshotHash: firstHash,
+          blockerType: "time_correction_request",
+          blockerId,
+          action: "reopened",
+          reason: "Attempted with superseded snapshot",
+        },
+        "resolve-blocker-stale-snapshot",
+        IDS.adminA,
+      ),
+    ).rejects.toThrow();
+    expect(await countWorkflowRows(admin)).toEqual(beforeStale);
   });
 
   it("keeps exported pay periods locked before Task 5 export authority arrives", async () => {

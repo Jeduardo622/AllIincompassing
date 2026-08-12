@@ -19,16 +19,6 @@ const TRACE_HEADER_NAMES = [
   "x-correlation-id",
   "x-agent-operation-id",
 ] as const;
-const PRESERVED_EDGE_HEADERS = new Set([
-  "content-type",
-  "idempotency-key",
-  "idempotent-replay",
-  "retry-after",
-  "www-authenticate",
-  "x-request-id",
-  "x-correlation-id",
-  "x-agent-operation-id",
-]);
 const FORBIDDEN_AUTHORITY_KEYS = new Set([
   "organization_id",
   "organizationId",
@@ -119,7 +109,7 @@ const payrollApprovalTransitionResponseSchema = z.object({
   previousTransitionId: z.string().uuid().nullable(),
   replayed: z.boolean(),
   occurredAt: z.string().min(1),
-  idempotencyKey: z.string().min(1).optional(),
+  idempotencyKey: z.string().min(1),
 }).strict();
 
 const payrollBlockerResolutionResponseSchema = z.object({
@@ -131,19 +121,43 @@ const payrollBlockerResolutionResponseSchema = z.object({
   previousResolutionId: z.string().uuid().nullable(),
   replayed: z.boolean(),
   occurredAt: z.string().min(1),
-  idempotencyKey: z.string().min(1).optional(),
+  idempotencyKey: z.string().min(1),
 }).strict();
 
 const payrollApprovalResponseSchema = z.union([
   payrollApprovalTransitionResponseSchema,
   payrollBlockerResolutionResponseSchema,
 ]);
+const payrollApprovalErrorSchema = z.object({
+  success: z.literal(false),
+  error: z.string().min(1),
+  requestId: z.string().min(1),
+  code: z.enum(["feature_disabled", "conflict", "validation_error", "forbidden", "upstream_error", "rate_limited"]),
+  message: z.string().min(1),
+  classification: z.object({
+    category: z.string().min(1),
+    severity: z.enum(["low", "medium", "high", "critical"]),
+    retryable: z.boolean(),
+    httpStatus: z.number().int(),
+  }).strict(),
+  idempotencyKey: z.string().min(1).optional(),
+  state: z.string().min(1).optional(),
+}).strict();
 
 type PayrollApprovalAction = z.infer<typeof payrollApprovalActionSchema>;
 
 const traceHeadersForRequest = (request: Request): Record<string, string> =>
   TRACE_HEADER_NAMES.reduce<Record<string, string>>((acc, headerName) => {
     const value = request.headers.get(headerName)?.trim();
+    if (value) {
+      acc[headerName] = value;
+    }
+    return acc;
+  }, {});
+
+const traceHeadersFromHeaders = (headers: Headers): Record<string, string> =>
+  TRACE_HEADER_NAMES.reduce<Record<string, string>>((acc, headerName) => {
+    const value = headers.get(headerName)?.trim();
     if (value) {
       acc[headerName] = value;
     }
@@ -200,9 +214,17 @@ const validateApprovalResponse = (
   request: Request,
   traceHeaders: Record<string, string>,
   payload: unknown,
+  requestedKey: string,
 ): PayrollApprovalTransition | PayrollBlockerResolution | Response => {
   const parsed = payrollApprovalResponseSchema.safeParse(payload);
   if (!parsed.success) {
+    return errorResponse(request, "upstream_error", "Invalid payroll approval response.", {
+      status: 502,
+      headers: traceHeaders,
+      extra: { code: "invalid_response" },
+    });
+  }
+  if (parsed.data.idempotencyKey !== requestedKey) {
     return errorResponse(request, "upstream_error", "Invalid payroll approval response.", {
       status: 502,
       headers: traceHeaders,
@@ -221,6 +243,8 @@ const mapActionToRpc = (parsed: PayrollApprovalAction, idempotencyKey: string) =
       functionName: "resolve_payroll_blocker",
       args: {
         p_payload: {
+          snapshotId: parsed.snapshotId,
+          snapshotHash: parsed.snapshotHash,
           blockerType: parsed.blockerType,
           blockerId: parsed.blockerId,
           action: parsed.resolution,
@@ -330,6 +354,74 @@ const mapLegacyError = (
   });
 };
 
+const mapForwardedEdgeError = (
+  request: Request,
+  traceHeaders: Record<string, string>,
+  status: number,
+  idempotencyKey: string,
+  forwardedHeaders: Headers,
+) => {
+  const headers: Record<string, string> = { ...traceHeaders, "Idempotency-Key": idempotencyKey };
+  const retryAfter = forwardedHeaders.get("Retry-After")?.trim();
+  if (status === 400) {
+    return errorResponse(request, "validation_error", "Invalid payroll approval request.", {
+      status,
+      headers,
+      extra: { idempotencyKey },
+    });
+  }
+  if (status === 403) {
+    return errorResponse(request, "forbidden", "Forbidden", {
+      status,
+      headers,
+      extra: { idempotencyKey },
+    });
+  }
+  if (status === 409) {
+    return errorResponse(request, "conflict", "Idempotency conflict.", {
+      status,
+      headers,
+      extra: { idempotencyKey },
+    });
+  }
+  if (status === 429) {
+    return errorResponse(request, "rate_limited", "Too many payroll approval requests", {
+      status,
+      headers: retryAfter ? { ...headers, "Retry-After": retryAfter } : headers,
+      extra: { idempotencyKey },
+    });
+  }
+  return errorResponse(request, "upstream_error", "Payroll transport failed.", {
+    status: status >= 400 ? status : 502,
+    headers: retryAfter ? { ...headers, "Retry-After": retryAfter } : headers,
+    extra: { idempotencyKey },
+  });
+};
+
+const buildForwardedEdgeResponse = (
+  request: Request,
+  traceHeaders: Record<string, string>,
+  status: number,
+  payload: unknown,
+  forwardedHeaders: Headers,
+) => {
+  const responseHeaders = new Headers({
+    ...corsHeadersForRequest(request),
+    ...traceHeaders,
+    "Content-Type": "application/json",
+  });
+  if (forwardedHeaders.get("Retry-After")) {
+    responseHeaders.set("Retry-After", forwardedHeaders.get("Retry-After") as string);
+  }
+  if (forwardedHeaders.get("WWW-Authenticate")) {
+    responseHeaders.set("WWW-Authenticate", forwardedHeaders.get("WWW-Authenticate") as string);
+  }
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: responseHeaders,
+  });
+};
+
 const buildSuccessResponse = (
   request: Request,
   traceHeaders: Record<string, string>,
@@ -423,61 +515,16 @@ export async function payrollApprovalsHandler(request: Request): Promise<Respons
   }
 
   let payload: unknown;
-  let payloadParsed = false;
   try {
-    payload = await request.clone().json();
-    payloadParsed = true;
+    payload = await request.json();
   } catch {
-    // Keep edge parity for malformed JSON in edge mode.
+    return errorResponse(request, "validation_error", "Invalid JSON body", { headers: traceHeaders });
   }
 
-  if (payloadParsed && containsForbiddenAuthority(payload)) {
+  if (containsForbiddenAuthority(payload)) {
     return errorResponse(request, "validation_error", "Authority fields are not allowed in payroll requests.", {
       headers: traceHeaders,
     });
-  }
-
-  if (getApiAuthorityMode() === "edge") {
-    const forwarded = await proxyToEdgeAuthority(request, {
-      functionName: "payroll-approvals",
-      accessToken,
-      method: "POST",
-    });
-    const text = await forwarded.text();
-    if (forwarded.ok) {
-      let responsePayload: unknown;
-      try {
-        responsePayload = JSON.parse(text);
-      } catch {
-        responsePayload = null;
-      }
-      const validated = validateApprovalResponse(request, traceHeaders, responsePayload);
-      if (validated instanceof Response) {
-        return validated;
-      }
-    }
-    const responseHeaders = new Headers({
-      ...corsHeadersForRequest(request),
-      ...traceHeaders,
-      "Content-Type": forwarded.headers.get("Content-Type") ?? "application/json",
-    });
-    forwarded.headers.forEach((value, key) => {
-      if (PRESERVED_EDGE_HEADERS.has(key.toLowerCase())) {
-        responseHeaders.set(key, value);
-      }
-    });
-    return new Response(text, {
-      status: forwarded.status,
-      headers: responseHeaders,
-    });
-  }
-
-  if (!payloadParsed) {
-    try {
-      payload = await request.json();
-    } catch {
-      return errorResponse(request, "validation_error", "Invalid JSON body", { headers: traceHeaders });
-    }
   }
 
   const parsed = payrollApprovalActionSchema.safeParse(payload);
@@ -501,6 +548,59 @@ export async function payrollApprovalsHandler(request: Request): Promise<Respons
     return validated;
   }
 
+  if (getApiAuthorityMode() === "edge") {
+    const forwarded = await proxyToEdgeAuthority(request, {
+      functionName: "payroll-approvals",
+      accessToken,
+      method: "POST",
+    });
+    const forwardedTraceHeaders = traceHeadersFromHeaders(forwarded.headers);
+    const text = await forwarded.text();
+    let responsePayload: unknown = null;
+    try {
+      responsePayload = text ? JSON.parse(text) : null;
+    } catch {
+      responsePayload = null;
+    }
+
+    if (forwarded.ok) {
+      const successPayload = validateApprovalResponse(
+        request,
+        traceHeaders,
+        responsePayload,
+        validated.idempotencyKey,
+      );
+      if (successPayload instanceof Response) {
+        return successPayload;
+      }
+      return buildSuccessResponse(
+        request,
+        { ...traceHeaders, ...forwardedTraceHeaders },
+        successPayload,
+        successPayload.idempotencyKey,
+      );
+    }
+
+    const parsedError = payrollApprovalErrorSchema.safeParse(responsePayload);
+    if (parsedError.success) {
+      return buildForwardedEdgeResponse(
+        request,
+        { ...traceHeaders, ...forwardedTraceHeaders },
+        forwarded.status,
+        parsedError.data,
+        forwarded.headers,
+      );
+    }
+
+    return mapForwardedEdgeError(
+      request,
+      traceHeaders,
+      forwarded.status,
+      validated.idempotencyKey,
+      forwarded.headers,
+    );
+  }
+
   const { supabaseUrl, anonKey } = getSupabaseConfig();
   const rpc = mapActionToRpc(parsed.data, validated.idempotencyKey);
   const result = await fetchJson<Record<string, unknown>>(`${supabaseUrl}/rest/v1/rpc/${rpc.functionName}`, {
@@ -513,10 +613,15 @@ export async function payrollApprovalsHandler(request: Request): Promise<Respons
     return mapLegacyError(request, traceHeaders, result, validated.idempotencyKey);
   }
 
-  const validatedResponse = validateApprovalResponse(request, traceHeaders, result.data);
+  const validatedResponse = validateApprovalResponse(
+    request,
+    traceHeaders,
+    result.data,
+    validated.idempotencyKey,
+  );
   if (validatedResponse instanceof Response) {
     return validatedResponse;
   }
 
-  return buildSuccessResponse(request, traceHeaders, validatedResponse, validated.idempotencyKey);
+  return buildSuccessResponse(request, traceHeaders, validatedResponse, validatedResponse.idempotencyKey);
 }

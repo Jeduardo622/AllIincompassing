@@ -113,7 +113,7 @@ const payrollApprovalTransitionResponseSchema = z.object({
   previousTransitionId: z.string().uuid().nullable(),
   replayed: z.boolean(),
   occurredAt: z.string().min(1),
-  idempotencyKey: z.string().min(1).optional(),
+  idempotencyKey: z.string().min(1),
 }).strict();
 
 const payrollBlockerResolutionResponseSchema = z.object({
@@ -125,7 +125,7 @@ const payrollBlockerResolutionResponseSchema = z.object({
   previousResolutionId: z.string().uuid().nullable(),
   replayed: z.boolean(),
   occurredAt: z.string().min(1),
-  idempotencyKey: z.string().min(1).optional(),
+  idempotencyKey: z.string().min(1),
 }).strict();
 
 const payrollApprovalResponseSchema = z.union([
@@ -146,6 +146,24 @@ type InitializedDependencies = {
 };
 
 let initializedDependenciesPromise: Promise<InitializedDependencies> | null = null;
+const rateState = new Map<string, { count: number; resetAt: number }>();
+
+const consumeEdgeRateLimit = (key: string, limit: number, windowMs: number): { allowed: boolean; retryAfter?: number } => {
+  const now = Date.now();
+  const existing = rateState.get(key);
+  if (!existing || now > existing.resetAt) {
+    rateState.set(key, { count: 1, resetAt: now + windowMs });
+    return { allowed: true };
+  }
+  if (existing.count < limit) {
+    existing.count += 1;
+    return { allowed: true };
+  }
+  return {
+    allowed: false,
+    retryAfter: Math.ceil((existing.resetAt - now) / 1000),
+  };
+};
 
 const buildCorsHeaders = (req: Request, extra: HeadersInit = {}) => {
   const headers = new Headers({
@@ -172,6 +190,17 @@ const jsonResponse = (req: Request, status: number, body: Record<string, unknown
     headers: buildCorsHeaders(req, { ...traceHeadersForRequest(req), ...extra }),
   });
 
+const jsonErrorResponse = (
+  req: Request,
+  status: number,
+  body: Record<string, unknown>,
+  extra: HeadersInit = {},
+) => jsonResponse(req, status, {
+  success: false,
+  requestId: req.headers.get("x-request-id")?.trim() || crypto.randomUUID(),
+  ...body,
+}, extra);
+
 const normalizeSafeMessage = (value: unknown): string => {
   if (typeof value !== "string") {
     return "";
@@ -193,20 +222,50 @@ const containsForbiddenAuthority = (value: unknown): boolean => {
 
 const validateIdempotency = (req: Request, parsed: PayrollApprovalAction): { idempotencyKey: string } | Response => {
   if (containsForbiddenAuthority(parsed)) {
-    return jsonResponse(req, 400, { error: "Authority fields are not allowed in payroll requests." });
+    return jsonErrorResponse(req, 400, {
+      code: "validation_error",
+      error: "Authority fields are not allowed in payroll requests.",
+      message: "Authority fields are not allowed in payroll requests.",
+      classification: {
+        category: "validation",
+        severity: "low",
+        retryable: false,
+        httpStatus: 400,
+      },
+    });
   }
 
   const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() ?? "";
   if (!idempotencyKey) {
-    return jsonResponse(req, 400, { error: "Idempotency-Key is required for payroll mutations." });
+    return jsonErrorResponse(req, 400, {
+      code: "validation_error",
+      error: "Idempotency-Key is required for payroll mutations.",
+      message: "Idempotency-Key is required for payroll mutations.",
+      classification: {
+        category: "validation",
+        severity: "low",
+        retryable: false,
+        httpStatus: 400,
+      },
+    });
   }
 
   return { idempotencyKey };
 };
 
-const validateApprovalResponse = (req: Request, data: unknown): PayrollApprovalResponse | Response => {
+const validateApprovalResponse = (
+  req: Request,
+  data: unknown,
+  requestedKey: string,
+): PayrollApprovalResponse | Response => {
   const parsed = payrollApprovalResponseSchema.safeParse(data);
   if (!parsed.success) {
+    return jsonResponse(req, 502, {
+      code: "invalid_response",
+      error: "Invalid payroll approval response.",
+    });
+  }
+  if (parsed.data.idempotencyKey !== requestedKey) {
     return jsonResponse(req, 502, {
       code: "invalid_response",
       error: "Invalid payroll approval response.",
@@ -221,6 +280,8 @@ const mapActionToRpc = (parsed: PayrollApprovalAction, idempotencyKey: string) =
       functionName: "resolve_payroll_blocker",
       args: {
         p_payload: {
+          snapshotId: parsed.snapshotId,
+          snapshotHash: parsed.snapshotHash,
           blockerType: parsed.blockerType,
           blockerId: parsed.blockerId,
           action: parsed.resolution,
@@ -249,11 +310,17 @@ const mapActionToRpc = (parsed: PayrollApprovalAction, idempotencyKey: string) =
 };
 
 const featureDisabledResponse = (req: Request, idempotencyKey: string) =>
-  jsonResponse(req, 403, {
+  jsonErrorResponse(req, 403, {
     code: "feature_disabled",
     error: "Payroll approval workflow is unavailable.",
     message: "Payroll approval workflow is unavailable.",
     state: "feature_disabled",
+    classification: {
+      category: "feature",
+      severity: "medium",
+      retryable: false,
+      httpStatus: 403,
+    },
     idempotencyKey,
   }, {
     "Idempotency-Key": idempotencyKey,
@@ -270,28 +337,94 @@ const mapRpcError = (req: Request, error: { code?: string; message?: string } | 
     return featureDisabledResponse(req, idempotencyKey);
   }
   if (message.includes("IDEMPOTENCY_CONFLICT") || code === "23505") {
-    return jsonResponse(req, 409, { code: "conflict", error: "Idempotency conflict.", idempotencyKey }, extraHeaders);
+    return jsonErrorResponse(req, 409, {
+      code: "conflict",
+      error: "Idempotency conflict.",
+      message: "Idempotency conflict.",
+      classification: {
+        category: "request",
+        severity: "medium",
+        retryable: false,
+        httpStatus: 409,
+      },
+      idempotencyKey,
+    }, extraHeaders);
   }
   if (code === "42501") {
-    return jsonResponse(req, 403, { code: "forbidden", error: "Forbidden", idempotencyKey }, extraHeaders);
+    return jsonErrorResponse(req, 403, {
+      code: "forbidden",
+      error: "Forbidden",
+      message: "Forbidden",
+      classification: {
+        category: "auth",
+        severity: "medium",
+        retryable: false,
+        httpStatus: 403,
+      },
+      idempotencyKey,
+    }, extraHeaders);
   }
   if (code === "23514") {
-    return jsonResponse(req, 409, { code: "state_conflict", error: "Payroll state conflict.", idempotencyKey }, extraHeaders);
+    return jsonErrorResponse(req, 409, {
+      code: "conflict",
+      error: "Payroll state conflict.",
+      message: "Payroll state conflict.",
+      classification: {
+        category: "request",
+        severity: "medium",
+        retryable: false,
+        httpStatus: 409,
+      },
+      idempotencyKey,
+    }, extraHeaders);
   }
   if (code === "22023") {
-    return jsonResponse(req, 400, { code: "validation_error", error: "Invalid payroll approval request.", idempotencyKey }, extraHeaders);
+    return jsonErrorResponse(req, 400, {
+      code: "validation_error",
+      error: "Invalid payroll approval request.",
+      message: "Invalid payroll approval request.",
+      classification: {
+        category: "validation",
+        severity: "low",
+        retryable: false,
+        httpStatus: 400,
+      },
+      idempotencyKey,
+    }, extraHeaders);
   }
   if (code === "55P03") {
-    return jsonResponse(req, 409, { code: "conflict", error: "Payroll state is temporarily locked.", idempotencyKey }, {
+    return jsonErrorResponse(req, 409, {
+      code: "conflict",
+      error: "Payroll state is temporarily locked.",
+      message: "Payroll state is temporarily locked.",
+      classification: {
+        category: "request",
+        severity: "medium",
+        retryable: false,
+        httpStatus: 409,
+      },
+      idempotencyKey,
+    }, {
       ...extraHeaders,
       "Retry-After": "1",
     });
   }
 
-  return jsonResponse(req, 502, { code: "upstream_error", error: "Payroll transport failed.", idempotencyKey }, extraHeaders);
+  return jsonErrorResponse(req, 502, {
+    code: "upstream_error",
+    error: "Payroll transport failed.",
+    message: "Payroll transport failed.",
+    classification: {
+      category: "upstream",
+      severity: "high",
+      retryable: true,
+      httpStatus: 502,
+    },
+    idempotencyKey,
+  }, extraHeaders);
 };
 
-export async function handlePayrollApprovals({ req, userContext: _userContext, db }: HandlerParams): Promise<Response> {
+export async function handlePayrollApprovals({ req, userContext, db }: HandlerParams): Promise<Response> {
   const requestedOrigin = req.headers.get("origin");
   if (requestedOrigin && !resolveAllowedOriginForRequest(req)) {
     return jsonResponse(req, 403, { error: "Origin not allowed" });
@@ -299,6 +432,23 @@ export async function handlePayrollApprovals({ req, userContext: _userContext, d
 
   if (req.method !== "POST") {
     return jsonResponse(req, 405, { error: "Method not allowed" });
+  }
+
+  const limit = consumeEdgeRateLimit(`payroll-approvals:${userContext.user.id}`, 60, 60_000);
+  if (!limit.allowed) {
+    return jsonErrorResponse(req, 429, {
+      code: "rate_limited",
+      error: "Too many payroll approval requests",
+      message: "Too many payroll approval requests",
+      classification: {
+        category: "rate_limit",
+        severity: "high",
+        retryable: true,
+        httpStatus: 429,
+      },
+    }, {
+      ...(typeof limit.retryAfter === "number" ? { "Retry-After": String(limit.retryAfter) } : {}),
+    });
   }
 
   let payload: unknown;
@@ -336,7 +486,7 @@ export async function handlePayrollApprovals({ req, userContext: _userContext, d
     return mapRpcError(req, error as { code?: string; message?: string }, validated.idempotencyKey);
   }
 
-  const validatedResponse = validateApprovalResponse(req, data);
+  const validatedResponse = validateApprovalResponse(req, data, validated.idempotencyKey);
   if (validatedResponse instanceof Response) {
     return validatedResponse;
   }
@@ -344,9 +494,8 @@ export async function handlePayrollApprovals({ req, userContext: _userContext, d
   const replayed = validatedResponse.replayed ? "true" : "false";
   return jsonResponse(req, 200, {
     ...validatedResponse,
-    idempotencyKey: validated.idempotencyKey,
   }, {
-    "Idempotency-Key": validated.idempotencyKey,
+    "Idempotency-Key": validatedResponse.idempotencyKey,
     "Idempotent-Replay": replayed,
   });
 }

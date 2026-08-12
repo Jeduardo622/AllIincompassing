@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { createInMemoryPayrollOutboxStore, listPayrollOutboxEvents } from "../../../payroll/outbox";
+import {
+  clearRetainedPayrollOutboxEvent,
+  createInMemoryPayrollOutboxStore,
+  drainPayrollOutbox,
+  enqueuePayrollOutboxEvent,
+  listPayrollOutboxEvents,
+  reconfirmRetainedPayrollOutboxEvent,
+} from "../../../payroll/outbox";
 import type { PayrollMutationSuccess, PayrollSessionContext } from "../../../payroll/api";
 
 const baseScope = {
@@ -144,6 +151,83 @@ describe("sessionPayrollLifecycle", () => {
       "clear:delegated-attendance-key",
     ]);
     expect(startClinicalSession).toHaveBeenCalledTimes(1);
+    expect(await listPayrollOutboxEvents(store, baseScope)).toEqual([]);
+  });
+
+  it("adopts a retained attendance descriptor discovered after preparation for confirmation, clear, and result", async () => {
+    const store = createInMemoryPayrollOutboxStore();
+    const clearRetainedEvent = vi.fn(clearRetainedPayrollOutboxEvent);
+    const recordSessionAttendance = vi.fn(async (input) => confirmed(input.idempotencyKey));
+    const startClinicalSession = vi.fn(async () => ({ outcome: "started" as const }));
+
+    const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
+    const lifecycle = createSessionPayrollLifecycle({
+      store,
+      fetchSessionContext: vi.fn(async () => baseContext),
+      enqueueOutboxEvent: enqueuePayrollOutboxEvent,
+      drainOutbox: drainPayrollOutbox,
+      findRetainedEvent: undefined,
+      reconfirmRetainedEvent: reconfirmRetainedPayrollOutboxEvent,
+      clearRetainedEvent,
+      recordTimeEvent: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      recordSessionAttendance,
+      startClinicalSession,
+      completeClinicalSession: vi.fn(),
+      revalidateTerminalOutcome: vi.fn(),
+      isOnline: vi.fn(() => true),
+      createIdempotencyKey: vi.fn(() => "prepared-attendance-key-a"),
+      now: vi.fn(() => "2026-08-12T16:06:00.000Z"),
+    });
+
+    const prepared = await lifecycle.prepareStart({ scope: baseScope, sessionId: baseContext.sessionId });
+    expect(prepared.attendance).toEqual({
+      idempotencyKey: "prepared-attendance-key-a",
+      occurredAt: "2026-08-12T16:06:00.000Z",
+    });
+
+    await enqueuePayrollOutboxEvent({
+      store,
+      ...baseScope,
+      action: "record_session_attendance",
+      idempotencyKey: "retained-attendance-key-b",
+      occurredAt: "2026-08-12T16:05:30.000Z",
+      payload: {
+        occurredAt: "2026-08-12T16:05:30.000Z",
+        timezone: baseContext.employmentTimezone,
+        workLocation: baseContext.canonicalWorkLocation,
+        data: {
+          eventType: "session_started",
+          sessionId: baseContext.sessionId,
+          employeeTimeEventId: baseContext.activeShiftEventId,
+        },
+      },
+      retainForClinical: true,
+    });
+
+    const result = await lifecycle.executeStart({
+      scope: baseScope,
+      prepared,
+      choice: "active",
+      request: startRequest,
+    });
+
+    expect(result).toEqual({
+      kind: "started",
+      attendanceIdempotencyKey: "retained-attendance-key-b",
+    });
+    expect(recordSessionAttendance).toHaveBeenCalledWith(expect.objectContaining({
+      idempotencyKey: "retained-attendance-key-b",
+      event: expect.objectContaining({ occurredAt: "2026-08-12T16:05:30.000Z" }),
+    }));
+    expect(startClinicalSession).toHaveBeenCalledTimes(1);
+    expect(clearRetainedEvent).toHaveBeenCalledTimes(1);
+    expect(clearRetainedEvent).toHaveBeenCalledWith(expect.objectContaining({
+      idempotencyKey: "retained-attendance-key-b",
+      confirmedServerIdempotencyKey: "retained-attendance-key-b",
+    }));
+    expect(clearRetainedEvent).not.toHaveBeenCalledWith(expect.objectContaining({
+      idempotencyKey: "prepared-attendance-key-a",
+    }));
     expect(await listPayrollOutboxEvents(store, baseScope)).toEqual([]);
   });
 

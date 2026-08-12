@@ -442,7 +442,7 @@ export function createSessionPayrollLifecycle(
       const expected = assertPreparedMatchesFreshContext(input.prepared, freshContext);
       assertAllowedStartChoice(expected, input.choice, freshContext);
 
-      const attendanceDescriptor = input.prepared.attendance;
+      let attendanceDescriptor = input.prepared.attendance;
       const initialContext = freshContext;
       let shiftIdempotencyKey: string | undefined;
       let contextForAttendance = initialContext;
@@ -455,6 +455,12 @@ export function createSessionPayrollLifecycle(
         eventType: "session_started",
       });
       assertRetainedNotNeedsAttention(retained);
+      if (retained) {
+        attendanceDescriptor = {
+          idempotencyKey: retained.idempotencyKey,
+          occurredAt: retained.occurredAt,
+        };
+      }
 
       if (input.choice === "clock_in") {
         if (retained?.state === "confirmed_pending_clinical") {
@@ -532,6 +538,12 @@ export function createSessionPayrollLifecycle(
           retained,
           attendanceDescriptor,
         );
+      }
+      if (retained) {
+        attendanceDescriptor = {
+          idempotencyKey: retained.idempotencyKey,
+          occurredAt: retained.occurredAt,
+        };
       }
       const confirmation = await confirmRetainedAttendance(input.scope, retained);
       if (!confirmation.confirmed) {

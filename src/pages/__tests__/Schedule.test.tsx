@@ -376,6 +376,11 @@ describe("Schedule", () => {
       await screen.findByRole("heading", { name: /^Schedule$/i }),
     ).toBeInTheDocument();
 
+    expect(
+      await screen.findByText(/^Day view · .* · Dr\. Myles · All clients$/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^Day view · .* · All therapists · All clients$/i)).not.toBeInTheDocument();
+
     await userEvent.click(screen.getByText("Filters & schedule options"));
 
     const myles = await screen.findAllByText("Dr. Myles");

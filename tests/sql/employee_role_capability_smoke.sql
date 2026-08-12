@@ -45,7 +45,8 @@ begin
     '00000000-0000-4000-8000-000000000503',
     '00000000-0000-4000-8000-000000000504',
     '00000000-0000-4000-8000-000000000505',
-    '00000000-0000-4000-8000-000000000506'
+    '00000000-0000-4000-8000-000000000506',
+    '00000000-0000-4000-8000-000000000507'
   );
 
   delete from public.authorization_services
@@ -246,6 +247,7 @@ begin
   insert into public.sessions (id, client_id, therapist_id, start_time, end_time, status, has_transcription_consent, organization_id, created_by, updated_by, session_date, program_id, goal_id)
   values
     ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000013', now() + interval '7 days', now() + interval '7 days 1 hour', 'scheduled', false, '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000011', current_date + 7, '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000301'),
+    ('00000000-0000-4000-8000-000000000507', '00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000015', now() + interval '7 days 15 minutes', now() + interval '7 days 1 hour 15 minutes', 'scheduled', false, '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000011', current_date + 7, '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000301'),
     ('00000000-0000-4000-8000-000000000502', '00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000021', now() + interval '8 days', now() + interval '8 days 1 hour', 'scheduled', false, '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000011', current_date + 8, '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000302'),
     ('00000000-0000-4000-8000-000000000506', '00000000-0000-4000-8000-000000000107', '00000000-0000-4000-8000-000000000013', now() + interval '12 days', now() + interval '12 days 1 hour', 'completed', false, '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011', '00000000-0000-4000-8000-000000000011', current_date + 12, null, null);
 
@@ -273,6 +275,10 @@ select set_config('request.jwt.claim.role', 'authenticated', true);
 
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000011', true);
 do $admin_schedule$
+declare
+  optimized_count int;
+  batch_shared_client_count int;
+  batch_data jsonb;
 begin
   insert into role_smoke_results
   values (
@@ -285,6 +291,40 @@ begin
       || ', authz=' || app.current_user_can_manage_authorizations('00000000-0000-4000-8000-000000000001')
       || ', schedule=' || app.current_user_can_manage_schedule('00000000-0000-4000-8000-000000000001')
       || ', programs=' || app.current_user_can_manage_programs_goals('00000000-0000-4000-8000-000000000001'),
+    current_user
+  );
+
+  insert into role_smoke_results
+  values (
+    'admin_schedule_full_schedule_session_allowed',
+    app.current_user_can_read_schedule_session(
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000101',
+      '00000000-0000-4000-8000-000000000015'
+    ),
+    'full schedule role accepted another therapist session',
+    current_user
+  );
+
+  select count(*)
+  into optimized_count
+  from public.get_sessions_optimized(
+    now(),
+    now() + interval '30 days',
+    null,
+    '00000000-0000-4000-8000-000000000101'
+  );
+  batch_data := public.get_schedule_data_batch(now(), now() + interval '30 days');
+  select count(*)
+  into batch_shared_client_count
+  from jsonb_array_elements(batch_data->'sessions') session_row
+  where session_row->>'client_id' = '00000000-0000-4000-8000-000000000101';
+  insert into role_smoke_results
+  values (
+    'admin_schedule_full_schedule_rpc_rows_preserved',
+    optimized_count = 2 and batch_shared_client_count = 2,
+    'optimized_shared_client=' || optimized_count
+      || ', batch_shared_client=' || batch_shared_client_count,
     current_user
   );
 
@@ -417,10 +457,35 @@ declare
   unassigned_note_count int;
   cross_org_note_count int;
   optimized_count int;
+  optimized_therapist_id text;
   affected_rows int;
   batch_data jsonb;
   dropdown_data jsonb;
 begin
+  insert into role_smoke_results
+  values (
+    'therapist_schedule_matching_therapist_allowed',
+    app.current_user_can_read_schedule_session(
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000101',
+      '00000000-0000-4000-8000-000000000015'
+    ),
+    'legacy therapist accepted its own session for a shared client',
+    current_user
+  );
+
+  insert into role_smoke_results
+  values (
+    'therapist_schedule_foreign_therapist_denied',
+    not app.current_user_can_read_schedule_session(
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000101',
+      '00000000-0000-4000-8000-000000000013'
+    ),
+    'legacy therapist rejected another therapist session for a shared client',
+    current_user
+  );
+
   insert into role_smoke_results
   values (
     'therapist_helpers',
@@ -471,8 +536,8 @@ begin
     insert into role_smoke_results values ('therapist_program_note_write_denied', sqlstate = '42501', sqlstate || ': ' || sqlerrm, current_user);
   end;
 
-  select count(*)
-  into optimized_count
+  select count(*), min(session_data->>'therapist_id')
+  into optimized_count, optimized_therapist_id
   from public.get_sessions_optimized(now(), now() + interval '30 days');
   batch_data := public.get_schedule_data_batch(now(), now() + interval '30 days');
   dropdown_data := public.get_dropdown_data();
@@ -483,13 +548,16 @@ begin
     app.current_user_has_active_schedule_client('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101')
       and not app.current_user_has_active_schedule_client('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102')
       and optimized_count = 1
+      and optimized_therapist_id = '00000000-0000-4000-8000-000000000015'
       and jsonb_array_length(batch_data->'sessions') = 1
+      and batch_data->'sessions'->0->>'therapist_id' = '00000000-0000-4000-8000-000000000015'
       and jsonb_array_length(batch_data->'clients') = 1
       and batch_data->'clients'->0->>'id' = '00000000-0000-4000-8000-000000000101'
       and jsonb_array_length(dropdown_data->'clients') = 1
       and dropdown_data->'clients'->0->>'id' = '00000000-0000-4000-8000-000000000101'
       and jsonb_array_length(dropdown_data->'locations') = 0,
     'optimized=' || optimized_count
+      || ', optimized_therapist=' || optimized_therapist_id
       || ', batch_sessions=' || jsonb_array_length(batch_data->'sessions')
       || ', batch_clients=' || jsonb_array_length(batch_data->'clients')
       || ', dropdown_clients=' || jsonb_array_length(dropdown_data->'clients'),
@@ -530,9 +598,33 @@ declare
   cross_org_count int;
   historical_count int;
   optimized_count int;
+  optimized_therapist_id text;
   batch_data jsonb;
   dropdown_data jsonb;
 begin
+  insert into role_smoke_results
+  values (
+    'bt_schedule_matching_therapist_allowed',
+    app.current_user_can_read_schedule_session(
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000101',
+      '00000000-0000-4000-8000-000000000013'
+    ),
+    'BT accepted its own session for an assigned client',
+    current_user
+  );
+  insert into role_smoke_results
+  values (
+    'bt_schedule_foreign_therapist_denied',
+    not app.current_user_can_read_schedule_session(
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000101',
+      '00000000-0000-4000-8000-000000000015'
+    ),
+    'BT rejected another therapist session for an assigned client',
+    current_user
+  );
+
   insert into role_smoke_results
   values (
     'bt_helpers',
@@ -583,8 +675,8 @@ begin
   select count(*) into assigned_count from public.sessions where client_id = '00000000-0000-4000-8000-000000000101';
   select count(*) into unassigned_count from public.sessions where client_id = '00000000-0000-4000-8000-000000000102';
   select count(*) into historical_count from public.sessions where client_id = '00000000-0000-4000-8000-000000000107';
-  select count(*)
-  into optimized_count
+  select count(*), min(session_data->>'therapist_id')
+  into optimized_count, optimized_therapist_id
   from public.get_sessions_optimized(now(), now() + interval '30 days');
   batch_data := public.get_schedule_data_batch(now(), now() + interval '30 days');
   dropdown_data := public.get_dropdown_data();
@@ -592,11 +684,13 @@ begin
   insert into role_smoke_results
   values (
     'bt_schedule_rpc_client_scope',
-    assigned_count = 1
+    assigned_count = 2
       and unassigned_count = 0
       and historical_count = 0
       and optimized_count = 1
+      and optimized_therapist_id = '00000000-0000-4000-8000-000000000013'
       and jsonb_array_length(batch_data->'sessions') = 1
+      and batch_data->'sessions'->0->>'therapist_id' = '00000000-0000-4000-8000-000000000013'
       and jsonb_array_length(batch_data->'clients') = 1
       and batch_data->'clients'->0->>'id' = '00000000-0000-4000-8000-000000000101'
       and batch_data->'clients'->0 ? 'availability_hours'
@@ -611,6 +705,7 @@ begin
       || ', direct_unassigned=' || unassigned_count
       || ', direct_historical=' || historical_count
       || ', optimized=' || optimized_count
+      || ', optimized_therapist=' || optimized_therapist_id
       || ', batch_sessions=' || jsonb_array_length(batch_data->'sessions')
       || ', batch_clients=' || jsonb_array_length(batch_data->'clients')
       || ', dropdown_clients=' || jsonb_array_length(dropdown_data->'clients')
@@ -773,7 +868,8 @@ begin
     '00000000-0000-4000-8000-000000000503',
     '00000000-0000-4000-8000-000000000504',
     '00000000-0000-4000-8000-000000000505',
-    '00000000-0000-4000-8000-000000000506'
+    '00000000-0000-4000-8000-000000000506',
+    '00000000-0000-4000-8000-000000000507'
   );
 
   delete from public.authorization_services
@@ -877,7 +973,7 @@ from (
   union all select id from public.programs where id in ('00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000204', '00000000-0000-4000-8000-000000000205')
   union all select id from public.program_notes where id in ('00000000-0000-4000-8000-000000000801', '00000000-0000-4000-8000-000000000802', '00000000-0000-4000-8000-000000000803', '00000000-0000-4000-8000-000000000804')
   union all select id from public.goals where id in ('00000000-0000-4000-8000-000000000301', '00000000-0000-4000-8000-000000000302', '00000000-0000-4000-8000-000000000303', '00000000-0000-4000-8000-000000000304')
-  union all select id from public.sessions where id in ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000502', '00000000-0000-4000-8000-000000000503', '00000000-0000-4000-8000-000000000504', '00000000-0000-4000-8000-000000000505', '00000000-0000-4000-8000-000000000506')
+  union all select id from public.sessions where id in ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000502', '00000000-0000-4000-8000-000000000503', '00000000-0000-4000-8000-000000000504', '00000000-0000-4000-8000-000000000505', '00000000-0000-4000-8000-000000000506', '00000000-0000-4000-8000-000000000507')
   union all select id from public.authorizations where id in ('00000000-0000-4000-8000-000000000401', '00000000-0000-4000-8000-000000000402', '00000000-0000-4000-8000-000000000403', '00000000-0000-4000-8000-000000000404', '00000000-0000-4000-8000-000000000405', '00000000-0000-4000-8000-000000000406')
   union all select id from public.goal_data_points where id in ('00000000-0000-4000-8000-000000000601', '00000000-0000-4000-8000-000000000602')
 ) residue;

@@ -1024,7 +1024,10 @@ export const Schedule = React.memo(() => {
       parts.push("Week-forward on");
     }
     if (therapistScopedView) {
-      parts.push("All therapists");
+      const scopedTherapistName = selectedTherapist
+        ? (visibleTherapists.find((x) => x.id === selectedTherapist)?.full_name ?? "Assigned therapist")
+        : "Assigned therapist";
+      parts.push(scopedTherapistName);
       parts.push(
         selectedClient
           ? (visibleClients.find((x) => x.id === selectedClient)?.full_name ?? "Client")

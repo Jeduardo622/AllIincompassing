@@ -41,6 +41,26 @@ const guardDefinitions: readonly GuardWithMatcher[] = [
     supabasePolicies: ['public.get_payroll_day: authenticated_execute'],
   }),
   createGuard({
+    path: '/time/review',
+    allowedRoles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
+    requiredPermissions: [],
+    supabasePolicies: [
+      'public.get_payroll_review_queue: authenticated_execute',
+      'public.get_payroll_review_details: authenticated_execute',
+    ],
+  }),
+  createGuard({
+    path: '/payroll',
+    allowedRoles: ['admin', 'super_admin'],
+    requiredPermissions: [],
+    supabasePolicies: [
+      'public.get_payroll_administration: authenticated_execute',
+      'public.get_payroll_review_queue: authenticated_execute',
+      'public.get_payroll_review_details: authenticated_execute',
+      'public.transition_timesheet_approval: authenticated_execute',
+    ],
+  }),
+  createGuard({
     path: '/clients',
     allowedRoles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
     requiredPermissions: ['view_clients'],

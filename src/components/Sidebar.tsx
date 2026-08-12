@@ -21,6 +21,10 @@ import { canAccessDashboardRoute } from '../lib/dashboardAccess';
 import type { AppRole } from '../lib/roles';
 import { usePayrollDayReadOnly } from "../features/payroll/usePayrollTime";
 import { usePayrollApprovals } from "../features/payroll/usePayrollApprovals";
+import {
+  hasAnyPayrollAdministrationCapability,
+} from "../features/payroll/administrationApi";
+import { usePayrollAdministration } from "../features/payroll/usePayrollAdministration";
 // Theme is toggled directly via context; no hidden proxy button
 import { logger } from '../lib/logger/logger';
 
@@ -94,6 +98,20 @@ export function Sidebar() {
       payrollApprovals.payrollReviewQueueQuery.data.capabilities.canReviewAssigned
       || payrollApprovals.payrollReviewQueueQuery.data.capabilities.canApproveAssigned
     );
+  const payrollAdministration = usePayrollAdministration(
+    {
+      organizationId: organizationId ?? 'NO_ORG',
+      userId: user?.id ?? 'NO_USER',
+      localDate: resolveBrowserLocalDate(),
+    },
+    {
+      enabled: Boolean(organizationId && user?.id && ['admin', 'super_admin'].includes(effectiveRole)),
+      queueEnabled: false,
+      selectedReview: null,
+    },
+  );
+  const canShowPayrollNavigation = payrollAdministration.administrationQuery.data?.state === 'ok'
+    && hasAnyPayrollAdministrationCapability(payrollAdministration.administrationQuery.data.capabilities);
 
   const handleSignOut = async () => {
     if (isSigningOut) return;
@@ -185,6 +203,14 @@ export function Sidebar() {
       roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
       hidden: !canShowTimeReviewNavigation,
+    },
+    {
+      icon: Calendar,
+      label: 'Payroll',
+      path: '/payroll',
+      roles: ['admin', 'super_admin'] as AppRole[],
+      requiresGuardian: false,
+      hidden: !canShowPayrollNavigation,
     },
     {
       icon: Mail,

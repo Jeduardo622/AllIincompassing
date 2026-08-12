@@ -113,6 +113,9 @@ vi.mock('../../pages/Account', () => ({
 vi.mock('../../pages/TimeReview', () => ({
   TimeReview: () => <div>TimeReviewPage</div>,
 }));
+vi.mock('../../pages/Payroll', () => ({
+  Payroll: () => <div>PayrollPage</div>,
+}));
 
 vi.mock('../../pages/SuperAdminFeatureFlags', () => ({
   SuperAdminFeatureFlags: () => <div>SuperAdminFeatureFlagsPage</div>,
@@ -410,6 +413,34 @@ describe('App navigation landing', () => {
 
       expect(await screen.findByText('TimeReviewPage')).toBeInTheDocument();
       expect(window.location.pathname).toBe('/time/review');
+      view.unmount();
+    },
+  );
+
+  it.each(['admin', 'super_admin'] as const)(
+    'allows %s to deep-link to payroll',
+    async (role) => {
+      authRole = role;
+      window.history.pushState({}, '', '/payroll');
+      const view = renderApp();
+
+      expect(await screen.findByText('PayrollPage')).toBeInTheDocument();
+      expect(window.location.pathname).toBe('/payroll');
+      view.unmount();
+    },
+  );
+
+  it.each(['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'bcba'] as const)(
+    'blocks %s from payroll',
+    async (role) => {
+      authRole = role;
+      window.history.pushState({}, '', '/payroll');
+      const view = renderApp();
+
+      await waitFor(() => {
+        expect(window.location.pathname).toBe('/unauthorized');
+      });
+
       view.unmount();
     },
   );

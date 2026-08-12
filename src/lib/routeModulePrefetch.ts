@@ -5,6 +5,7 @@ const routeModulePreloaders: Record<string, RouteModulePreloader> = {
   '/schedule': () => import('../pages/Schedule'),
   '/time': () => import('../pages/Time'),
   '/time/review': () => import('../pages/TimeReview'),
+  '/payroll': () => import('../pages/Payroll'),
   '/messages': () => import('../pages/messages/MessagesInbox'),
   '/clients': () => import('../pages/Clients'),
   '/therapists': () => import('../pages/Therapists'),

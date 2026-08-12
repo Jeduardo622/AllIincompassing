@@ -12,6 +12,8 @@ const expectedPaths = [
   '/',
   '/schedule',
   '/time',
+  '/time/review',
+  '/payroll',
   '/clients',
   '/clients/new',
   '/clients/:clientId',
@@ -122,6 +124,20 @@ describe('route guard access controls', () => {
     expect(hasRoleAccess('/time', 'admin')).toBe(true);
     expect(hasRoleAccess('/time', 'bcba')).toBe(true);
     expect(hasRoleAccess('/time', 'super_admin')).toBe(true);
+  });
+
+  it('permits time review to the assigned-review role set only', () => {
+    expect(hasRoleAccess('/time/review', 'client')).toBe(false);
+    expect(hasRoleAccess('/time/review', 'bt')).toBe(true);
+    expect(hasRoleAccess('/time/review', 'admin')).toBe(true);
+    expect(hasRoleAccess('/time/review', 'super_admin')).toBe(true);
+  });
+
+  it('restricts payroll administration to admin and super admin only', () => {
+    expect(hasRoleAccess('/payroll', 'admin')).toBe(true);
+    expect(hasRoleAccess('/payroll', 'super_admin')).toBe(true);
+    expect(hasRoleAccess('/payroll', 'bcba')).toBe(false);
+    expect(hasRoleAccess('/payroll', 'therapist')).toBe(false);
   });
 
   it('allows canonical BT users to access fill-docs after therapist role normalization', () => {

@@ -345,3 +345,12 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - Verification: clean local reset/typegen; 46/46 real loopback, migration, and RLS contracts; policy, tenant validation, typecheck, build; 8 GB aggregate `test:ci` with 507 files and 4,436 tests passed, 37 environment-gated skips.
 - Review: code, security, Supabase, test, and performance reviewers approved the fix range after one complete critical finding batch.
 - State: database checkpoint complete; protected approval transport is the next bounded checkpoint. No hosted migration, deploy, activation, merge, or export work occurred.
+
+### Task 4 Protected Approval Transport
+
+- Head: `45827440`; exact API: `POST /api/payroll-approvals`.
+- Actions: employee submit, assigned-manager approve/return, payroll-admin lock/reopen, and payroll-admin snapshot-bound blocker resolution.
+- Boundary: caller JWT only; recursive authority-field rejection; strict request and response schemas; exact authoritative idempotency echo; equivalent Node/Edge typed errors; direct Edge actor rate limiting; no raw compensation fields.
+- Verification: client/server/static 55/55, Edge 15/15, approval RPC 15/15, snapshot RPC 21/21, policy, lint, typecheck, tenant validation, build, and tier-0 routes 228/228.
+- Review: code, security, and DevOps reviewers approved after three bounded fix rounds.
+- State: transport checkpoint complete. Manager/payroll-administration read models and UI remain Task 4 work. Credentialed `ci:playwright` remains locally blocked; no hosted migration, deployment, activation, merge, PHI, customer data, secrets, or `.env*` access occurred.

@@ -181,7 +181,7 @@ describe("sessionsStartHandler", () => {
     expect(vi.mocked(fetchJson).mock.calls[1]?.[0]).toContain("/user_therapist_links");
   });
 
-  it("allows linked therapist users to start sessions assigned to their therapist row id", async () => {
+  it("uses caller-scoped headers when a linked therapist starts an assigned session", async () => {
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-key");
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken("auth-user-1"));
     vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
@@ -249,13 +249,13 @@ describe("sessionsStartHandler", () => {
       "/user_therapist_links?select=therapist_id&user_id=eq.auth-user-1&therapist_id=eq.therapist-row-1",
     );
     expect(vi.mocked(fetchJson).mock.calls[1]?.[1]?.headers).toEqual(expect.objectContaining({
-      apikey: "service-key",
-      Authorization: "Bearer service-key",
+      apikey: "anon",
+      Authorization: `Bearer ${createAuthToken("auth-user-1")}`,
     }));
     expect(vi.mocked(fetchJson).mock.calls[2]?.[0]).toContain("/rpc/start_session_with_goals");
   });
 
-  it("returns 502 when linked therapist lookup fails upstream", async () => {
+  it.each([401, 503])("returns 502 when linked therapist lookup fails with %i", async (status) => {
     vi.mocked(getAccessToken).mockReturnValue(createAuthToken("auth-user-1"));
     vi.mocked(fetchAuthenticatedUserIdWithStatus).mockResolvedValue({
       userId: "auth-user-1",
@@ -290,7 +290,7 @@ describe("sessionsStartHandler", () => {
       })
       .mockResolvedValueOnce({
         ok: false,
-        status: 503,
+        status,
         data: null,
       });
 
@@ -629,6 +629,7 @@ describe("sessionsStartHandler", () => {
     );
 
     expect(response.status).toBe(404);
+    expect(vi.mocked(fetchJson)).toHaveBeenCalledTimes(1);
   });
 
   it("returns 400 when RPC reports invalid goal set", async () => {

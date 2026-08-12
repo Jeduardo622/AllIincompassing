@@ -149,3 +149,48 @@ The BT Start Session action is restored only for a valid assigned scheduled appo
 - generated artifact drift: none
 - protected-path drift: limited to the two declared `src/server/**` handlers
 - pr-ready: yes for critical-lane human review; exact-head CI must resolve the blocked checks before merge
+
+## CI Install Reliability Follow-Up (2026-08-12)
+
+### Routing And Scope
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- triggering paths: `.github/workflows/ci.yml` and `scripts/ci/npm-ci-with-retry.mjs`
+- allowed files: the main CI workflow, the retry wrapper, its focused test, and this WIN-219 handoff
+- non-goals: no application, auth, Supabase runtime, migration, dependency, lockfile, runner-image, cache, or other workflow changes
+- stop condition: any fix requiring package-manager policy changes or files outside the declared four-file boundary must be re-routed
+
+### Incident And Change
+
+- Required PR jobs repeatedly failed before their checks ran because the Supabase CLI postinstall could not reliably download its GitHub release checksum/archive. Observed failures included `ECONNRESET`, `503 Service Unavailable`, and a corrupt partial archive.
+- All 14 dependency-install steps in the main CI workflow now call one repository-owned wrapper instead of raw `npm ci`.
+- The wrapper performs at most three attempts, waits 10 seconds and then 20 seconds between failures, and preserves the final nonzero exit. It uses the Windows system shell only for the fixed literal `npm ci` command required by the npm command shim; it does not accept command input, skip checks, use `continue-on-error`, change credentials, or alter install arguments.
+- Other workflows remain unchanged; this slice only hardens the required PR workflow where the failures were observed.
+
+### Verification Card
+
+- required checks: focused retry/workflow tests, direct workflow validation, `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run build`, and `npm run verify:local` when local prerequisites allow it
+- TDD red: focused test failed because `scripts/ci/npm-ci-with-retry.mjs` did not exist
+- executed checks:
+  - focused retry/workflow test: pass (`5/5`), including real direct execution against a synthetic dependency-free package on Windows
+  - workflow binding: pass (14 guarded installs; zero raw `npm ci` steps)
+  - `npm run ci:check-focused`: pass; connection-backed checks skipped because no database URL was configured
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run build`: pass
+  - isolated rerun of the full-suite failures: pass (`123/123` across `ProgramsGoalsTab` and `TherapistOnboarding`)
+- blocked checks:
+  - `npm run test:ci`: nonzero under full local parallel load due UI lookup/timeouts and two Vitest worker `onTaskUpdate` timeouts; the named failing files pass in isolation and the new CI retry test passes independently
+  - `npm run verify:local`: not repeated because it includes the same nonzero full-suite command; its policy, lint, typecheck, focused-test, and build components were executed directly
+- result: `pass-with-blocked-checks`; exact-head GitHub CI is the authoritative runner verification for this workflow-only follow-up
+- residual risk: an upstream outage lasting beyond the bounded retry window still fails closed; human review and exact-head required CI remain mandatory
+
+### Delegated Review And PR Hygiene
+
+- implementation review: approved after replacing the Windows `npm.cmd` launch that reproduced `spawn EINVAL`; the direct-execution regression test now covers the fixed path
+- code review: approved with no remaining findings
+- security review: approved; the Windows shell receives only the fixed literal `npm ci` command, and failure/secret behavior remains fail-closed and unchanged
+- test review: approved; no must-fix coverage gaps remain after the direct-execution integration test
+- CI architecture review: workflow topology and all 14 substitutions remain intact; a truly stalled install remains governed by the existing job timeout and is outside this fast-failure incident scope
+- pr-ready: yes for critical-lane human review after exact-head required CI; merge-ready remains no until human review completes

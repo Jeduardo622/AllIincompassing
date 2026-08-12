@@ -11,6 +11,110 @@ declare
   v_definition text;
   v_repaired text;
 begin
+  select pg_catalog.pg_get_functiondef('public.get_payroll_review_queue(date)'::regprocedure)
+  into v_definition;
+
+  v_repaired := replace(
+    v_definition,
+    $needle$v_has_org_payroll_access := v_can_configure_employment
+    or v_can_resolve_exceptions
+    or v_can_lock_period
+    or v_can_reopen_period
+    or v_can_export_period
+    or v_can_view_compensation;$needle$,
+    $replacement$v_has_org_payroll_access := v_can_configure_employment
+    or v_can_resolve_exceptions
+    or v_can_lock_period
+    or v_can_reopen_period
+    or v_can_view_compensation;$replacement$
+  );
+
+  if v_repaired = v_definition then
+    raise exception 'review queue capability-output repair target was not found';
+  end if;
+
+  v_definition := v_repaired;
+
+  v_repaired := replace(
+    v_definition,
+    $needle$v_can_review_assigned
+            or v_can_approve_assigned
+            or v_can_configure_employment
+            or v_can_resolve_exceptions
+            or v_can_export_period
+            or v_can_view_compensation$needle$,
+    $replacement$v_can_review_assigned
+            or v_can_approve_assigned
+            or v_can_configure_employment
+            or v_can_resolve_exceptions
+            or v_can_view_compensation$replacement$
+  );
+
+  if v_repaired = v_definition then
+    raise exception 'review queue export-only repair target was not found';
+  end if;
+
+  execute v_repaired;
+end
+$$;
+
+do $$
+declare
+  v_definition text;
+  v_repaired text;
+begin
+  select pg_catalog.pg_get_functiondef('public.get_payroll_review_details(uuid, text)'::regprocedure)
+  into v_definition;
+
+  v_repaired := replace(
+    v_definition,
+    $needle$v_has_org_payroll_access := v_can_configure_employment
+    or v_can_resolve_exceptions
+    or v_can_lock_period
+    or v_can_reopen_period
+    or v_can_export_period
+    or v_can_view_compensation;$needle$,
+    $replacement$v_has_org_payroll_access := v_can_configure_employment
+    or v_can_resolve_exceptions
+    or v_can_lock_period
+    or v_can_reopen_period
+    or v_can_view_compensation;$replacement$
+  );
+
+  if v_repaired = v_definition then
+    raise exception 'review details capability-output repair target was not found';
+  end if;
+
+  v_definition := v_repaired;
+
+  v_repaired := replace(
+    v_definition,
+    $needle$v_can_review_assigned
+        or v_can_approve_assigned
+        or v_can_configure_employment
+        or v_can_resolve_exceptions
+        or v_can_export_period
+        or v_can_view_compensation$needle$,
+    $replacement$v_can_review_assigned
+        or v_can_approve_assigned
+        or v_can_configure_employment
+        or v_can_resolve_exceptions
+        or v_can_view_compensation$replacement$
+  );
+
+  if v_repaired = v_definition then
+    raise exception 'review details export-only repair target was not found';
+  end if;
+
+  execute v_repaired;
+end
+$$;
+
+do $$
+declare
+  v_definition text;
+  v_repaired text;
+begin
   select pg_catalog.pg_get_functiondef('public.execute_payroll_administration(jsonb, text)'::regprocedure)
   into v_definition;
 

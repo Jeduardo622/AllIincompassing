@@ -87,4 +87,18 @@ describe("payroll approval workflow repair migration contract", () => {
     expect(sql).not.toMatch(/grant insert on public\.timesheet_approvals to authenticated/i);
     expect(sql).not.toMatch(/alter table public\.timesheet_approvals disable row level security/i);
   });
+
+  it("removes export-only review authority from the repaired queue and details functions without weakening authorized review/admin paths", () => {
+    expect(sql).toMatch(/pg_get_functiondef\('public\.get_payroll_review_queue\(date\)'::regprocedure\)/i);
+    expect(sql).toMatch(/pg_get_functiondef\('public\.get_payroll_review_details\(uuid,\s*text\)'::regprocedure\)/i);
+    expect(sql).toMatch(/review queue export-only repair target was not found/i);
+    expect(sql).toMatch(/review details export-only repair target was not found/i);
+    expect(sql).toMatch(/review queue capability-output repair target was not found/i);
+    expect(sql).toMatch(/payroll\.configure_employment/i);
+    expect(sql).toMatch(/payroll\.resolve_exceptions/i);
+    expect(sql).toMatch(/payroll\.lock_period/i);
+    expect(sql).toMatch(/payroll\.reopen_period/i);
+    expect(sql).toMatch(/time\.review_assigned/i);
+    expect(sql).toMatch(/time\.approve_assigned/i);
+  });
 });

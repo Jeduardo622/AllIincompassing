@@ -316,6 +316,178 @@ const seedSubmittedSnapshot = async (client: Client) => {
   };
 };
 
+const seedReviewSnapshotChain = async (
+  client: Client,
+  currentState: "submitted" | "manager_approved" = "submitted",
+) => {
+  const policyId = (
+    await client.query(
+      `select id
+       from public.payroll_policy_versions
+       where organization_id = $1::uuid
+       order by effective_from desc, created_at desc, id desc
+       limit 1`,
+      [IDS.orgA],
+    )
+  ).rows[0].id as string;
+
+  const snapshotId = (
+    await client.query(
+      `insert into public.timesheet_snapshots (
+         organization_id,
+         employment_profile_id,
+         pay_period_id,
+         policy_version_id,
+         source_hash,
+         source_high_water,
+         canonical_payload,
+         regular_seconds,
+         overtime_seconds,
+         double_time_seconds,
+         meal_premium_cents,
+         gross_earnings_cents,
+         lockable,
+         created_by
+       ) values (
+         $1::uuid,
+         $2::uuid,
+         $3::uuid,
+         $4::uuid,
+         repeat('1', 64),
+         '{}'::jsonb,
+         jsonb_build_object(
+           'period',
+           jsonb_build_object(
+             'employmentProfileId', $2::text,
+             'payPeriodId', $3::text,
+             'periodStart', '2026-08-11',
+             'periodEnd', '2026-08-17',
+             'events', jsonb_build_array(
+               jsonb_build_object('id', '00000000-0000-4000-8000-000000000101', 'eventType', 'shift_started', 'occurredAt', '2026-08-11T16:00:00Z', 'timezone', 'America/Los_Angeles', 'workLocation', 'office', 'workCategory', null),
+               jsonb_build_object('id', '00000000-0000-4000-8000-000000000102', 'eventType', 'shift_ended', 'occurredAt', '2026-08-11T20:00:00Z', 'timezone', 'America/Los_Angeles', 'workLocation', 'office', 'workCategory', null)
+             ),
+             'timeCorrectionRequests', '[]'::jsonb,
+             'sessionAttendanceCorrectionRequests', '[]'::jsonb,
+             'exceptions', '[]'::jsonb
+           )
+         ),
+         14400,
+         0,
+         0,
+         0,
+         12000,
+         true,
+         $5::uuid
+       )
+       returning id`,
+      [IDS.orgA, IDS.employmentA, IDS.payPeriodA, policyId, IDS.employeeA],
+    )
+  ).rows[0].id as string;
+  const snapshotHash = await getSnapshotHash(client, snapshotId);
+
+  await client.query(
+    `insert into public.timesheet_snapshot_current_heads (
+       organization_id,
+       employment_profile_id,
+       pay_period_id,
+       snapshot_id,
+       source_hash,
+       prior_snapshot_id,
+       created_by
+     ) values (
+       $1::uuid,
+       $2::uuid,
+       $3::uuid,
+       $4::uuid,
+       repeat('1', 64),
+       null,
+       $5::uuid
+     )`,
+    [IDS.orgA, IDS.employmentA, IDS.payPeriodA, snapshotId, IDS.employeeA],
+  );
+
+  const submittedId = (
+    await client.query(
+      `insert into public.timesheet_approvals (
+         organization_id,
+         employment_profile_id,
+         pay_period_id,
+         snapshot_id,
+         snapshot_hash,
+         actor_user_id,
+         action,
+         previous_transition_id,
+         attestation,
+         comment,
+         reason,
+         idempotency_key,
+         payload_hash,
+         occurred_at,
+         received_at
+       ) values (
+         $1::uuid,
+         $2::uuid,
+         $3::uuid,
+         $4::uuid,
+         $5::text,
+         $6::uuid,
+         'submitted',
+         null,
+         true,
+         null,
+         null,
+         $7::text,
+         repeat('2', 64),
+         '2026-08-11T21:00:00Z'::timestamptz,
+         '2026-08-11T21:00:00Z'::timestamptz
+       )
+       returning id`,
+      [IDS.orgA, IDS.employmentA, IDS.payPeriodA, snapshotId, snapshotHash, IDS.employeeA, `seed-review-${currentState}`],
+    )
+  ).rows[0].id as string;
+
+  if (currentState === "manager_approved") {
+    await client.query(
+      `insert into public.timesheet_approvals (
+         organization_id,
+         employment_profile_id,
+         pay_period_id,
+         snapshot_id,
+         snapshot_hash,
+         actor_user_id,
+         action,
+         previous_transition_id,
+         attestation,
+         comment,
+         reason,
+         idempotency_key,
+         payload_hash,
+         occurred_at,
+         received_at
+       ) values (
+         $1::uuid,
+         $2::uuid,
+         $3::uuid,
+         $4::uuid,
+         $5::text,
+         $6::uuid,
+         'manager_approved',
+         $7::uuid,
+         null,
+         null,
+         null,
+         $8::text,
+         repeat('3', 64),
+         '2026-08-11T22:00:00Z'::timestamptz,
+         '2026-08-11T22:00:00Z'::timestamptz
+       )`,
+      [IDS.orgA, IDS.employmentA, IDS.payPeriodA, snapshotId, snapshotHash, IDS.managerA, submittedId, "seed-review-manager-approved"],
+    );
+  }
+
+  return { snapshotId, snapshotHash };
+};
+
 describe.skipIf(!hasSafeLocalDatabase)("payroll review read models rpc runtime contract", () => {
   let admin: Client;
 
@@ -775,7 +947,6 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll review read models rpc runtime c
     "payroll.lock_period",
     "payroll.reopen_period",
     "payroll.configure_employment",
-    "payroll.export_period",
     "payroll.view_compensation",
   ] as const)("admits an eligible org payroll actor with only %s", async (capability) => {
     const seeded = await seedSubmittedSnapshot(admin);
@@ -800,6 +971,78 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll review read models rpc runtime c
       },
       queue: [expect.objectContaining({ snapshot: expect.objectContaining({ id: seeded.snapshotId }) })],
     });
+  });
+
+  it("allows the assigned manager and explicit payroll admin review paths on a seeded immutable snapshot chain", async () => {
+    const seeded = await seedReviewSnapshotChain(admin, "manager_approved");
+
+    await expect(getReviewQueue(admin, IDS.managerA)).resolves.toMatchObject({
+      state: "ok",
+      capabilities: expect.objectContaining({
+        canReviewAssigned: true,
+        hasOrgPayrollAccess: false,
+      }),
+      queue: [
+        expect.objectContaining({
+          state: "manager_approved",
+          snapshot: expect.objectContaining({
+            id: seeded.snapshotId,
+            hash: seeded.snapshotHash,
+          }),
+        }),
+      ],
+    });
+
+    await expect(getReviewDetails(admin, IDS.managerA, seeded.snapshotId, seeded.snapshotHash)).resolves.toMatchObject({
+      state: "ok",
+      snapshotId: seeded.snapshotId,
+      snapshotHash: seeded.snapshotHash,
+    });
+
+    await expect(getReviewQueue(admin, IDS.adminA)).resolves.toMatchObject({
+      state: "ok",
+      capabilities: expect.objectContaining({
+        hasOrgPayrollAccess: true,
+      }),
+      queue: [
+        expect.objectContaining({
+          state: "manager_approved",
+          snapshot: expect.objectContaining({
+            id: seeded.snapshotId,
+          }),
+        }),
+      ],
+    });
+  });
+
+  it("denies review queue and details to an admin-role export-only actor and never treats export as review access", async () => {
+    const adminRoleId = (
+      await admin.query(`select id from public.roles where name = 'admin' limit 1`)
+    ).rows[0].id;
+    await admin.query(
+      `update public.user_roles
+       set role_id = $2::uuid
+       where user_id = $1::uuid`,
+      [IDS.linkOnlyA, adminRoleId],
+    );
+
+    const seeded = await seedReviewSnapshotChain(admin, "manager_approved");
+    await admin.query(
+      `insert into public.payroll_capability_grants (
+         organization_id, user_id, capability, effective_from, granted_by
+       ) values ($1::uuid, $2::uuid, 'payroll.export_period', '2026-08-01T00:00:00Z', $3::uuid)
+       on conflict do nothing`,
+      [IDS.orgA, IDS.linkOnlyA, IDS.adminA],
+    );
+
+    await expect(getReviewQueue(admin, IDS.linkOnlyA)).rejects.toThrow();
+    await expect(getReviewDetails(admin, IDS.linkOnlyA, seeded.snapshotId, seeded.snapshotHash)).rejects.toThrow();
+
+    await insertTimeEvent(admin, "shift_started", "2026-08-12T16:00:00Z");
+    await insertTimeEvent(admin, "shift_ended", "2026-08-12T20:00:00Z");
+
+    await expect(getReviewQueue(admin, IDS.linkOnlyA)).rejects.toThrow();
+    await expect(getReviewDetails(admin, IDS.linkOnlyA, seeded.snapshotId, seeded.snapshotHash)).rejects.toThrow();
   });
 
   it("returns canonical feature and policy states for disabled, unsupported, and missing-policy periods", async () => {

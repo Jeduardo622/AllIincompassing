@@ -375,6 +375,42 @@ describe("payroll timekeeping tenant and RLS contract", () => {
     expect(reviewReadModelsSql).not.toMatch(/grant select on public\.timesheet_snapshot_lines to authenticated,\s*service_role/i);
   });
 
+  it("keeps payroll administration rpc execution authenticated-only and off direct admin-table deletes", () => {
+    const administrationMigrationName =
+      readdirSync(path.join(process.cwd(), "supabase", "migrations")).find((name) =>
+        name.endsWith("payroll_administration.sql"),
+      ) ?? "";
+    const administrationSql = administrationMigrationName
+      ? readFileSync(
+          path.join(process.cwd(), "supabase", "migrations", administrationMigrationName),
+          "utf8",
+        )
+      : "";
+
+    expect(administrationSql).toMatch(
+      /revoke all on function public\.execute_payroll_administration\(jsonb, text\) from public,\s*anon,\s*service_role/i,
+    );
+    expect(administrationSql).toMatch(
+      /grant execute on function public\.execute_payroll_administration\(jsonb, text\) to authenticated/i,
+    );
+    expect(administrationSql).not.toMatch(
+      /grant execute on function public\.execute_payroll_administration\(jsonb, text\) to authenticated,\s*service_role/i,
+    );
+    expect(administrationSql).toMatch(
+      /revoke all on function public\.get_payroll_administration\(date\) from public,\s*anon,\s*service_role/i,
+    );
+    expect(administrationSql).toMatch(
+      /grant execute on function public\.get_payroll_administration\(date\) to authenticated/i,
+    );
+    expect(administrationSql).not.toMatch(
+      /grant delete on public\.pay_group_generation_versions to authenticated/i,
+    );
+    expect(administrationSql).not.toMatch(
+      /grant delete on public\.pay_periods to authenticated/i,
+    );
+    expect(administrationSql).not.toMatch(/grant select on public\.employee_rate_versions to service_role/i);
+  });
+
   it("binds review reads to exact current assignment or explicit payroll grants without exposing non-payroll fields", () => {
     const queueDefinition = functionDefinition("public.get_payroll_review_queue");
     const detailsDefinition = functionDefinition("public.get_payroll_review_details");

@@ -6162,10 +6162,81 @@ export type Database = {
           },
         ]
       }
+      pay_group_generation_versions: {
+        Row: {
+          cadence: Database["public"]["Enums"]["pay_group_cadence"]
+          created_at: string
+          created_by: string
+          effective_from: string
+          effective_through: string | null
+          id: string
+          organization_id: string
+          pay_group_id: string
+          starts_on: string
+          timezone: string
+        }
+        Insert: {
+          cadence: Database["public"]["Enums"]["pay_group_cadence"]
+          created_at?: string
+          created_by: string
+          effective_from: string
+          effective_through?: string | null
+          id?: string
+          organization_id: string
+          pay_group_id: string
+          starts_on: string
+          timezone: string
+        }
+        Update: {
+          cadence?: Database["public"]["Enums"]["pay_group_cadence"]
+          created_at?: string
+          created_by?: string
+          effective_from?: string
+          effective_through?: string | null
+          id?: string
+          organization_id?: string
+          pay_group_id?: string
+          starts_on?: string
+          timezone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pay_group_generation_versions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pay_group_generation_versions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "pay_group_generation_versions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pay_group_generation_versions_pay_group_id_organization_id_fkey"
+            columns: ["pay_group_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "pay_groups"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
       pay_groups: {
         Row: {
           cadence: Database["public"]["Enums"]["pay_group_cadence"]
           created_at: string
+          created_by: string | null
+          effective_from: string
+          effective_through: string | null
           id: string
           name: string
           organization_id: string
@@ -6174,6 +6245,9 @@ export type Database = {
         Insert: {
           cadence: Database["public"]["Enums"]["pay_group_cadence"]
           created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          effective_through?: string | null
           id?: string
           name: string
           organization_id: string
@@ -6182,12 +6256,29 @@ export type Database = {
         Update: {
           cadence?: Database["public"]["Enums"]["pay_group_cadence"]
           created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          effective_through?: string | null
           id?: string
           name?: string
           organization_id?: string
           timezone?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "pay_groups_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pay_groups_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
           {
             foreignKeyName: "pay_groups_organization_id_fkey"
             columns: ["organization_id"]
@@ -6656,6 +6747,9 @@ export type Database = {
       payroll_organization_settings: {
         Row: {
           created_at: string
+          created_by: string | null
+          effective_from: string
+          effective_through: string | null
           external_payroll_organization_id: string
           id: string
           organization_id: string
@@ -6666,6 +6760,9 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          effective_through?: string | null
           external_payroll_organization_id: string
           id?: string
           organization_id: string
@@ -6676,6 +6773,9 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          effective_through?: string | null
           external_payroll_organization_id?: string
           id?: string
           organization_id?: string
@@ -6686,9 +6786,23 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "payroll_organization_settings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_organization_settings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "payroll_organization_settings_organization_id_fkey"
             columns: ["organization_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -10963,6 +11077,10 @@ export type Database = {
         Args: { p_user_id: string }
         Returns: undefined
       }
+      execute_payroll_administration: {
+        Args: { p_idempotency_key: string; p_payload: Json }
+        Returns: Json
+      }
       expire_agent_work_approvals: {
         Args: { p_max_items_per_pass: number; p_now: string }
         Returns: Json
@@ -11342,6 +11460,10 @@ export type Database = {
       get_organization_id_from_metadata: {
         Args: { p_metadata: Json }
         Returns: string
+      }
+      get_payroll_administration: {
+        Args: { selected_local_date: string }
+        Returns: Json
       }
       get_payroll_day: { Args: { local_date: string }; Returns: Json }
       get_payroll_review_details: {

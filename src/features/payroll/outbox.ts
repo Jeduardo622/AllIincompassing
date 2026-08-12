@@ -119,6 +119,28 @@ const validateOutboxPayload = (
   return validatePayrollSessionAttendancePayload(payload as PayrollSessionAttendancePayload) as Record<string, unknown>;
 };
 
+const canonicalizeRetainedSessionAttendancePayload = (
+  payload: Record<string, unknown>,
+): Record<string, unknown> => {
+  const validated = validatePayrollSessionAttendancePayload(
+    payload as PayrollSessionAttendancePayload,
+  );
+  const data = {
+    eventType: validated.data.eventType,
+    sessionId: validated.data.sessionId,
+    ...(validated.data.employeeTimeEventId !== undefined
+      ? { employeeTimeEventId: validated.data.employeeTimeEventId }
+      : {}),
+  };
+
+  return {
+    occurredAt: validated.occurredAt,
+    timezone: validated.timezone,
+    workLocation: validated.workLocation,
+    data,
+  };
+};
+
 const withPendingState = (event: PendingPayrollEvent): PendingPayrollEvent => ({
   ...event,
   state: "pending",
@@ -160,12 +182,6 @@ const getScopedRetainedEvent = (
   const event = events.find((candidate) => candidate.storageKey === scopedStorageKey);
   if (!event) {
     throw new Error("No retained payroll outbox event exists for the scoped user and key.");
-  }
-  const collisions = events.filter((candidate) =>
-    candidate.idempotencyKey === idempotencyKey && !isMatchingScope(candidate, scope)
-  );
-  if (collisions.length > 0) {
-    throw new Error("Retained payroll outbox event key is not unique to the scoped user.");
   }
   if (event.state === "needs_attention" || event.safeCode) {
     throw new Error("Retained payroll outbox event requires attention.");
@@ -405,7 +421,9 @@ export async function enqueuePayrollOutboxEvent(
     const idempotencyKey = assertNonEmptyKey(input.idempotencyKey);
     const retainForClinical = input.retainForClinical === true;
     assertRetainForClinicalInput(input.action, retainForClinical);
-    const payload = validateOutboxPayload(input.action, input.payload);
+    const payload = retainForClinical
+      ? canonicalizeRetainedSessionAttendancePayload(input.payload)
+      : validateOutboxPayload(input.action, input.payload);
     const existingEvents = await input.store.list();
     const enqueueSequence = existingEvents.reduce(
       (maxSequence, event) => Math.max(maxSequence, event.enqueueSequence),
@@ -530,8 +548,9 @@ export async function reconfirmRetainedPayrollOutboxEvent(
       });
       return result;
     } catch (error) {
-      if ((error as { code?: unknown })?.code === "state_conflict") {
-        await input.store.markFailed(event.storageKey, "state_conflict");
+      const safeCode = (error as { code?: unknown })?.code;
+      if (safeCode === "state_conflict" || safeCode === "idempotency_mismatch") {
+        await input.store.markFailed(event.storageKey, safeCode);
         throw error;
       }
 

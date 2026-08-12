@@ -596,6 +596,69 @@ describe("payroll outbox", () => {
     ]);
   });
 
+  it("persists and replays only canonical audit fields for retained attendance", async () => {
+    const store = createInMemoryPayrollOutboxStore();
+    const canonicalPayload = {
+      occurredAt: "2026-08-11T16:05:00.000Z",
+      timezone: "America/Los_Angeles",
+      workLocation: "client_site",
+      data: {
+        eventType: "session_started",
+        sessionId: "11111111-1111-1111-1111-111111111111",
+        employeeTimeEventId: "22222222-2222-2222-2222-222222222222",
+      },
+    };
+
+    await enqueuePayrollOutboxEvent({
+      store,
+      action: "record_session_attendance",
+      idempotencyKey: "canonical-retained-key",
+      retainForClinical: true,
+      ...baseAttendanceEvent,
+      payload: {
+        ...canonicalPayload,
+        note: "top-level clinical note",
+        unbounded: { nested: { value: "drop-me" } },
+        data: {
+          ...canonicalPayload.data,
+          note: "nested clinical note",
+          nestedExtra: { value: "drop-me-too" },
+        },
+      },
+    });
+
+    await expect(
+      listPayrollOutboxEvents(store, { organizationId: "org-1", userId: "user-1" }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        idempotencyKey: "canonical-retained-key",
+        occurredAt: "2026-08-11T16:05:00.000Z",
+        payload: canonicalPayload,
+      }),
+    ]);
+
+    await drainPayrollOutbox({
+      store,
+      organizationId: "org-1",
+      userId: "user-1",
+      recordTimeEvent: vi.fn(),
+      recordSessionAttendance: vi.fn(async (event) => ({ idempotencyKey: event.idempotencyKey })),
+    });
+    const replayedPayloads: unknown[] = [];
+    await reconfirmRetainedPayrollOutboxEvent({
+      store,
+      organizationId: "org-1",
+      userId: "user-1",
+      idempotencyKey: "canonical-retained-key",
+      recordSessionAttendance: vi.fn(async (event) => {
+        replayedPayloads.push(event.event);
+        return { idempotencyKey: event.idempotencyKey };
+      }),
+    });
+
+    expect(replayedPayloads).toEqual([canonicalPayload]);
+  });
+
   it("skips retained confirmed attendance rows during later drain and recovery while preserving their original data", async () => {
     const store = createInMemoryPayrollOutboxStore([
       {
@@ -705,11 +768,12 @@ describe("payroll outbox", () => {
       expect.objectContaining({
         idempotencyKey: "retained-key",
         state: "confirmed_pending_clinical",
+        safeCode: null,
       }),
     ]);
   });
 
-  it("rejects retained replay on mismatched server key, wrong scope, wrong state, needs_attention, and cross-scope collisions", async () => {
+  it("marks only the scoped retained row needs_attention when reconfirm returns a mismatched key", async () => {
     const retainedEvent = {
       storageKey: '["org-1","user-1","retained-key"]',
       idempotencyKey: "retained-key",
@@ -725,16 +789,152 @@ describe("payroll outbox", () => {
       safeCode: null,
       retainForClinical: true,
     } satisfies PendingPayrollEvent;
+    const otherScopeEvent = {
+      ...retainedEvent,
+      storageKey: '["org-2","user-2","retained-key"]',
+      organizationId: "org-2",
+      userId: "user-2",
+      enqueueSequence: 2,
+    } satisfies PendingPayrollEvent;
+    const store = createInMemoryPayrollOutboxStore([retainedEvent, otherScopeEvent]);
 
     await expect(
       reconfirmRetainedPayrollOutboxEvent({
-        store: createInMemoryPayrollOutboxStore([retainedEvent]),
+        store,
         organizationId: "org-1",
         userId: "user-1",
         idempotencyKey: "retained-key",
         recordSessionAttendance: vi.fn(async () => ({ idempotencyKey: "different-key" })),
       }),
-    ).rejects.toThrow("Payroll confirmation key mismatch");
+    ).rejects.toMatchObject({ code: "idempotency_mismatch" });
+
+    await expect(store.list()).resolves.toEqual([
+      expect.objectContaining({
+        storageKey: '["org-1","user-1","retained-key"]',
+        state: "needs_attention",
+        safeCode: "idempotency_mismatch",
+      }),
+      expect.objectContaining({
+        storageKey: '["org-2","user-2","retained-key"]',
+        state: "confirmed_pending_clinical",
+        safeCode: null,
+      }),
+    ]);
+  });
+
+  it("marks the scoped retained row needs_attention when reconfirm throws idempotency_mismatch", async () => {
+    const retainedEvent = {
+      storageKey: '["org-1","user-1","retained-key"]',
+      idempotencyKey: "retained-key",
+      action: "record_session_attendance",
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-11",
+      occurredAt: "2026-08-11T16:05:00.000Z",
+      payload: { ...baseAttendanceEvent.payload },
+      enqueueSequence: 1,
+      enqueuedAt: "2026-08-11T16:05:01.000Z",
+      state: "confirmed_pending_clinical",
+      safeCode: null,
+      retainForClinical: true,
+    } satisfies PendingPayrollEvent;
+    const store = createInMemoryPayrollOutboxStore([retainedEvent]);
+    const mismatch = Object.assign(new Error("Upstream key mismatch"), {
+      code: "idempotency_mismatch",
+      status: 409,
+    });
+
+    await expect(
+      reconfirmRetainedPayrollOutboxEvent({
+        store,
+        organizationId: "org-1",
+        userId: "user-1",
+        idempotencyKey: "retained-key",
+        recordSessionAttendance: vi.fn(async () => {
+          throw mismatch;
+        }),
+      }),
+    ).rejects.toBe(mismatch);
+
+    await expect(store.list()).resolves.toEqual([
+      expect.objectContaining({
+        storageKey: '["org-1","user-1","retained-key"]',
+        state: "needs_attention",
+        safeCode: "idempotency_mismatch",
+      }),
+    ]);
+  });
+
+  it("marks retained reconfirm state_conflict needs_attention and preserves retryable retention", async () => {
+    const retainedEvent = {
+      storageKey: '["org-1","user-1","retained-key"]',
+      idempotencyKey: "retained-key",
+      action: "record_session_attendance",
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-11",
+      occurredAt: "2026-08-11T16:05:00.000Z",
+      payload: { ...baseAttendanceEvent.payload },
+      enqueueSequence: 1,
+      enqueuedAt: "2026-08-11T16:05:01.000Z",
+      state: "confirmed_pending_clinical",
+      safeCode: null,
+      retainForClinical: true,
+    } satisfies PendingPayrollEvent;
+    const conflictStore = createInMemoryPayrollOutboxStore([retainedEvent]);
+    const conflict = Object.assign(new Error("Attendance state conflict"), {
+      code: "state_conflict",
+      status: 409,
+    });
+
+    await expect(
+      reconfirmRetainedPayrollOutboxEvent({
+        store: conflictStore,
+        organizationId: "org-1",
+        userId: "user-1",
+        idempotencyKey: "retained-key",
+        recordSessionAttendance: vi.fn(async () => {
+          throw conflict;
+        }),
+      }),
+    ).rejects.toBe(conflict);
+    await expect(conflictStore.list()).resolves.toEqual([
+      expect.objectContaining({ state: "needs_attention", safeCode: "state_conflict" }),
+    ]);
+
+    const retryStore = createInMemoryPayrollOutboxStore([retainedEvent]);
+    await expect(
+      reconfirmRetainedPayrollOutboxEvent({
+        store: retryStore,
+        organizationId: "org-1",
+        userId: "user-1",
+        idempotencyKey: "retained-key",
+        recordSessionAttendance: vi.fn(async () => {
+          throw makeRetryableError();
+        }),
+      }),
+    ).rejects.toMatchObject({ code: "upstream_error", status: 503 });
+    await expect(retryStore.list()).resolves.toEqual([
+      expect.objectContaining({ state: "confirmed_pending_clinical", safeCode: null }),
+    ]);
+  });
+
+  it("rejects retained replay on wrong scope, wrong state, and needs_attention", async () => {
+    const retainedEvent = {
+      storageKey: '["org-1","user-1","retained-key"]',
+      idempotencyKey: "retained-key",
+      action: "record_session_attendance",
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-11",
+      occurredAt: "2026-08-11T16:05:00.000Z",
+      payload: { ...baseAttendanceEvent.payload },
+      enqueueSequence: 1,
+      enqueuedAt: "2026-08-11T16:05:01.000Z",
+      state: "confirmed_pending_clinical",
+      safeCode: null,
+      retainForClinical: true,
+    } satisfies PendingPayrollEvent;
 
     await expect(
       reconfirmRetainedPayrollOutboxEvent({
@@ -776,25 +976,6 @@ describe("payroll outbox", () => {
         recordSessionAttendance: vi.fn(),
       }),
     ).rejects.toThrow("Retained payroll outbox event requires attention");
-
-    await expect(
-      reconfirmRetainedPayrollOutboxEvent({
-        store: createInMemoryPayrollOutboxStore([
-          retainedEvent,
-          {
-            ...retainedEvent,
-            storageKey: '["org-2","user-2","retained-key"]',
-            organizationId: "org-2",
-            userId: "user-2",
-            enqueueSequence: 2,
-          },
-        ]),
-        organizationId: "org-1",
-        userId: "user-1",
-        idempotencyKey: "retained-key",
-        recordSessionAttendance: vi.fn(),
-      }),
-    ).rejects.toThrow("Retained payroll outbox event key is not unique to the scoped user");
   });
 
   it("clears exactly one retained row only after a matching compatible success key", async () => {
@@ -828,7 +1009,7 @@ describe("payroll outbox", () => {
     ).resolves.toEqual([]);
   });
 
-  it("rejects retained clear for wrong state, wrong action, mismatched success key, and cross-scope collisions", async () => {
+  it("rejects retained clear for wrong state, wrong action, and mismatched success key", async () => {
     const retainedEvent = {
       storageKey: '["org-1","user-1","retained-key"]',
       idempotencyKey: "retained-key",
@@ -885,25 +1066,84 @@ describe("payroll outbox", () => {
         confirmedServerIdempotencyKey: "retained-key",
       }),
     ).rejects.toThrow("Retained payroll outbox event has an incompatible action");
+  });
 
+  it("independently reconfirms and clears retained rows sharing a key across scopes", async () => {
+    const retainedEvent = {
+      storageKey: '["org-1","user-1","retained-key"]',
+      idempotencyKey: "retained-key",
+      action: "record_session_attendance",
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-11",
+      occurredAt: "2026-08-11T16:05:00.000Z",
+      payload: { ...baseAttendanceEvent.payload },
+      enqueueSequence: 1,
+      enqueuedAt: "2026-08-11T16:05:01.000Z",
+      state: "confirmed_pending_clinical",
+      safeCode: null,
+      retainForClinical: true,
+    } satisfies PendingPayrollEvent;
+    const store = createInMemoryPayrollOutboxStore([
+      retainedEvent,
+      {
+        ...retainedEvent,
+        storageKey: '["org-2","user-2","retained-key"]',
+        organizationId: "org-2",
+        userId: "user-2",
+        enqueueSequence: 2,
+      },
+    ]);
+    const replayedScopes: string[] = [];
+    const recordSessionAttendance = vi.fn(async (event) => {
+      replayedScopes.push(`${event.organizationId}/${event.userId}`);
+      return { idempotencyKey: event.idempotencyKey };
+    });
+
+    await reconfirmRetainedPayrollOutboxEvent({
+      store,
+      organizationId: "org-1",
+      userId: "user-1",
+      idempotencyKey: "retained-key",
+      recordSessionAttendance,
+    });
     await expect(
-      clearRetainedPayrollOutboxEvent({
-        store: createInMemoryPayrollOutboxStore([
-          retainedEvent,
-          {
-            ...retainedEvent,
-            storageKey: '["org-2","user-2","retained-key"]',
-            organizationId: "org-2",
-            userId: "user-2",
-            enqueueSequence: 2,
-          },
-        ]),
-        organizationId: "org-1",
-        userId: "user-1",
-        idempotencyKey: "retained-key",
-        confirmedServerIdempotencyKey: "retained-key",
-      }),
-    ).rejects.toThrow("Retained payroll outbox event key is not unique to the scoped user");
+      listPayrollOutboxEvents(store, { organizationId: "org-2", userId: "user-2" }),
+    ).resolves.toEqual([
+      expect.objectContaining({ state: "confirmed_pending_clinical", safeCode: null }),
+    ]);
+
+    await reconfirmRetainedPayrollOutboxEvent({
+      store,
+      organizationId: "org-2",
+      userId: "user-2",
+      idempotencyKey: "retained-key",
+      recordSessionAttendance,
+    });
+    expect(replayedScopes).toEqual(["org-1/user-1", "org-2/user-2"]);
+
+    await clearRetainedPayrollOutboxEvent({
+      store,
+      organizationId: "org-1",
+      userId: "user-1",
+      idempotencyKey: "retained-key",
+      confirmedServerIdempotencyKey: "retained-key",
+    });
+    await expect(
+      listPayrollOutboxEvents(store, { organizationId: "org-1", userId: "user-1" }),
+    ).resolves.toEqual([]);
+    await expect(
+      listPayrollOutboxEvents(store, { organizationId: "org-2", userId: "user-2" }),
+    ).resolves.toHaveLength(1);
+
+    await clearRetainedPayrollOutboxEvent({
+      store,
+      organizationId: "org-2",
+      userId: "user-2",
+      idempotencyKey: "retained-key",
+      confirmedServerIdempotencyKey: "retained-key",
+    });
+    await expect(store.list()).resolves.toEqual([]);
   });
 
   it("serializes overlapping retained replay and clear operations without poisoning the scope chain", async () => {

@@ -404,6 +404,11 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Setup Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: 2.8.3
+
       - name: Install dependencies
         run: npm ci
 
@@ -424,6 +429,9 @@ jobs:
 
       - name: Verify coverage thresholds
         run: npm run ci:verify-coverage
+
+      - name: Run extractor Deno tests
+        run: deno test --no-lock --node-modules-dir=none --no-prompt --allow-env --allow-read supabase/functions/extract-assessment-fields/adobe-pdf-extract.test.ts supabase/functions/extract-assessment-fields/index.test.ts supabase/functions/extract-assessment-fields/iehp-skills-behaviors.test.ts supabase/functions/extract-assessment-fields/structured-goals.test.ts
 
   build:
     name: build

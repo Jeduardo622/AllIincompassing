@@ -509,6 +509,90 @@ const APPROVED_UPSTASH_SECRET_REFERENCE_LINES = [
   "UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}",
 ];
 
+const isBlockScalarIndicator = (value) => /^[|>][-+]?\s*$/.test(value);
+
+const readInlineScalar = (lines, startIndex, parentIndent, initialValue) => {
+  const body = [initialValue];
+  let index = startIndex + 1;
+  while (index < lines.length) {
+    const raw = stripComment(lines[index]);
+    if (!raw.trim()) {
+      body.push("");
+      index += 1;
+      continue;
+    }
+
+    const lineIndent = indentation(raw);
+    if (lineIndent <= parentIndent) {
+      break;
+    }
+
+    const trimmed = raw.trimStart();
+    if (trimmed.startsWith("- ") || parseKeyValue(trimmed)) {
+      break;
+    }
+
+    body.push(raw.slice(Math.min(lineIndent, parentIndent + 2)));
+    index += 1;
+  }
+
+  return {
+    value: body.length === 1 ? unquote(initialValue) : body.join("\n").trim(),
+    nextIndex: index,
+  };
+};
+
+const extractWorkflowScalarValues = (workflowContent) => {
+  const lines = workflowContent.split(/\r?\n/);
+  const values = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const raw = stripComment(lines[index]);
+    if (!raw.trim()) {
+      continue;
+    }
+
+    const lineIndent = indentation(raw);
+    const trimmed = raw.trimStart();
+    const fieldText = trimmed.startsWith("- ") ? trimmed.slice(2) : trimmed;
+    const field = parseKeyValue(fieldText);
+
+    if (field) {
+      if (!field.value) {
+        continue;
+      }
+      if (isBlockScalarIndicator(field.value)) {
+        const block = readBlockScalar(lines, index, lineIndent);
+        values.push({ key: field.key, value: block.value });
+        index = block.nextIndex - 1;
+        continue;
+      }
+      const scalar = readInlineScalar(lines, index, lineIndent, field.value);
+      values.push({ key: field.key, value: scalar.value });
+      index = scalar.nextIndex - 1;
+      continue;
+    }
+
+    if (trimmed.startsWith("- ")) {
+      const listValue = trimmed.slice(2).trim();
+      if (!listValue) {
+        continue;
+      }
+      if (isBlockScalarIndicator(listValue)) {
+        const block = readBlockScalar(lines, index, lineIndent);
+        values.push({ key: null, value: block.value });
+        index = block.nextIndex - 1;
+        continue;
+      }
+      const scalar = readInlineScalar(lines, index, lineIndent, listValue);
+      values.push({ key: null, value: scalar.value });
+      index = scalar.nextIndex - 1;
+    }
+  }
+
+  return values;
+};
+
 const expressionContainsWholeSecretsContext = (expression) => {
   const normalized = expression.trim();
   if (!normalized) {
@@ -538,21 +622,38 @@ const expressionContainsWholeSecretsContext = (expression) => {
   return false;
 };
 
-const workflowUsesWholeSecretsContext = (workflowContent) => {
-  const lines = workflowContent
+const scalarContainsWholeSecretsContext = ({ key, value }) => {
+  const normalized = String(value)
     .split(/\r?\n/)
     .map((line) => stripComment(line))
-    .filter((line) => !APPROVED_UPSTASH_SECRET_REFERENCE_LINES.includes(line.trim()));
+    .join("\n")
+    .trim();
+  if (!normalized) {
+    return false;
+  }
 
-  for (const line of lines) {
-    for (const expression of line.matchAll(/\$\{\{([\s\S]*?)\}\}/g)) {
-      if (expressionContainsWholeSecretsContext(expression[1] ?? "")) {
-        return true;
-      }
+  for (const expression of normalized.matchAll(/\$\{\{([\s\S]*?)\}\}/g)) {
+    if (expressionContainsWholeSecretsContext(expression[1] ?? "")) {
+      return true;
     }
+  }
 
-    const inlineIf = line.match(/^\s*if:\s*(.+)$/);
-    if (inlineIf && expressionContainsWholeSecretsContext(inlineIf[1])) {
+  return key === "if" && expressionContainsWholeSecretsContext(normalized);
+};
+
+const workflowUsesWholeSecretsContext = (workflowContent) => {
+  for (const scalar of extractWorkflowScalarValues(workflowContent)) {
+    if (scalarContainsWholeSecretsContext(scalar)) {
+      return true;
+    }
+  }
+
+  const normalizedRaw = workflowContent
+    .split(/\r?\n/)
+    .map((line) => stripComment(line))
+    .join("\n");
+  for (const expression of normalizedRaw.matchAll(/\$\{\{([\s\S]*?)\}\}/g)) {
+    if (expressionContainsWholeSecretsContext(expression[1] ?? "")) {
       return true;
     }
   }

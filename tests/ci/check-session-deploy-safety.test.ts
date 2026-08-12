@@ -1364,6 +1364,75 @@ describe("check-session-deploy-safety", () => {
     expect(result.stderr).toContain("CI workflow must not reference the whole GitHub secrets context");
   });
 
+  test("rejects folded multiline toJSON(secrets) access", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        policyExtra: `      - run: >-
+          echo "\${{ toJSON(
+            secrets
+          ) }}"`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("CI workflow must not reference the whole GitHub secrets context");
+  });
+
+  test("rejects literal multiline fromJSON(toJSON(secrets)) access", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        policyExtra: `      - run: |-
+          echo "\${{ fromJSON(
+            toJSON(
+              secrets
+            )
+          ) }}"`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("CI workflow must not reference the whole GitHub secrets context");
+  });
+
+  test("rejects bracket-index secrets access split across lines", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        policyExtra: `      - run: >-
+          echo "\${{ secrets[
+            'UPSTASH_REDIS_REST_TOKEN'
+          ] }}"`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("CI workflow must not reference the whole GitHub secrets context");
+  });
+
+  test("rejects wildcard secrets access split across lines", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        policyExtra: `      - run: >-
+          echo "\${{ secrets.
+            * }}"`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("CI workflow must not reference the whole GitHub secrets context");
+  });
+
+  test("allows the approved payroll-administration Upstash sync env bindings", () => {
+    const fixtureRoot = makeFixture();
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+  });
+
   test("rejects duplicate Upstash secret bindings", () => {
     const fixtureRoot = makeFixture({
       ci: {

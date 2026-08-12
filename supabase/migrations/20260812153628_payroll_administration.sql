@@ -308,6 +308,36 @@ begin
 end;
 $$;
 
+create or replace function app.is_valid_payroll_external_identifier(
+  p_value text
+)
+returns boolean
+language sql
+immutable
+security definer
+set search_path = ''
+as $$
+  select p_value is not null
+    and char_length(p_value) between 1 and 128
+    and p_value ~ '^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$';
+$$;
+
+create or replace function app.is_valid_payroll_pay_group_name(
+  p_value text
+)
+returns boolean
+language sql
+immutable
+security definer
+set search_path = ''
+as $$
+  select p_value is not null
+    and p_value = btrim(p_value)
+    and char_length(p_value) between 1 and 100
+    and p_value ~ '^[[:print:]]+$'
+    and p_value !~ '[[:cntrl:]]';
+$$;
+
 create or replace function app.payroll_administration_lock_scope(
   p_action text,
   p_target_organization_id uuid,
@@ -363,9 +393,8 @@ begin
       );
     when 'deactivate_pay_group', 'set_generation_version', 'generate_periods' then
       return format(
-        'payroll-administration:pay-group:%s:%s:%s',
+        'payroll-administration:pay-group-generation:%s:%s',
         p_target_organization_id,
-        p_action,
         coalesce(v_pay_group_id::text, 'pending')
       );
     else
@@ -378,21 +407,89 @@ create or replace function app.payroll_generation_boundary_has_facts(
   p_target_organization_id uuid,
   p_pay_group_id uuid,
   p_boundary date,
-  p_timezone text
+  p_proposed_starts_on date,
+  p_proposed_cadence public.pay_group_cadence,
+  p_proposed_timezone text
 )
 returns boolean
-language sql
+language plpgsql
 stable
 security definer
 set search_path = ''
 as $$
-  select (
+declare
+  v_current_version public.pay_group_generation_versions%rowtype;
+  v_has_current_version boolean := false;
+  v_current_period_start date;
+  v_proposed_period_start date;
+  v_affected_from date;
+  v_current_timezone text;
+begin
+  if p_target_organization_id is null
+    or p_pay_group_id is null
+    or p_boundary is null
+    or p_proposed_starts_on is null
+    or p_proposed_cadence is null
+    or p_proposed_timezone is null then
+    raise exception using errcode = '22023', message = 'generation boundary fact inputs are required';
+  end if;
+
+  select version_row.*
+  into v_current_version
+  from public.pay_group_generation_versions version_row
+  where version_row.organization_id = p_target_organization_id
+    and version_row.pay_group_id = p_pay_group_id
+    and version_row.effective_from <= p_boundary
+    and (version_row.effective_through is null or version_row.effective_through >= p_boundary)
+  order by version_row.effective_from desc, version_row.created_at desc, version_row.id desc
+  limit 1;
+
+  v_has_current_version := found;
+  if not v_has_current_version then
+    select version_row.*
+    into v_current_version
+    from public.pay_group_generation_versions version_row
+    where version_row.organization_id = p_target_organization_id
+      and version_row.pay_group_id = p_pay_group_id
+      and version_row.effective_from <= p_boundary - 1
+      and (version_row.effective_through is null or version_row.effective_through >= p_boundary - 1)
+    order by version_row.effective_from desc, version_row.created_at desc, version_row.id desc
+    limit 1;
+
+    v_has_current_version := found;
+  end if;
+
+  select period_row.starts_on
+  into v_proposed_period_start
+  from app.payroll_containing_period(
+    p_proposed_starts_on,
+    p_boundary,
+    p_proposed_cadence
+  ) period_row;
+
+  if v_has_current_version then
+    select period_row.starts_on
+    into v_current_period_start
+    from app.payroll_containing_period(
+      v_current_version.starts_on,
+      p_boundary,
+      v_current_version.cadence
+    ) period_row;
+
+    v_current_timezone := v_current_version.timezone;
+    v_affected_from := least(v_current_period_start, v_proposed_period_start);
+  else
+    v_current_timezone := p_proposed_timezone;
+    v_affected_from := v_proposed_period_start;
+  end if;
+
+  return (
     exists (
       select 1
       from public.pay_periods pay_period
       where pay_period.organization_id = p_target_organization_id
         and pay_period.pay_group_id = p_pay_group_id
-        and pay_period.ends_on >= p_boundary
+        and pay_period.ends_on >= v_affected_from
     )
     or exists (
       select 1
@@ -402,7 +499,7 @@ as $$
        and pay_period.id = snapshot_row.pay_period_id
       where snapshot_row.organization_id = p_target_organization_id
         and pay_period.pay_group_id = p_pay_group_id
-        and pay_period.ends_on >= p_boundary
+        and pay_period.ends_on >= v_affected_from
     )
     or exists (
       select 1
@@ -410,14 +507,27 @@ as $$
       join public.pay_group_assignments assignment_row
         on assignment_row.organization_id = event_row.organization_id
        and assignment_row.employment_profile_id = event_row.employment_profile_id
-       and ((event_row.event_at at time zone p_timezone)::date) >= assignment_row.effective_from
        and (
-         assignment_row.effective_through is null
-         or ((event_row.event_at at time zone p_timezone)::date) <= assignment_row.effective_through
+         (
+           ((event_row.event_at at time zone p_proposed_timezone)::date) >= v_affected_from
+           and ((event_row.event_at at time zone p_proposed_timezone)::date) >= assignment_row.effective_from
+           and (
+             assignment_row.effective_through is null
+             or ((event_row.event_at at time zone p_proposed_timezone)::date) <= assignment_row.effective_through
+           )
+         )
+         or (
+           v_has_current_version
+           and ((event_row.event_at at time zone v_current_timezone)::date) >= v_affected_from
+           and ((event_row.event_at at time zone v_current_timezone)::date) >= assignment_row.effective_from
+           and (
+             assignment_row.effective_through is null
+             or ((event_row.event_at at time zone v_current_timezone)::date) <= assignment_row.effective_through
+           )
+         )
        )
       where event_row.organization_id = p_target_organization_id
         and assignment_row.pay_group_id = p_pay_group_id
-        and ((event_row.event_at at time zone p_timezone)::date) >= p_boundary
     )
     or exists (
       select 1
@@ -425,16 +535,30 @@ as $$
       join public.pay_group_assignments assignment_row
         on assignment_row.organization_id = event_row.organization_id
        and assignment_row.employment_profile_id = event_row.employment_profile_id
-       and ((event_row.event_at at time zone p_timezone)::date) >= assignment_row.effective_from
        and (
-         assignment_row.effective_through is null
-         or ((event_row.event_at at time zone p_timezone)::date) <= assignment_row.effective_through
+         (
+           ((event_row.event_at at time zone p_proposed_timezone)::date) >= v_affected_from
+           and ((event_row.event_at at time zone p_proposed_timezone)::date) >= assignment_row.effective_from
+           and (
+             assignment_row.effective_through is null
+             or ((event_row.event_at at time zone p_proposed_timezone)::date) <= assignment_row.effective_through
+           )
+         )
+         or (
+           v_has_current_version
+           and ((event_row.event_at at time zone v_current_timezone)::date) >= v_affected_from
+           and ((event_row.event_at at time zone v_current_timezone)::date) >= assignment_row.effective_from
+           and (
+             assignment_row.effective_through is null
+             or ((event_row.event_at at time zone v_current_timezone)::date) <= assignment_row.effective_through
+           )
+         )
        )
       where event_row.organization_id = p_target_organization_id
         and assignment_row.pay_group_id = p_pay_group_id
-        and ((event_row.event_at at time zone p_timezone)::date) >= p_boundary
     )
   );
+end;
 $$;
 
 create or replace function public.get_payroll_timesheet_period(
@@ -1043,6 +1167,11 @@ begin
     raise exception using errcode = '42501', message = format('%s capability is required', v_required_capability);
   end if;
 
+  if v_action = 'add_rate_version'
+    and app.payroll_actor_has_capability(v_actor_org, 'payroll.view_compensation') is not true then
+    raise exception using errcode = '42501', message = 'payroll.view_compensation capability is required';
+  end if;
+
   v_payload := p_payload - 'action';
   v_payload := jsonb_build_object('action', v_action) || coalesce(v_payload, '{}'::jsonb);
   v_payload_hash := app.payroll_hash_payload(v_payload);
@@ -1082,13 +1211,17 @@ begin
       -- Global payroll policy mutation is read-only in v1.
       v_settings_effective_from := nullif(btrim(p_payload ->> 'effectiveFrom'), '')::date;
       v_settings_effective_through := nullif(btrim(p_payload ->> 'effectiveThrough'), '')::date;
-      v_external_payroll_organization_id := nullif(btrim(p_payload ->> 'externalPayrollOrganizationId'), '');
+      v_external_payroll_organization_id := nullif(p_payload ->> 'externalPayrollOrganizationId', '');
       v_timezone := nullif(btrim(p_payload ->> 'timezone'), '');
       v_workday_starts_at := coalesce(nullif(btrim(p_payload ->> 'workdayStartsAt'), '')::time, time '00:00');
       v_workweek_starts_on := coalesce((p_payload ->> 'workweekStartsOn')::smallint, 0);
 
       if v_settings_effective_from is null or v_external_payroll_organization_id is null or v_timezone is null then
         raise exception using errcode = '22023', message = 'org settings payload is incomplete';
+      end if;
+
+      if app.is_valid_payroll_external_identifier(v_external_payroll_organization_id) is not true then
+        raise exception using errcode = '22023', message = 'external payroll organization id is invalid';
       end if;
 
       if v_action = 'create_org_settings' then
@@ -1151,8 +1284,8 @@ begin
 
     when 'create_employment' then
       v_user_id := nullif(btrim(p_payload ->> 'userId'), '')::uuid;
-      v_employee_number := nullif(btrim(p_payload ->> 'employeeNumber'), '');
-      v_payroll_employee_id := nullif(btrim(p_payload ->> 'payrollEmployeeId'), '');
+      v_employee_number := nullif(p_payload ->> 'employeeNumber', '');
+      v_payroll_employee_id := nullif(p_payload ->> 'payrollEmployeeId', '');
       v_classification := coalesce(nullif(btrim(p_payload ->> 'classification'), ''), 'nonexempt');
       v_home_jurisdiction := coalesce(nullif(btrim(p_payload ->> 'homeJurisdiction'), ''), 'CA');
       v_employment_timezone := nullif(btrim(p_payload ->> 'timezone'), '');
@@ -1162,6 +1295,11 @@ begin
 
       if v_user_id is null or v_employee_number is null or v_payroll_employee_id is null or v_employment_timezone is null or v_active_from is null then
         raise exception using errcode = '22023', message = 'employment payload is incomplete';
+      end if;
+
+      if app.is_valid_payroll_external_identifier(v_employee_number) is not true
+        or app.is_valid_payroll_external_identifier(v_payroll_employee_id) is not true then
+        raise exception using errcode = '22023', message = 'employment external identifiers are invalid';
       end if;
 
       if app.resolve_user_organization_id(v_user_id) is distinct from v_actor_org then
@@ -1392,7 +1530,7 @@ begin
       v_result := jsonb_build_object('action', v_action, 'capabilityGrantId', v_target_row_id, 'replayed', false);
 
     when 'create_pay_group' then
-      v_pay_group_name := nullif(btrim(p_payload ->> 'name'), '');
+      v_pay_group_name := nullif(p_payload ->> 'name', '');
       v_pay_group_cadence := nullif(btrim(p_payload ->> 'cadence'), '')::public.pay_group_cadence;
       v_timezone := nullif(btrim(p_payload ->> 'timezone'), '');
       v_active_from := coalesce(nullif(btrim(p_payload ->> 'effectiveFrom'), '')::date, current_date);
@@ -1400,6 +1538,10 @@ begin
 
       if v_pay_group_name is null or v_pay_group_cadence is null or v_timezone is null then
         raise exception using errcode = '22023', message = 'pay group payload is incomplete';
+      end if;
+
+      if app.is_valid_payroll_pay_group_name(v_pay_group_name) is not true then
+        raise exception using errcode = '22023', message = 'pay group name is invalid';
       end if;
 
       insert into public.pay_groups (
@@ -1547,6 +1689,8 @@ begin
         v_actor_org,
         v_pay_group_id,
         v_active_from,
+        v_from,
+        v_pay_group_cadence,
         v_timezone
       ) then
         raise exception using errcode = '23514', message = 'generation version boundary cannot change after payroll facts exist';
@@ -1740,8 +1884,10 @@ revoke all on function app.current_user_is_payroll_admin(uuid) from public, anon
 revoke all on function app.payroll_containing_period(date, date, public.pay_group_cadence) from public, anon, authenticated, service_role;
 revoke all on function app.resolve_active_payroll_generation_version(uuid, uuid, date) from public, anon, authenticated, service_role;
 revoke all on function app.redact_payroll_administration_audit_payload(text, jsonb) from public, anon, authenticated, service_role;
+revoke all on function app.is_valid_payroll_external_identifier(text) from public, anon, authenticated, service_role;
+revoke all on function app.is_valid_payroll_pay_group_name(text) from public, anon, authenticated, service_role;
 revoke all on function app.payroll_administration_lock_scope(text, uuid, jsonb) from public, anon, authenticated, service_role;
-revoke all on function app.payroll_generation_boundary_has_facts(uuid, uuid, date, text) from public, anon, authenticated, service_role;
+revoke all on function app.payroll_generation_boundary_has_facts(uuid, uuid, date, date, public.pay_group_cadence, text) from public, anon, authenticated, service_role;
 
 revoke all on function public.execute_payroll_administration(jsonb, text) from public, anon, service_role;
 revoke all on function public.execute_payroll_administration(jsonb, text) from authenticated;

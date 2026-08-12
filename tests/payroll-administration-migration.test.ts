@@ -63,6 +63,22 @@ describe("payroll administration migration contract", () => {
     expect(definition).toMatch(/raise exception using errcode = '22023', message = 'monthly cadence is unsupported for payroll administration'/i);
   });
 
+  it("defines canonical transport-safe external identifiers and printable trimmed pay-group names", () => {
+    const externalIdentifierDefinition = functionDefinition("app.is_valid_payroll_external_identifier");
+    const payGroupNameDefinition = functionDefinition("app.is_valid_payroll_pay_group_name");
+    const executeDefinition = functionDefinition("public.execute_payroll_administration");
+
+    expect(externalIdentifierDefinition).toMatch(/char_length\(p_value\) between 1 and 128/i);
+    expect(externalIdentifierDefinition).toContain("^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$");
+    expect(payGroupNameDefinition).toMatch(/p_value = btrim\(p_value\)/i);
+    expect(payGroupNameDefinition).toMatch(/char_length\(p_value\) between 1 and 100/i);
+    expect(payGroupNameDefinition).toMatch(/p_value !~ '\[\[:cntrl:\]\]'/i);
+    expect(executeDefinition).toMatch(/app\.is_valid_payroll_external_identifier\(v_external_payroll_organization_id\)/i);
+    expect(executeDefinition).toMatch(/app\.is_valid_payroll_external_identifier\(v_employee_number\)/i);
+    expect(executeDefinition).toMatch(/app\.is_valid_payroll_external_identifier\(v_payroll_employee_id\)/i);
+    expect(executeDefinition).toMatch(/app\.is_valid_payroll_pay_group_name\(v_pay_group_name\)/i);
+  });
+
   it("adds authenticated-only payroll administration rpc surfaces with recursive authority rejection, org-derived scope, and idempotent receipts", () => {
     const executeDefinition = functionDefinition("public.execute_payroll_administration");
     const readDefinition = functionDefinition("public.get_payroll_administration");
@@ -90,13 +106,15 @@ describe("payroll administration migration contract", () => {
     expect(executeDefinition).toMatch(/insert into public\.payroll_mutation_receipts/i);
     expect(executeDefinition).toMatch(/insert into public\.payroll_audit_events/i);
     expect(executeDefinition).toMatch(/unsupported payroll administration action/i);
+    expect(executeDefinition).toMatch(/v_action = 'add_rate_version'[\s\S]*payroll\.view_compensation capability is required/i);
     expect(executeDefinition).toMatch(/pg_catalog\.pg_advisory_xact_lock/i);
     expect(executeDefinition).toMatch(/app\.payroll_administration_lock_scope\(v_action, v_actor_org, p_payload\)/i);
     expect(lockScopeDefinition).toMatch(/payroll-administration:org-settings:/i);
     expect(lockScopeDefinition).toMatch(/payroll-administration:employment:/i);
     expect(lockScopeDefinition).toMatch(/payroll-administration:assignment:/i);
     expect(lockScopeDefinition).toMatch(/payroll-administration:capability:/i);
-    expect(lockScopeDefinition).toMatch(/payroll-administration:pay-group:/i);
+    expect(lockScopeDefinition).toMatch(/payroll-administration:pay-group-generation:%s:%s/i);
+    expect(lockScopeDefinition).not.toMatch(/payroll-administration:pay-group-generation:%s:%s:%s/i);
     expect(lockScopeDefinition).not.toMatch(/payroll-administration:organization:/i);
     expect(auditRedactionDefinition).toMatch(/p_action = 'add_rate_version'/i);
     expect(auditRedactionDefinition).toMatch(/- 'hourlyRateCents'/i);
@@ -105,6 +123,10 @@ describe("payroll administration migration contract", () => {
     expect(boundaryFactsDefinition).toMatch(/from public\.timesheet_snapshots snapshot_row/i);
     expect(boundaryFactsDefinition).toMatch(/from public\.employee_time_events event_row/i);
     expect(boundaryFactsDefinition).toMatch(/from public\.session_attendance_events event_row/i);
+    expect(boundaryFactsDefinition).toMatch(/app\.payroll_containing_period\(/i);
+    expect(boundaryFactsDefinition).toMatch(/v_current_period_start/i);
+    expect(boundaryFactsDefinition).toMatch(/v_proposed_period_start/i);
+    expect(boundaryFactsDefinition).toMatch(/least\(v_current_period_start, v_proposed_period_start\)/i);
     expect(executeDefinition).toMatch(/app\.payroll_generation_boundary_has_facts\(/i);
     expect(executeDefinition).toMatch(/generation version boundary cannot change after payroll facts exist/i);
 

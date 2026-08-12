@@ -1393,6 +1393,87 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll administration rpc runtime contr
   });
 
   it("redacts compensation from audit visibility for export-only and resolve-only readers", async () => {
+    const sensitiveRateCents = 876543210;
+
+    await admin.query(
+      `delete from public.payroll_capability_grants
+       where organization_id = $1::uuid
+         and user_id = any($2::uuid[])`,
+      [IDS.orgA, [IDS.schedulerA, IDS.managerA]],
+    );
+    await admin.query(
+      `insert into public.payroll_capability_grants (
+         organization_id, user_id, capability, effective_from, granted_by
+       ) values
+         ($1::uuid, $2::uuid, 'payroll.export_period', '2026-08-01T00:00:00Z', $4::uuid),
+         ($1::uuid, $3::uuid, 'payroll.resolve_exceptions', '2026-08-01T00:00:00Z', $4::uuid)`,
+      [IDS.orgA, IDS.schedulerA, IDS.managerA, IDS.adminA],
+    );
+    await admin.query(
+      `update public.user_roles
+       set role_id = (select id from public.roles where name = 'admin' limit 1)
+       where user_id = any($1::uuid[])`,
+      [[IDS.schedulerA, IDS.managerA]],
+    );
+
+    const capabilitySetup = await admin.query(
+      `select user_id, array_agg(capability::text order by capability::text) as capabilities
+       from public.payroll_capability_grants
+       where organization_id = $1::uuid
+         and user_id = any($2::uuid[])
+         and effective_from <= now()
+         and (effective_through is null or effective_through > now())
+       group by user_id
+       order by user_id`,
+      [IDS.orgA, [IDS.schedulerA, IDS.managerA, IDS.adminA]],
+    );
+    expect(capabilitySetup.rows).toEqual([
+      {
+        user_id: IDS.schedulerA,
+        capabilities: ["payroll.export_period"],
+      },
+      {
+        user_id: IDS.managerA,
+        capabilities: ["payroll.resolve_exceptions"],
+      },
+      {
+        user_id: IDS.adminA,
+        capabilities: [
+          "payroll.configure_employment",
+          "payroll.export_period",
+          "payroll.view_compensation",
+        ],
+      },
+    ]);
+
+    expect((await getAdministration(admin, IDS.adminA)).capabilities).toEqual({
+      canConfigureEmployment: true,
+      canResolveExceptions: false,
+      canLockPeriod: false,
+      canReopenPeriod: false,
+      canGeneratePeriods: true,
+      canViewCompensation: true,
+      canManagePolicyMutations: false,
+    });
+    expect((await getAdministration(admin, IDS.schedulerA)).capabilities).toEqual({
+      canConfigureEmployment: false,
+      canResolveExceptions: false,
+      canLockPeriod: false,
+      canReopenPeriod: false,
+      canGeneratePeriods: true,
+      canViewCompensation: false,
+      canManagePolicyMutations: false,
+    });
+    expect((await getAdministration(admin, IDS.managerA)).capabilities).toEqual({
+      canConfigureEmployment: false,
+      canResolveExceptions: true,
+      canLockPeriod: false,
+      canReopenPeriod: false,
+      canGeneratePeriods: false,
+      canViewCompensation: false,
+      canManagePolicyMutations: false,
+    });
+
     await admin.query(
       `update public.employee_rate_versions
        set effective_through = '2026-08-15T00:00:00Z'
@@ -1405,7 +1486,7 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll administration rpc runtime contr
       {
         action: "add_rate_version",
         employmentProfileId: IDS.employmentA,
-        hourlyRateCents: 3200,
+        hourlyRateCents: sensitiveRateCents,
         effectiveFrom: "2026-08-15T00:00:01Z",
       },
       "add-rate-version-redacted-audit",
@@ -1413,59 +1494,117 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll administration rpc runtime contr
     );
 
     await admin.query(
-      `delete from public.payroll_capability_grants
-       where organization_id = $1::uuid
-         and user_id = $2::uuid
-         and capability = 'payroll.view_compensation'`,
-      [IDS.orgA, IDS.adminA],
+      `insert into public.payroll_audit_events (
+         organization_id, actor_user_id, operation, target_table, target_row_id, payload
+       ) values (
+         $1::uuid,
+         $2::uuid,
+         'execute_payroll_administration',
+         'employee_rate_versions',
+         gen_random_uuid(),
+         jsonb_build_object(
+           'action', 'add_rate_version',
+           'hourlyRateCents', $3::integer,
+           'crossTenantSentinel', 'org-b-sensitive'
+         )
+       )`,
+      [IDS.orgB, IDS.employeeB, sensitiveRateCents],
+    );
+    await admin.query(
+      `insert into public.payroll_mutation_receipts (
+         organization_id, actor_user_id, operation, idempotency_key, payload_hash, result_payload
+       ) values (
+         $1::uuid,
+         $2::uuid,
+         'execute_payroll_administration',
+         'cross-tenant-sensitive-rate-receipt',
+         repeat('a', 64),
+         jsonb_build_object(
+           'action', 'add_rate_version',
+           'hourlyRateCents', $3::integer,
+           'crossTenantSentinel', 'org-b-sensitive'
+         )
+       )`,
+      [IDS.orgB, IDS.employeeB, sensitiveRateCents],
     );
 
-    const exportAuditRows = await withRole(
-      admin,
-      "authenticated",
-      IDS.adminA,
-      async () =>
-        (
+    const readReachablePayrollHistory = (readerUserId: string) =>
+      withRole(admin, "authenticated", readerUserId, async () => ({
+        auditEvents: (
           await admin.query(
-            `select payload
+            `select organization_id, actor_user_id, payload
              from public.payroll_audit_events
-             where organization_id = $1::uuid
-               and operation = 'execute_payroll_administration'
-             order by created_at desc
-             limit 1`,
-            [IDS.orgA],
+             order by organization_id, created_at, id`,
           )
         ).rows,
-    );
-    expect(exportAuditRows).toEqual([
-      {
-        payload: expect.objectContaining({
-          action: "add_rate_version",
-          compensationRedacted: true,
-        }),
-      },
-    ]);
-    expect(JSON.stringify(exportAuditRows)).not.toContain("hourlyRateCents");
-
-    const resolveVisibility = await withRole(
-      admin,
-      "authenticated",
-      IDS.adminA,
-      async () =>
-        (
+        mutationReceipts: (
           await admin.query(
-            `select
-               (select payload from public.payroll_audit_events where organization_id = $1::uuid order by created_at desc limit 1) as audit_payload,
-               (select result_payload from public.payroll_mutation_receipts where organization_id = $1::uuid and actor_user_id = $2::uuid and idempotency_key = 'add-rate-version-redacted-audit' limit 1) as receipt_payload`,
-            [IDS.orgA, IDS.adminA],
+            `select organization_id, actor_user_id, result_payload
+             from public.payroll_mutation_receipts
+             order by organization_id, created_at, id`,
           )
-        ).rows[0],
-    );
-    expect(resolveVisibility.audit_payload).toMatchObject({
-      action: "add_rate_version",
-      compensationRedacted: true,
+        ).rows,
+      }));
+
+    const exportOnlyVisibility = await readReachablePayrollHistory(IDS.schedulerA);
+    expect(exportOnlyVisibility).toEqual({
+      auditEvents: [
+        {
+          organization_id: IDS.orgA,
+          actor_user_id: IDS.adminA,
+          payload: expect.objectContaining({
+            action: "add_rate_version",
+            compensationRedacted: true,
+          }),
+        },
+      ],
+      mutationReceipts: [],
     });
-    expect(JSON.stringify(resolveVisibility)).not.toContain("hourlyRateCents");
+
+    const resolveOnlyVisibility = await readReachablePayrollHistory(IDS.managerA);
+    expect(resolveOnlyVisibility).toEqual({
+      auditEvents: [
+        {
+          organization_id: IDS.orgA,
+          actor_user_id: IDS.adminA,
+          payload: expect.objectContaining({
+            action: "add_rate_version",
+            compensationRedacted: true,
+          }),
+        },
+      ],
+      mutationReceipts: [
+        {
+          organization_id: IDS.orgA,
+          actor_user_id: IDS.adminA,
+          result_payload: expect.objectContaining({
+            action: "add_rate_version",
+            replayed: false,
+          }),
+        },
+      ],
+    });
+    expect(
+      resolveOnlyVisibility.mutationReceipts.every(
+        (receipt) => receipt.actor_user_id !== IDS.managerA,
+      ),
+    ).toBe(true);
+
+    for (const weakerReaderVisibility of [exportOnlyVisibility, resolveOnlyVisibility]) {
+      const reachablePayloads = [
+        ...weakerReaderVisibility.auditEvents.map((row) => row.payload),
+        ...weakerReaderVisibility.mutationReceipts.map((row) => row.result_payload),
+      ];
+      const serializedPayloads = JSON.stringify(reachablePayloads);
+      expect(serializedPayloads).not.toContain("hourlyRateCents");
+      expect(serializedPayloads).not.toContain(String(sensitiveRateCents));
+      expect(serializedPayloads).not.toContain("org-b-sensitive");
+      expect(
+        [...weakerReaderVisibility.auditEvents, ...weakerReaderVisibility.mutationReceipts].every(
+          (row) => row.organization_id === IDS.orgA,
+        ),
+      ).toBe(true);
+    }
   });
 
   it("bounds payroll administration history by default and keeps the unrelated advisory-lock scope independent from pay-group generation", async () => {

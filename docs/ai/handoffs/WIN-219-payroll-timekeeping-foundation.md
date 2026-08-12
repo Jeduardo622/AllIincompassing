@@ -330,3 +330,9 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - Aggregate verification: fresh 8 GB `verify:local` passed policy, lint, typecheck, the full 4424-test coverage suite, 92.87% line coverage, and build. Tier-0 was interrupted only by a verified orphan Vite preview from this worktree on port 4173; after stopping that exact listener, the isolated gate passed 228/228.
 - verification result: `pass`; exact-head hosted tenant-safety remains the final runner gate after push.
 - tracking: `WIN-219` remains the issue of record; no new Linear issue will be created.
+
+### Migration Dependency Governance
+
+- A Task 4 Supabase audit found that the snapshot migration header named `20260812113000_payroll_session_lifecycle_context_disabled_state.sql`, which sorts after the snapshot migration and cannot be a valid replay dependency.
+- The snapshot SQL consumes attendance and correction tables established by `20260811214856_payroll_timekeeping_capture_read_model.sql` and does not consume objects added by either later session-context migration.
+- The dependency header now names the capture read-model migration. No runtime SQL, migration filename, hosted state, or activation behavior changed.

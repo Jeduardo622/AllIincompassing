@@ -1,5 +1,5 @@
 -- @migration-intent: payroll_timesheet_snapshots
--- @migration-dependencies: 20260812113000_payroll_session_lifecycle_context_disabled_state.sql
+-- @migration-dependencies: 20260811214856_payroll_timekeeping_capture_read_model.sql
 -- @migration-rollback: Drop timesheet snapshot tables, policies, indexes, and RPCs; then regenerate local database types after a clean local reset.
 
 begin;

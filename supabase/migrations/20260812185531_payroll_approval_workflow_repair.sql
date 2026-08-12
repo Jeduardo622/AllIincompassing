@@ -442,6 +442,53 @@ create trigger timekeeping_exceptions_append_payroll_approval_invalidation
   for each row
   execute function app.invalidate_payroll_approval_from_timekeeping_exceptions();
 
+drop policy if exists timesheet_approvals_authenticated_select on public.timesheet_approvals;
+create policy timesheet_approvals_authenticated_select
+  on public.timesheet_approvals
+  for select
+  to authenticated
+  using (
+    app.payroll_actor_in_organization(organization_id)
+    and (
+      (
+        action <> 'approval_invalidated'
+        and app.current_user_can_read_payroll_employee(organization_id, employment_profile_id)
+      )
+      or (
+        exists (
+          select 1
+          from public.employment_profiles profile
+          where profile.organization_id = timesheet_approvals.organization_id
+            and profile.id = timesheet_approvals.employment_profile_id
+            and profile.user_id = auth.uid()
+        )
+        and app.payroll_actor_has_capability(organization_id, 'time.view_self')
+      )
+      or (
+        exists (
+          select 1
+          from public.employee_manager_assignments assignment_row
+          where assignment_row.organization_id = timesheet_approvals.organization_id
+            and assignment_row.employment_profile_id = timesheet_approvals.employment_profile_id
+            and assignment_row.manager_user_id = auth.uid()
+            and assignment_row.effective_from <= pg_catalog.now()
+            and (
+              assignment_row.effective_through is null
+              or assignment_row.effective_through > pg_catalog.now()
+            )
+        )
+        and (
+          app.payroll_actor_has_capability(organization_id, 'time.review_assigned')
+          or app.payroll_actor_has_capability(organization_id, 'time.approve_assigned')
+        )
+      )
+      or app.payroll_actor_has_capability(organization_id, 'payroll.configure_employment')
+      or app.payroll_actor_has_capability(organization_id, 'payroll.resolve_exceptions')
+      or app.payroll_actor_has_capability(organization_id, 'payroll.lock_period')
+      or app.payroll_actor_has_capability(organization_id, 'payroll.reopen_period')
+    )
+  );
+
 drop policy if exists payroll_audit_events_authenticated_select on public.payroll_audit_events;
 create policy payroll_audit_events_authenticated_select
   on public.payroll_audit_events

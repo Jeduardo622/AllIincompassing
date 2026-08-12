@@ -76,6 +76,10 @@ describe("payroll approval workflow repair migration contract", () => {
     expect(sql).toMatch(/employment_profile_id = new\.employment_profile_id/i);
     expect(sql).toMatch(/linked session attendance event is out of scope/i);
     expect(sql).toMatch(/v_source_actor_user_id := auth\.uid\(\)/i);
+    expect(sql).toMatch(/drop policy if exists timesheet_approvals_authenticated_select/i);
+    expect(sql).toMatch(/action <> 'approval_invalidated'/i);
+    expect(sql).toMatch(/app\.payroll_actor_has_capability\(organization_id,\s*'time\.view_self'\)/i);
+    expect(sql).toMatch(/app\.payroll_actor_has_capability\(organization_id,\s*'payroll\.configure_employment'\)/i);
     expect(sql).toMatch(/drop policy if exists payroll_audit_events_authenticated_select/i);
     expect(sql).toMatch(/operation <> 'append_payroll_approval_invalidation'/i);
     expect(sql).toMatch(/payroll\.resolve_exceptions/i);

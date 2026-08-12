@@ -418,6 +418,21 @@ const readApprovalRowsVisibleToExportOnly = async (client: Client) =>
     ).rows,
   );
 
+const readApprovalRowsVisibleToUser = async (client: Client, userId: string) =>
+  withRole(client, "authenticated", userId, async () =>
+    (
+      await client.query(
+        `select action, idempotency_key, payload_hash
+         from public.timesheet_approvals
+         where organization_id = $1::uuid
+           and employment_profile_id = $2::uuid
+           and pay_period_id = $3::uuid
+         order by occurred_at asc, received_at asc, id asc`,
+        [IDS.orgA, IDS.employmentA, IDS.payPeriodA],
+      )
+    ).rows,
+  );
+
 const readApprovalRowsAsAdmin = async (client: Client) =>
   (
     await client.query(
@@ -433,6 +448,19 @@ const readApprovalRowsAsAdmin = async (client: Client) =>
 
 const readInvalidationAuditsVisibleToExportOnly = async (client: Client) =>
   withRole(client, "authenticated", IDS.schedulerA, async () =>
+    (
+      await client.query(
+        `select operation, payload
+         from public.payroll_audit_events
+         where organization_id = $1::uuid
+         order by created_at asc, id asc`,
+        [IDS.orgA],
+      )
+    ).rows,
+  );
+
+const readInvalidationAuditsVisibleToUser = async (client: Client, userId: string) =>
+  withRole(client, "authenticated", userId, async () =>
     (
       await client.query(
         `select operation, payload
@@ -1141,6 +1169,73 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
     expect(await readInvalidationAudits(admin)).toHaveLength(1);
   });
 
+  const assertSessionAttendanceEventInvalidatesOnce = async (
+    currentState: "submitted" | "manager_approved",
+    firstEventAt: string,
+    secondEventAt: string,
+  ) => {
+    await seedApprovalChain(admin, currentState);
+    const beforeHistory = await readApprovalHistory(admin);
+    const beforeAudits = await readInvalidationAudits(admin);
+    expect(beforeAudits).toEqual([]);
+    expect(beforeHistory.at(-1)?.action).toBe(currentState);
+
+    await insertSessionAttendanceEvent(
+      admin,
+      "session_started",
+      firstEventAt,
+      IDS.employeeA,
+    );
+
+    const history = await readApprovalHistory(admin);
+    const invalidationAudits = await readInvalidationAudits(admin);
+    expect(history).toHaveLength(beforeHistory.length + 1);
+    expect(history.slice(0, -1)).toEqual(beforeHistory);
+    expect(invalidationAudits).toHaveLength(beforeAudits.length + 1);
+    expect(history.at(-1)).toMatchObject({
+      action: "approval_invalidated",
+      actor_user_id: IDS.employeeA,
+      previous_transition_id: beforeHistory.at(-1)?.id,
+    });
+    expect(invalidationAudits).toEqual([
+      {
+        id: expect.any(String),
+        actor_user_id: IDS.employeeA,
+        operation: "append_payroll_approval_invalidation",
+        target_table: "timesheet_approvals",
+        target_row_id: history.at(-1)?.id,
+        payload: {
+          resolvedAction: "approval_invalidated",
+        },
+      },
+    ]);
+
+    await insertSessionAttendanceEvent(
+      admin,
+      "session_ended",
+      secondEventAt,
+      IDS.employeeA,
+    );
+    expect((await readApprovalHistory(admin)).filter((row) => row.action === "approval_invalidated")).toHaveLength(1);
+    expect(await readInvalidationAudits(admin)).toHaveLength(1);
+  };
+
+  it("appends exactly one invalidation from a session attendance event insert after a submitted chain", async () => {
+    await assertSessionAttendanceEventInvalidatesOnce(
+      "submitted",
+      "2026-08-12T19:00:00Z",
+      "2026-08-12T20:00:00Z",
+    );
+  });
+
+  it("appends exactly one invalidation from a session attendance event insert after a manager-approved chain", async () => {
+    await assertSessionAttendanceEventInvalidatesOnce(
+      "manager_approved",
+      "2026-08-12T19:30:00Z",
+      "2026-08-12T20:30:00Z",
+    );
+  });
+
   it("uses auth actor fallback for unlinked timekeeping exceptions, allows no-chain inserts, and fails closed when invalidation requires an authoritative actor", async () => {
     const unlinkedBefore = await countWorkflowRows(admin);
     await admin.query(
@@ -1314,7 +1409,14 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
     expect(await readInvalidationAudits(admin)).toEqual([]);
   });
 
-  it("stores opaque invalidation idempotency keys and leaves no invalidation source details reachable to export-only actors", async () => {
+  it("lets an admin-role export-only principal read non-invalidated approval state but not invalidation transitions or invalidation audits", async () => {
+    await admin.query(
+      `update public.user_roles
+       set role_id = (select id from public.roles where name = 'admin' limit 1)
+       where user_id = $1::uuid`,
+      [IDS.linkOnlyA],
+    );
+
     const attendanceEventId = await insertSessionAttendanceEvent(
       admin,
       "session_started",
@@ -1327,15 +1429,18 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
          organization_id, user_id, capability, effective_from, granted_by
        ) values ($1::uuid, $2::uuid, 'payroll.export_period', '2026-08-01T00:00:00Z', $3::uuid)
        on conflict do nothing`,
-      [IDS.orgA, IDS.schedulerA, IDS.adminA],
+      [IDS.orgA, IDS.linkOnlyA, IDS.adminA],
     );
-    await admin.query(
-      `delete from public.payroll_capability_grants
-       where organization_id = $1::uuid
-         and user_id = $2::uuid
-         and capability <> 'payroll.export_period'`,
-      [IDS.orgA, IDS.schedulerA],
-    );
+
+    const exportOnlyBeforeInvalidation = await readApprovalRowsVisibleToUser(admin, IDS.linkOnlyA);
+    expect(exportOnlyBeforeInvalidation).toMatchObject([
+      {
+        action: "submitted",
+      },
+      {
+        action: "manager_approved",
+      },
+    ]);
 
     await admin.query(
       `insert into public.timekeeping_exceptions (
@@ -1357,8 +1462,8 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
     );
 
     const adminApprovals = await readApprovalRowsAsAdmin(admin);
-    const exportOnlyApprovals = await readApprovalRowsVisibleToExportOnly(admin);
-    const exportOnlyAudits = await readInvalidationAuditsVisibleToExportOnly(admin);
+    const exportOnlyApprovals = await readApprovalRowsVisibleToUser(admin, IDS.linkOnlyA);
+    const exportOnlyAudits = await readInvalidationAuditsVisibleToUser(admin, IDS.linkOnlyA);
     const serializedVisibility = JSON.stringify({
       approvals: exportOnlyApprovals,
       audits: exportOnlyAudits,
@@ -1370,7 +1475,15 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
       idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/i),
       payload_hash: expect.stringMatching(/^[0-9a-f]{64}$/i),
     });
-    expect(exportOnlyApprovals).toEqual([]);
+    expect(exportOnlyApprovals).toMatchObject([
+      {
+        action: "submitted",
+      },
+      {
+        action: "manager_approved",
+      },
+    ]);
+    expect(exportOnlyApprovals.every((row) => row.action !== "approval_invalidated")).toBe(true);
     expect(exportOnlyAudits.every((row) => row.operation !== "append_payroll_approval_invalidation")).toBe(true);
     expect(serializedVisibility).not.toContain("timekeeping_exceptions");
     expect(serializedVisibility).not.toContain(attendanceEventId);

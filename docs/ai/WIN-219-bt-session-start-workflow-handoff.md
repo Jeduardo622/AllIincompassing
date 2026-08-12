@@ -194,3 +194,24 @@ The BT Start Session action is restored only for a valid assigned scheduled appo
 - test review: approved; no must-fix coverage gaps remain after the direct-execution integration test
 - CI architecture review: workflow topology and all 14 substitutions remain intact; a truly stalled install remains governed by the existing job timeout and is outside this fast-failure incident scope
 - pr-ready: yes for critical-lane human review after exact-head required CI; merge-ready remains no until human review completes
+
+### Standalone Tenant-Safety Follow-Up
+
+- exact-head run `31647213679` failed in the standalone `.github/workflows/tenant-safety.yml` before tenant validation, lint, typecheck, or tests ran; its raw `npm ci` hit the same Supabase CLI release `ECONNRESET` / socket hang-up
+- fresh route: `classification: high-risk human-reviewed`, `lane: critical`
+- bounded change: route that workflow's single dependency-install step through the existing retry wrapper and assert the binding in the focused test; retry behavior, tenant checks, secrets, triggers, and all other workflows remain unchanged
+- TDD red: the new standalone-workflow assertion failed on the raw `npm ci` line while the original five tests passed
+- required verification: focused retry/workflow test, direct workflow/policy validation, lint, typecheck, build, exact-head standalone tenant-safety CI, and human review
+- executed verification:
+  - focused retry/workflow test: pass (`6/6`)
+  - `npm run ci:check-focused`: pass; connection-backed checks skipped because no database URL was configured
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run build`: pass
+- blocked verification:
+  - `npm run test:ci`: not repeated for the one-line workflow binding; the preceding run was nonzero under aggregate UI contention, and its named failures passed `123/123` in isolation
+  - `npm run verify:local`: not repeated because it includes the same aggregate full-suite condition; required policy, lint, typecheck, focused tests, and build ran directly
+- verify-change result: `pass-with-blocked-checks`; exact-head standalone tenant-safety CI remains required
+- PR hygiene: `pr-ready: yes`, `lane: critical`, branch/Linear/single-purpose/reviewer requirements satisfied; human review remains required before merge
+- delegated review: code review found no workflow correctness defect after this evidence update; test review approved the binding coverage; security review approved unchanged secret handling and fail-closed behavior
+- residual risk: other workflows with raw installs remain outside this incident scope; a failure after all three attempts remains a hard failure

@@ -68,3 +68,13 @@ test("the main CI workflow routes dependency installs through the retry wrapper"
   expect(workflow).not.toMatch(/^\s*run: npm ci\s*$/m);
   expect(workflow.match(/^\s*run: node scripts\/ci\/npm-ci-with-retry\.mjs\s*$/gm)).toHaveLength(14);
 });
+
+test("the standalone tenant-safety workflow routes dependency installation through the retry wrapper", () => {
+  const workflow = readFileSync(
+    path.join(repoRoot, ".github", "workflows", "tenant-safety.yml"),
+    "utf8",
+  );
+
+  expect(workflow).not.toMatch(/^\s*run: npm ci\s*$/m);
+  expect(workflow.match(/^\s*run: node scripts\/ci\/npm-ci-with-retry\.mjs\s*$/gm)).toHaveLength(1);
+});

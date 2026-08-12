@@ -781,7 +781,7 @@ const appendMissingIeHpTemplatePlaceholders = (
 
 const splitListText = (value: string): string[] =>
   value
-    .split(/\s*(?:\n+|;|•|\u2022)\s*/g)
+    .split(/\s*(?:\n+|;|[\u2022\u25a0\u25a1\u2610\u2611\u2612])\s*/g)
     .map((entry) => normalizeExtractedValue(entry))
     .filter((entry) => entry.length > 0);
 

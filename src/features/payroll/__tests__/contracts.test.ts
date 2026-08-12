@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  PAYROLL_APPROVAL_ACTIONS,
+  PAYROLL_BLOCKER_RESOLUTIONS,
+  PAYROLL_BLOCKER_TYPES,
   PAYROLL_ADMIN_ELIGIBLE_ROLES,
   PAYROLL_CAPABILITIES,
   PAYROLL_EVENT_OPERATIONS,
@@ -51,6 +54,26 @@ describe("payroll contracts", () => {
       "payroll.reopen_period",
       "payroll.export_period",
       "payroll.view_compensation",
+    ]);
+  });
+
+  it("pins the exact protected payroll approval action vocabulary", () => {
+    expect(PAYROLL_APPROVAL_ACTIONS).toEqual([
+      "submit",
+      "manager_approve",
+      "return",
+      "lock",
+      "reopen",
+      "resolve_blocker",
+    ]);
+    expect(PAYROLL_BLOCKER_TYPES).toEqual([
+      "time_correction_request",
+      "session_attendance_correction_request",
+      "timekeeping_exception",
+    ]);
+    expect(PAYROLL_BLOCKER_RESOLUTIONS).toEqual([
+      "resolved",
+      "reopened",
     ]);
   });
 

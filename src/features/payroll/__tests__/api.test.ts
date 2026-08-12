@@ -6,14 +6,20 @@ vi.mock("../../../lib/api", () => ({
 
 import { callApi } from "../../../lib/api";
 import {
+  approvePayrollTimesheet,
   derivePayrollTimesheetSnapshot,
   fetchPayrollDay,
   fetchPayrollTimesheetPeriod,
   fetchSessionPayrollContext,
+  lockPayrollTimesheet,
+  reopenPayrollTimesheet,
   recordSessionAttendance,
   recordTimeEvent,
+  resolvePayrollBlocker,
+  submitPayrollApproval,
   requestSessionAttendanceCorrection,
   requestTimeCorrection,
+  returnPayrollTimesheet,
 } from "../api";
 
 const mockedCallApi = vi.mocked(callApi);
@@ -848,5 +854,249 @@ describe("payroll api client", () => {
     for (const [, init] of mockedCallApi.mock.calls) {
       expect(JSON.parse(String(init?.body))).not.toHaveProperty("idempotencyKey");
     }
+  });
+
+  it("submits payroll approval with only snapshot transport fields and the Idempotency-Key header", async () => {
+    mockedCallApi.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          transitionId: "22222222-2222-2222-2222-222222222222",
+          snapshotId: "11111111-1111-1111-1111-111111111111",
+          snapshotHash: "a".repeat(64),
+          canonicalSnapshotHash: "a".repeat(64),
+          action: "submitted",
+          previousTransitionId: null,
+          replayed: false,
+          occurredAt: "2026-08-12T18:00:00.000Z",
+          idempotencyKey: "approval-submit-key",
+        },
+        200,
+        {
+          "Idempotency-Key": "approval-submit-key",
+        },
+      ),
+    );
+
+    await submitPayrollApproval({
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-12",
+      idempotencyKey: "approval-submit-key",
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "a".repeat(64),
+      attestation: true,
+    });
+
+    const [path, init] = mockedCallApi.mock.calls[0] ?? [];
+    expect(path).toBe("/api/payroll-approvals");
+    expect(init?.method).toBe("POST");
+    const headers = init?.headers as Headers;
+    expect(headers.get("Idempotency-Key")).toBe("approval-submit-key");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      action: "submit",
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "a".repeat(64),
+      attestation: true,
+    });
+  });
+
+  it("sends manager return, lock, and reopen approval actions through the protected endpoint without authority fields", async () => {
+    mockedCallApi.mockImplementation(async (_path, init) => {
+      const key = (init?.headers as Headers).get("Idempotency-Key") ?? "";
+      const body = JSON.parse(String(init?.body)) as { action: string; snapshotId: string; snapshotHash: string };
+      return jsonResponse({
+        transitionId:
+          body.action === "return"
+            ? "77777777-7777-7777-7777-777777777777"
+            : body.action === "lock"
+            ? "88888888-8888-8888-8888-888888888888"
+            : "99999999-9999-9999-9999-999999999999",
+        snapshotId: body.snapshotId,
+        snapshotHash: body.snapshotHash,
+        canonicalSnapshotHash: body.snapshotHash,
+        action: body.action === "return"
+          ? "returned"
+          : body.action === "lock"
+          ? "locked"
+          : "reopened",
+        previousTransitionId: null,
+        replayed: false,
+        occurredAt: "2026-08-12T18:10:00.000Z",
+        idempotencyKey: key,
+      }, 200, {
+        "Idempotency-Key": key,
+      });
+    });
+
+    await returnPayrollTimesheet({
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-12",
+      idempotencyKey: "approval-return-key",
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "a".repeat(64),
+      comment: "Needs correction.",
+    });
+    await lockPayrollTimesheet({
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-12",
+      idempotencyKey: "approval-lock-key",
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "a".repeat(64),
+    });
+    await reopenPayrollTimesheet({
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-12",
+      idempotencyKey: "approval-reopen-key",
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "a".repeat(64),
+      reason: "Correction arrived after lock.",
+    });
+
+    expect(mockedCallApi).toHaveBeenCalledTimes(3);
+    for (const [path, init] of mockedCallApi.mock.calls) {
+      expect(path).toBe("/api/payroll-approvals");
+      expect(JSON.parse(String(init?.body))).not.toHaveProperty("organizationId");
+      expect(JSON.parse(String(init?.body))).not.toHaveProperty("userId");
+    }
+  });
+
+  it("resolves blockers through the approval transport with exact blocker fields and no snapshot bypass", async () => {
+    mockedCallApi.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          resolutionId: "44444444-4444-4444-4444-444444444444",
+          blockerType: "timekeeping_exception",
+          blockerId: "55555555-5555-5555-5555-555555555555",
+          payPeriodId: "66666666-6666-6666-6666-666666666666",
+          action: "resolved",
+          previousResolutionId: null,
+          replayed: false,
+          occurredAt: "2026-08-12T18:05:00.000Z",
+          idempotencyKey: "approval-blocker-key",
+        },
+        200,
+        {
+          "Idempotency-Key": "approval-blocker-key",
+        },
+      ),
+    );
+
+    await resolvePayrollBlocker({
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-12",
+      idempotencyKey: "approval-blocker-key",
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "a".repeat(64),
+      blockerType: "timekeeping_exception",
+      blockerId: "55555555-5555-5555-5555-555555555555",
+      resolution: "resolved",
+      reason: "Reviewed and corrected.",
+    });
+
+    const [path, init] = mockedCallApi.mock.calls[0] ?? [];
+    expect(path).toBe("/api/payroll-approvals");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      action: "resolve_blocker",
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "a".repeat(64),
+      blockerType: "timekeeping_exception",
+      blockerId: "55555555-5555-5555-5555-555555555555",
+      resolution: "resolved",
+      reason: "Reviewed and corrected.",
+    });
+  });
+
+  it("rejects payroll approval authority injection recursively before network", async () => {
+    await expect(
+      approvePayrollTimesheet({
+        organizationId: "org-1",
+        userId: "user-1",
+        localDate: "2026-08-12",
+        idempotencyKey: "approval-manager-key",
+        snapshotId: "11111111-1111-1111-1111-111111111111",
+        snapshotHash: "a".repeat(64),
+        comment: "Looks good.",
+        nested: {
+          actorId: "malicious-user",
+        },
+      } as never),
+    ).rejects.toThrow(/authority/i);
+
+    expect(mockedCallApi).not.toHaveBeenCalled();
+  });
+
+  it("surfaces feature_disabled approval responses explicitly and never treats them as retryable", async () => {
+    mockedCallApi.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          code: "feature_disabled",
+          error: "Payroll approval workflow is unavailable.",
+          message: "Payroll approval workflow is unavailable.",
+          state: "feature_disabled",
+          idempotencyKey: "approval-feature-key",
+        },
+        403,
+        {
+          "Idempotency-Key": "approval-feature-key",
+        },
+      ),
+    );
+
+    await expect(
+      lockPayrollTimesheet({
+        organizationId: "org-1",
+        userId: "user-1",
+        localDate: "2026-08-12",
+        idempotencyKey: "approval-feature-key",
+        snapshotId: "11111111-1111-1111-1111-111111111111",
+        snapshotHash: "a".repeat(64),
+      }),
+    ).rejects.toMatchObject({
+      code: "feature_disabled",
+      status: 403,
+      state: "feature_disabled",
+    });
+  });
+
+  it("fails closed when approval responses expose extra compensation data", async () => {
+    mockedCallApi.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          transitionId: "22222222-2222-2222-2222-222222222222",
+          snapshotId: "11111111-1111-1111-1111-111111111111",
+          snapshotHash: "a".repeat(64),
+          canonicalSnapshotHash: "a".repeat(64),
+          action: "submitted",
+          previousTransitionId: null,
+          replayed: false,
+          occurredAt: "2026-08-12T18:00:00.000Z",
+          idempotencyKey: "approval-shape-key",
+          grossEarningsCents: 999999,
+        },
+        200,
+        {
+          "Idempotency-Key": "approval-shape-key",
+        },
+      ),
+    );
+
+    await expect(
+      submitPayrollApproval({
+        organizationId: "org-1",
+        userId: "user-1",
+        localDate: "2026-08-12",
+        idempotencyKey: "approval-shape-key",
+        snapshotId: "11111111-1111-1111-1111-111111111111",
+        snapshotHash: "a".repeat(64),
+        attestation: true,
+      }),
+    ).rejects.toMatchObject({
+      code: "invalid_response",
+      status: 502,
+    });
   });
 });

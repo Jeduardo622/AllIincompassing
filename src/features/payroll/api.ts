@@ -5,6 +5,7 @@ import { toNormalizedApiError, type NormalizedApiError } from "../../lib/sdk/err
 
 const PAYROLL_TIME_ENDPOINT = "/api/payroll-time-events";
 const PAYROLL_TIMESHEET_ENDPOINT = "/api/payroll-timesheets";
+const PAYROLL_APPROVALS_ENDPOINT = "/api/payroll-approvals";
 const FORBIDDEN_AUTHORITY_KEYS = new Set([
   "organization_id",
   "organizationId",
@@ -35,6 +36,20 @@ const payrollTimesheetStateSchema = z.enum([
   "missing_prerequisite",
   "no_employment_profile",
 ]);
+const payrollApprovalResponseActionSchema = z.enum([
+  "submitted",
+  "manager_approved",
+  "returned",
+  "locked",
+  "reopened",
+  "approval_invalidated",
+]);
+const payrollBlockerTypeSchema = z.enum([
+  "time_correction_request",
+  "session_attendance_correction_request",
+  "timekeeping_exception",
+]);
+const payrollBlockerResolutionSchema = z.enum(["resolved", "reopened"]);
 
 const timeEventPayloadSchema = z.object({
   occurredAt: z.string().min(1),
@@ -190,6 +205,28 @@ const payrollDayResponseSchema = z.object({
 const mutationSuccessSchema = z.object({
   idempotencyKey: z.string().min(1),
 }).passthrough();
+const payrollApprovalTransitionSchema = z.object({
+  transitionId: z.string().uuid(),
+  snapshotId: z.string().uuid(),
+  snapshotHash: z.string().min(1),
+  canonicalSnapshotHash: z.string().min(1),
+  action: payrollApprovalResponseActionSchema,
+  previousTransitionId: z.string().uuid().nullable(),
+  replayed: z.boolean(),
+  occurredAt: z.string().min(1),
+  idempotencyKey: z.string().min(1),
+}).strict();
+const payrollBlockerResolutionResponseSchema = z.object({
+  resolutionId: z.string().uuid(),
+  blockerType: payrollBlockerTypeSchema,
+  blockerId: z.string().uuid(),
+  payPeriodId: z.string().uuid(),
+  action: payrollBlockerResolutionSchema,
+  previousResolutionId: z.string().uuid().nullable(),
+  replayed: z.boolean(),
+  occurredAt: z.string().min(1),
+  idempotencyKey: z.string().min(1),
+}).strict();
 const payrollTimesheetSnapshotSchema = z.object({
   id: z.string().uuid().optional(),
   snapshotId: z.string().uuid().optional(),
@@ -325,6 +362,8 @@ export type PayrollTimesheetPeriodResponse = z.infer<typeof payrollTimesheetPeri
 export type PayrollTimesheetDeriveResponse =
   | z.infer<typeof payrollTimesheetDeriveSuccessSchema>
   | z.infer<typeof payrollTimesheetDeriveBlockedSchema>;
+export type PayrollApprovalTransition = z.infer<typeof payrollApprovalTransitionSchema>;
+export type PayrollBlockerResolutionResponse = z.infer<typeof payrollBlockerResolutionResponseSchema>;
 export type PayrollDayResponse = {
   state: PayrollDayState;
   bootstrap?: PayrollBootstrap;
@@ -343,6 +382,12 @@ export type PayrollDayResponse = {
 type ScopedMutationInput<T> = PayrollScope & {
   idempotencyKey: string;
 } & T;
+
+type PayrollApprovalScopeInput = PayrollScope & {
+  idempotencyKey: string;
+  snapshotId: string;
+  snapshotHash: string;
+};
 
 const containsForbiddenAuthority = (value: unknown): boolean => {
   if (!value || typeof value !== "object") {
@@ -423,6 +468,12 @@ const parseFailure = async (
     payload = null;
   }
   const error = toNormalizedApiError(payload, response.status, fallbackMessage);
+  if (payload && typeof payload.state === "string") {
+    (error as NormalizedApiError & { state?: string }).state = payload.state;
+  }
+  if (payload && typeof payload.idempotencyKey === "string" && !error.data) {
+    error.data = { idempotencyKey: payload.idempotencyKey };
+  }
   return withRetryAfterHeader(error, response);
 };
 
@@ -460,6 +511,19 @@ const postPayrollAction = async (
     body: JSON.stringify(body),
   });
 };
+
+const postPayrollApprovalAction = async (
+  body: Record<string, unknown>,
+  idempotencyKey: string,
+): Promise<Response> =>
+  callApi(PAYROLL_APPROVALS_ENDPOINT, {
+    method: "POST",
+    headers: new Headers({
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey,
+    }),
+    body: JSON.stringify(body),
+  });
 
 export const validatePayrollTimeEventPayload = (
   payload: PayrollTimeEventPayload,
@@ -725,6 +789,128 @@ export async function requestSessionAttendanceCorrection(
     idempotencyKey,
   );
   return confirmExactIdempotencyKey(response, idempotencyKey);
+}
+
+const validateSnapshotBinding = (input: { snapshotId: string; snapshotHash: string }) => ({
+  snapshotId: z.string().uuid().parse(input.snapshotId),
+  snapshotHash: z.string().min(1).parse(input.snapshotHash),
+});
+
+const confirmExactApprovalResponse = async <T extends { idempotencyKey: string }>(
+  response: Response,
+  requestedKey: string,
+  schema: z.ZodSchema<T>,
+): Promise<T> => {
+  const parsed = await parseJsonResponse(response.clone(), schema);
+  if (!response.ok) {
+    throw await parseFailure(response, "Payroll approval request failed.");
+  }
+  if (!parsed) {
+    throw toNormalizedApiError(
+      {
+        code: "invalid_response",
+        error: "Invalid payroll approval response.",
+      },
+      502,
+      "Invalid payroll approval response.",
+    );
+  }
+
+  const headerKey = response.headers.get("Idempotency-Key")?.trim() ?? "";
+  if (headerKey !== requestedKey || parsed.idempotencyKey !== requestedKey) {
+    buildMutationMismatchError(requestedKey, headerKey, parsed.idempotencyKey);
+  }
+
+  return parsed;
+};
+
+const validatePayrollApprovalComment = (comment: string): string => z.string().min(1).parse(comment);
+const validatePayrollApprovalReason = (reason: string): string => z.string().min(1).parse(reason);
+
+export async function submitPayrollApproval(
+  input: PayrollApprovalScopeInput & { attestation: true },
+): Promise<PayrollApprovalTransition> {
+  const idempotencyKey = assertNonEmptyIdempotencyKey(input.idempotencyKey);
+  const snapshot = validateSnapshotBinding(input);
+  const response = await postPayrollApprovalAction({
+    action: "submit",
+    ...snapshot,
+    attestation: true,
+  }, idempotencyKey);
+  return confirmExactApprovalResponse(response, idempotencyKey, payrollApprovalTransitionSchema);
+}
+
+export async function approvePayrollTimesheet(
+  input: PayrollApprovalScopeInput & { comment?: string; nested?: unknown },
+): Promise<PayrollApprovalTransition> {
+  assertNoAuthorityFields(input.nested);
+  const idempotencyKey = assertNonEmptyIdempotencyKey(input.idempotencyKey);
+  const snapshot = validateSnapshotBinding(input);
+  const response = await postPayrollApprovalAction({
+    action: "manager_approve",
+    ...snapshot,
+    ...(input.comment ? { comment: validatePayrollApprovalComment(input.comment) } : {}),
+  }, idempotencyKey);
+  return confirmExactApprovalResponse(response, idempotencyKey, payrollApprovalTransitionSchema);
+}
+
+export async function returnPayrollTimesheet(
+  input: PayrollApprovalScopeInput & { comment: string },
+): Promise<PayrollApprovalTransition> {
+  const idempotencyKey = assertNonEmptyIdempotencyKey(input.idempotencyKey);
+  const snapshot = validateSnapshotBinding(input);
+  const response = await postPayrollApprovalAction({
+    action: "return",
+    ...snapshot,
+    comment: validatePayrollApprovalComment(input.comment),
+  }, idempotencyKey);
+  return confirmExactApprovalResponse(response, idempotencyKey, payrollApprovalTransitionSchema);
+}
+
+export async function lockPayrollTimesheet(
+  input: PayrollApprovalScopeInput,
+): Promise<PayrollApprovalTransition> {
+  const idempotencyKey = assertNonEmptyIdempotencyKey(input.idempotencyKey);
+  const snapshot = validateSnapshotBinding(input);
+  const response = await postPayrollApprovalAction({
+    action: "lock",
+    ...snapshot,
+  }, idempotencyKey);
+  return confirmExactApprovalResponse(response, idempotencyKey, payrollApprovalTransitionSchema);
+}
+
+export async function reopenPayrollTimesheet(
+  input: PayrollApprovalScopeInput & { reason: string },
+): Promise<PayrollApprovalTransition> {
+  const idempotencyKey = assertNonEmptyIdempotencyKey(input.idempotencyKey);
+  const snapshot = validateSnapshotBinding(input);
+  const response = await postPayrollApprovalAction({
+    action: "reopen",
+    ...snapshot,
+    reason: validatePayrollApprovalReason(input.reason),
+  }, idempotencyKey);
+  return confirmExactApprovalResponse(response, idempotencyKey, payrollApprovalTransitionSchema);
+}
+
+export async function resolvePayrollBlocker(
+  input: PayrollApprovalScopeInput & {
+    blockerType: z.infer<typeof payrollBlockerTypeSchema>;
+    blockerId: string;
+    resolution: z.infer<typeof payrollBlockerResolutionSchema>;
+    reason: string;
+  },
+): Promise<PayrollBlockerResolutionResponse> {
+  const idempotencyKey = assertNonEmptyIdempotencyKey(input.idempotencyKey);
+  const snapshot = validateSnapshotBinding(input);
+  const response = await postPayrollApprovalAction({
+    action: "resolve_blocker",
+    ...snapshot,
+    blockerType: payrollBlockerTypeSchema.parse(input.blockerType),
+    blockerId: z.string().uuid().parse(input.blockerId),
+    resolution: payrollBlockerResolutionSchema.parse(input.resolution),
+    reason: validatePayrollApprovalReason(input.reason),
+  }, idempotencyKey);
+  return confirmExactApprovalResponse(response, idempotencyKey, payrollBlockerResolutionResponseSchema);
 }
 
 export const isRetryablePayrollTransportError = (error: unknown): boolean => {

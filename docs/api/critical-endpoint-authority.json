@@ -155,6 +155,14 @@
       "authoritativeTarget": "generate-session-notes-pdf + session-notes-pdf-status + session-notes-pdf-download"
     },
     {
+      "publicApiPath": "/api/payroll-approvals",
+      "functionFile": "payroll-approvals.ts",
+      "status": "migrating",
+      "owner": "Backend Platform",
+      "wave": "B",
+      "authoritativeTarget": "payroll-approvals"
+    },
+    {
       "publicApiPath": "/api/payroll-time-events",
       "functionFile": "payroll-time-events.ts",
       "status": "migrating",

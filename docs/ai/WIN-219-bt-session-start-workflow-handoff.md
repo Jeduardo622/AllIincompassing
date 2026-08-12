@@ -93,3 +93,125 @@
 ## Handoff Summary
 
 The BT Start Session action is restored only for a valid assigned scheduled appointment and remains incapable of editing scheduling or treatment-plan metadata. Scheduled edits now replace stale goal links atomically, while legitimate multi-program goal sets remain canonical and exact at BT start. Local focused, policy, tenant, build, coverage, route, migration, and behavioral SQL checks pass; fresh protected CI and human review are the remaining merge gates.
+
+## Caller-Scoped Link Follow-Up (2026-08-12)
+
+### Routing And Scope
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- issue: [WIN-219](https://linear.app/winningedgeai/issue/WIN-219/restore-start-session-for-scheduled-bt-appointments)
+- branch: `codex/bt-session-link-auth-fix`
+- task intent: stop the app-side session start and completion fallback handlers from preferring a rejected Netlify service credential over the authenticated BT's RLS-scoped therapist-link read
+- production files: `src/server/api/sessions-start.ts`, `src/server/api/sessions-complete.ts`
+- test files: `src/server/__tests__/sessionsStartHandler.test.ts`, `src/server/__tests__/sessionsCompleteHandler.test.ts`
+- non-goals: no edge-function, migration, RLS, role-resolution, session-lifecycle, UI, or credential changes
+- stop condition: any required change outside the two app-side handlers and their focused tests must be re-routed
+
+### Change Summary
+
+- The live Netlify failure executed the app-side legacy start handler: its authenticated org/session reads succeeded, its exact `user_therapist_links` REST read returned `401`, and the Supabase `sessions-start` edge function was not invoked.
+- Both app-side therapist-link checks now use the authenticated caller headers. The user ID remains token-derived, and the therapist ID remains derived from the already org-scoped session row.
+- A successful lookup with no matching row remains a true `403 Forbidden` authorization denial.
+- Any non-OK therapist-link lookup is now reported as `502 upstream_error` instead of being flattened into a false `403`.
+- The change removes the completion fallback's now-unused Netlify service-role header builder and does not alter the Supabase edge authority paths.
+
+### Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: server/API, authz, tenant-scoped session lifecycle
+- required checks: focused handler tests, edge/RLS contract tests, `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run ci:verify-coverage`, `npm run build`, `npm run validate:tenant`, `npm run test:routes:tier0`, `npm run ci:playwright`
+- executed checks:
+  - focused handler tests: pass (`46/46`)
+  - edge/session/RLS contracts: pass (`41/41`)
+  - `npm run ci:check-focused`: pass; connection-backed checks skipped because no database URL was configured
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run build`: pass
+  - `npm run validate:tenant`: pass
+  - `npm run ci:verify-coverage`: pass (`92.81%` line coverage; required `86%`)
+  - `npm run test:routes:tier0`: pass (`220/220`)
+  - `npm run test:ci`: all assertions executed successfully (`4229` passed, `5` skipped), but the command exited nonzero after Vitest reported one worker `onTaskUpdate` timeout; an initial run also exceeded the default Node heap
+- blocked checks:
+  - `npm run ci:playwright`: blocked at preflight because local admin/superadmin smoke credentials are unavailable; no hosted mutation ran
+  - `npm run verify:local`: not separately repeatable as a pass because it includes the same nonzero `test:ci` runner condition and credential-independent subset already executed individually
+- result: `pass-with-blocked-checks`; exact-head CI must resolve the Vitest runner result and execute the protected Playwright gate
+- residual risk: hosted behavior still depends on the self-read migration being applied and requires a real linked-BT start/complete smoke after deployment
+
+### Delegated Review And PR Hygiene
+
+- specification, architecture, and implementation engineering: completed for the bounded two-handler slice
+- code review: approved the handler parity and fail-closed response contract after reconciling the live Netlify legacy-path trace; edge-function expansion remains outside this incident scope
+- security review: approved; caller and therapist identities remain server-derived, tenant scoping remains before link lookup, and service-key exposure is reduced
+- test review: approved the focused `403`, caller-header, and `401`/`503` to `502` coverage; exact-head CI must resolve the full-suite runner timeout
+- single-purpose diff: yes
+- generated artifact drift: none
+- protected-path drift: limited to the two declared `src/server/**` handlers
+- pr-ready: yes for critical-lane human review; exact-head CI must resolve the blocked checks before merge
+
+## CI Install Reliability Follow-Up (2026-08-12)
+
+### Routing And Scope
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- triggering paths: `.github/workflows/ci.yml` and `scripts/ci/npm-ci-with-retry.mjs`
+- allowed files: the main CI workflow, the retry wrapper, its focused test, and this WIN-219 handoff
+- non-goals: no application, auth, Supabase runtime, migration, dependency, lockfile, runner-image, cache, or other workflow changes
+- stop condition: any fix requiring package-manager policy changes or files outside the declared four-file boundary must be re-routed
+
+### Incident And Change
+
+- Required PR jobs repeatedly failed before their checks ran because the Supabase CLI postinstall could not reliably download its GitHub release checksum/archive. Observed failures included `ECONNRESET`, `503 Service Unavailable`, and a corrupt partial archive.
+- All 14 dependency-install steps in the main CI workflow now call one repository-owned wrapper instead of raw `npm ci`.
+- The wrapper performs at most three attempts, waits 10 seconds and then 20 seconds between failures, and preserves the final nonzero exit. It uses the Windows system shell only for the fixed literal `npm ci` command required by the npm command shim; it does not accept command input, skip checks, use `continue-on-error`, change credentials, or alter install arguments.
+- Other workflows remain unchanged; this slice only hardens the required PR workflow where the failures were observed.
+
+### Verification Card
+
+- required checks: focused retry/workflow tests, direct workflow validation, `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run build`, and `npm run verify:local` when local prerequisites allow it
+- TDD red: focused test failed because `scripts/ci/npm-ci-with-retry.mjs` did not exist
+- executed checks:
+  - focused retry/workflow test: pass (`5/5`), including real direct execution against a synthetic dependency-free package on Windows
+  - workflow binding: pass (14 guarded installs; zero raw `npm ci` steps)
+  - `npm run ci:check-focused`: pass; connection-backed checks skipped because no database URL was configured
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run build`: pass
+  - isolated rerun of the full-suite failures: pass (`123/123` across `ProgramsGoalsTab` and `TherapistOnboarding`)
+- blocked checks:
+  - `npm run test:ci`: nonzero under full local parallel load due UI lookup/timeouts and two Vitest worker `onTaskUpdate` timeouts; the named failing files pass in isolation and the new CI retry test passes independently
+  - `npm run verify:local`: not repeated because it includes the same nonzero full-suite command; its policy, lint, typecheck, focused-test, and build components were executed directly
+- result: `pass-with-blocked-checks`; exact-head GitHub CI is the authoritative runner verification for this workflow-only follow-up
+- residual risk: an upstream outage lasting beyond the bounded retry window still fails closed; human review and exact-head required CI remain mandatory
+
+### Delegated Review And PR Hygiene
+
+- implementation review: approved after replacing the Windows `npm.cmd` launch that reproduced `spawn EINVAL`; the direct-execution regression test now covers the fixed path
+- code review: approved with no remaining findings
+- security review: approved; the Windows shell receives only the fixed literal `npm ci` command, and failure/secret behavior remains fail-closed and unchanged
+- test review: approved; no must-fix coverage gaps remain after the direct-execution integration test
+- CI architecture review: workflow topology and all 14 substitutions remain intact; a truly stalled install remains governed by the existing job timeout and is outside this fast-failure incident scope
+- pr-ready: yes for critical-lane human review after exact-head required CI; merge-ready remains no until human review completes
+
+### Standalone Tenant-Safety Follow-Up
+
+- exact-head run `31647213679` failed in the standalone `.github/workflows/tenant-safety.yml` before tenant validation, lint, typecheck, or tests ran; its raw `npm ci` hit the same Supabase CLI release `ECONNRESET` / socket hang-up
+- fresh route: `classification: high-risk human-reviewed`, `lane: critical`
+- bounded change: route that workflow's single dependency-install step through the existing retry wrapper and assert the binding in the focused test; retry behavior, tenant checks, secrets, triggers, and all other workflows remain unchanged
+- TDD red: the new standalone-workflow assertion failed on the raw `npm ci` line while the original five tests passed
+- required verification: focused retry/workflow test, direct workflow/policy validation, lint, typecheck, build, exact-head standalone tenant-safety CI, and human review
+- executed verification:
+  - focused retry/workflow test: pass (`6/6`)
+  - `npm run ci:check-focused`: pass; connection-backed checks skipped because no database URL was configured
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run build`: pass
+- blocked verification:
+  - `npm run test:ci`: not repeated for the one-line workflow binding; the preceding run was nonzero under aggregate UI contention, and its named failures passed `123/123` in isolation
+  - `npm run verify:local`: not repeated because it includes the same aggregate full-suite condition; required policy, lint, typecheck, focused tests, and build ran directly
+- verify-change result: `pass-with-blocked-checks`; exact-head standalone tenant-safety CI remains required
+- PR hygiene: `pr-ready: yes`, `lane: critical`, branch/Linear/single-purpose/reviewer requirements satisfied; human review remains required before merge
+- delegated review: code review found no workflow correctness defect after this evidence update; test review approved the binding coverage; security review approved unchanged secret handling and fail-closed behavior
+- residual risk: other workflows with raw installs remain outside this incident scope; a failure after all three attempts remains a hard failure

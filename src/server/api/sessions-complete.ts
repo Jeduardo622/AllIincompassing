@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { getOptionalServerEnv } from "../env";
 import {
   consumeRateLimit,
   corsHeadersForRequest,
@@ -60,21 +59,6 @@ const buildRuntimeHeaders = (accessToken: string, supabaseAnonKey: string): Reco
   apikey: supabaseAnonKey,
   Authorization: `Bearer ${accessToken}`,
 });
-
-const buildRuntimeServiceRoleHeaders = (): Record<string, string> | null => {
-  const serviceRoleKey =
-    getOptionalServerEnv("SUPABASE_SERVICE_ROLE_KEY") ||
-    getOptionalServerEnv("SUPABASE_SECRET_KEY");
-  const trimmed = serviceRoleKey?.trim();
-  if (!trimmed) {
-    return null;
-  }
-  return {
-    "Content-Type": "application/json",
-    apikey: trimmed,
-    Authorization: `Bearer ${trimmed}`,
-  };
-};
 
 const resolveRuntimeOrgAndRoleWithStatus = async ({
   accessToken,
@@ -221,10 +205,10 @@ const userCanAccessTherapistSession = async ({
 
   const result = await fetchJson<Array<{ therapist_id?: string }>>(
     `${supabaseUrl}/rest/v1/user_therapist_links?select=therapist_id&user_id=eq.${encodeURIComponent(userId)}&therapist_id=eq.${encodeURIComponent(therapistId)}&limit=1`,
-    { method: "GET", headers: buildRuntimeServiceRoleHeaders() ?? headers },
+    { method: "GET", headers },
   );
   if (!result.ok) {
-    return { allowed: false, upstreamError: result.status >= 500 || result.status === 0 };
+    return { allowed: false, upstreamError: true };
   }
   return {
     allowed: Array.isArray(result.data) && result.data.some((row) => row.therapist_id === therapistId),

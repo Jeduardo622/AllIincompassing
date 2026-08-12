@@ -354,3 +354,29 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - Verification: client/server/static 55/55, Edge 15/15, approval RPC 15/15, snapshot RPC 21/21, policy, lint, typecheck, tenant validation, build, and tier-0 routes 228/228.
 - Review: code, security, and DevOps reviewers approved after three bounded fix rounds.
 - State: transport checkpoint complete. Manager/payroll-administration read models and UI remain Task 4 work. Credentialed `ci:playwright` remains locally blocked; no hosted migration, deployment, activation, merge, PHI, customer data, secrets, or `.env*` access occurred.
+
+### Task 4 Approval, Administration, And Review Closure
+
+- Branch: `codex/payroll-timekeeping-approval`; local head: `42b6e4e3` before this handoff-only commit.
+- Workflow: employee submission, assigned-manager approve/return, payroll-admin blocker resolution, lock, and reopen are bound to immutable current snapshots with proactive invalidation on reviewable source changes.
+- Administration: effective-dated organization settings, weekly/biweekly pay groups, California monthly fail-closed behavior, one base hourly rate, employment/manager assignment, sanitized audit history, and explicit compensation visibility are exposed through protected read/write contracts.
+- UI: `/time/review` provides employee and assigned-manager review; `/payroll` provides payroll administration without export controls until Task 5. `/payroll` is routed only to `admin` and `super_admin`.
+- Contract repair: additive migration `20260812212854_payroll_timesheet_period_contract_repair.sql` restores the canonical nested period response while preserving selected-date settings, deterministic organization-first policy precedence, `SECURITY DEFINER`, empty `search_path`, and tenant-scoped source reads.
+- Local database proof: clean migration stack; administration RPC 19/19; approval workflow RPC 24/24; review read models RPC 13/13; migration/static contract 20/20. Database-backed suites were run as isolated processes because they intentionally share one local Supabase database.
+- Aggregate proof: 8 GB `npm run verify:local` passed policy, lint, typecheck, full coverage tests, coverage thresholds, build, and 244/244 Tier-0 routes. `npm run validate:tenant` passed. Coverage summary: 92.96% lines/statements, 98.75% functions, and 84.75% branches.
+- Responsive proof: `/payroll`, `/time`, and `/time/review` passed the read-only observer at desktop `1440x900` and mobile `390x844`; all six evidence cards have empty failure-code lists and matching on-disk hashes.
+- Blocked check: `npm run ci:playwright` stops at the fail-closed preflight because neither `PW_SUPERADMIN_*` nor `PW_ADMIN_*` credential pair is available locally. This remains a required CI/human environment gate.
+- Review: code, security, Supabase, UI, test-isolation, and responsive specialists approved the final bounded behavior after policy-precedence and missing-settings classification fixes.
+- Tracking: existing issue `WIN-219` remains authoritative and was updated with commit and verification evidence. No new issue creation was attempted.
+- Boundary: no hosted migration, deployment, activation, merge, production data, PHI, secrets, `.env*` access, taxes, deductions, payments, full payroll engine, or CSV export occurred. Task 5 owns provider-neutral export.
+
+#### Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: UI/page; auth/routing; server/API/Edge; database/RLS/migration/tenant isolation
+- required checks: focused payroll unit/Edge/RPC tests; clean local migration replay; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run ci:verify-coverage`; `npm run validate:tenant`; `npm run build`; `npm run test:routes:tier0`; `npm run ci:playwright`; responsive observer for `/payroll`, `/time`, and `/time/review`; `npm run verify:local`
+- executed checks: all required local and secret-free checks passed, including the isolated database counts above, six responsive cards, and the complete 493.6-second `verify:local` gate
+- blocked checks: `npm run ci:playwright` -> required credential pairs are unavailable; preflight failed closed before browser execution
+- result: `pass-with-blocked-checks`
+- residual risk: human critical-lane review, exact-head hosted checks, credentialed browser smoke, payroll/legal review, and explicit migration/deploy activation remain mandatory; no merge or activation is authorized

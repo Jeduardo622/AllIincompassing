@@ -56,6 +56,7 @@ const PAYROLL_CAPABILITIES = [
   "payroll.view_compensation",
 ] as const;
 const PAYROLL_CADENCE = ["weekly", "biweekly", "monthly"] as const;
+const PAYROLL_GENERATION_CADENCE = ["weekly", "biweekly"] as const;
 const EXTERNAL_IDENTIFIER_REGEX = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$/;
 const IDEMPOTENCY_KEY_REGEX = /^[\x21-\x7E]{1,200}$/;
 const TIME_REGEX = /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
@@ -77,6 +78,7 @@ const payGroupNameSchema = z.string().refine(
 const idempotencyKeySchema = z.string().regex(IDEMPOTENCY_KEY_REGEX);
 const timestampSchema = z.string().regex(TIMESTAMP_REGEX);
 const cadenceSchema = z.enum(PAYROLL_CADENCE);
+const generationCadenceSchema = z.enum(PAYROLL_GENERATION_CADENCE);
 const capabilitySchema = z.enum(PAYROLL_CAPABILITIES);
 
 const payrollAdministrationActionSchema = z.discriminatedUnion("action", [
@@ -179,7 +181,7 @@ const payrollAdministrationActionSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("set_generation_version"),
     payGroupId: z.string().uuid(),
-    cadence: cadenceSchema,
+    cadence: generationCadenceSchema,
     effectiveFrom: z.string().date(),
     effectiveThrough: z.string().date().nullable().optional(),
     startsOn: z.string().date(),
@@ -299,30 +301,92 @@ type HandlerParams = {
   req: Request;
   userContext: UserContext;
   db: SupabaseClient;
+  rateLimitDependencies?: EdgeRateLimitDependencies;
 };
+
+type EdgeRateLimitDependencies = {
+  getEnv: (name: string) => string | undefined;
+  fetch: typeof fetch;
+};
+
+type EdgeRateLimitDecision =
+  | { outcome: "allowed" }
+  | { outcome: "denied"; retryAfterSeconds: number }
+  | { outcome: "unavailable" };
 
 type InitializedDependencies = {
   protectedHandler: (req: Request) => Promise<Response>;
 };
 
 let initializedDependenciesPromise: Promise<InitializedDependencies> | null = null;
-const rateState = new Map<string, { count: number; resetAt: number }>();
 
-const consumeEdgeRateLimit = (key: string, limit: number, windowMs: number): { allowed: boolean; retryAfter?: number } => {
-  const now = Date.now();
-  const existing = rateState.get(key);
-  if (!existing || now > existing.resetAt) {
-    rateState.set(key, { count: 1, resetAt: now + windowMs });
-    return { allowed: true };
+const defaultRateLimitDependencies: EdgeRateLimitDependencies = {
+  getEnv: (name) => Deno.env.get(name),
+  fetch,
+};
+
+export const consumePayrollAdministrationRateLimit = async (
+  actorId: string,
+  dependencies: EdgeRateLimitDependencies = defaultRateLimitDependencies,
+): Promise<EdgeRateLimitDecision> => {
+  const rawBaseUrl = dependencies.getEnv("UPSTASH_REDIS_REST_URL")?.trim();
+  const token = dependencies.getEnv("UPSTASH_REDIS_REST_TOKEN")?.trim();
+  if (!rawBaseUrl || !token) {
+    return { outcome: "unavailable" };
   }
-  if (existing.count < limit) {
-    existing.count += 1;
-    return { allowed: true };
+
+  let pipelineUrl: string;
+  try {
+    const baseUrl = new URL(rawBaseUrl);
+    if (baseUrl.protocol !== "https:") {
+      return { outcome: "unavailable" };
+    }
+    pipelineUrl = `${baseUrl.toString().replace(/\/+$/, "")}/pipeline`;
+  } catch {
+    return { outcome: "unavailable" };
   }
-  return {
-    allowed: false,
-    retryAfter: Math.ceil((existing.resetAt - now) / 1000),
-  };
+
+  const key = `payroll-administration:${actorId}`;
+  const pipelineBody = [
+    ["INCR", key],
+    ["EXPIRE", key, 60, "NX"],
+    ["TTL", key],
+  ];
+
+  try {
+    const response = await dependencies.fetch(pipelineUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(pipelineBody),
+    });
+    if (!response.ok) {
+      return { outcome: "unavailable" };
+    }
+
+    const payload = await response.json() as Array<{ result?: unknown; error?: unknown }>;
+    if (!Array.isArray(payload) || payload.length !== 3 || payload.some((entry) => !entry || entry.error !== undefined)) {
+      return { outcome: "unavailable" };
+    }
+    const count = Number(payload[0]?.result);
+    const expiryApplied = Number(payload[1]?.result);
+    const ttl = Number(payload[2]?.result);
+    if (
+      !Number.isInteger(count) || count < 1
+      || !Number.isInteger(expiryApplied) || (expiryApplied !== 0 && expiryApplied !== 1)
+      || !Number.isInteger(ttl) || ttl < 1
+    ) {
+      return { outcome: "unavailable" };
+    }
+
+    return count > 60
+      ? { outcome: "denied", retryAfterSeconds: ttl }
+      : { outcome: "allowed" };
+  } catch {
+    return { outcome: "unavailable" };
+  }
 };
 
 const buildCorsHeaders = (req: Request, extra: HeadersInit = {}) => {
@@ -606,7 +670,12 @@ const mapRpcError = (req: Request, error: { code?: string; message?: string } | 
   }, extraHeaders);
 };
 
-export async function handlePayrollAdministration({ req, userContext, db }: HandlerParams): Promise<Response> {
+export async function handlePayrollAdministration({
+  req,
+  userContext,
+  db,
+  rateLimitDependencies = defaultRateLimitDependencies,
+}: HandlerParams): Promise<Response> {
   const requestedOrigin = req.headers.get("origin");
   if (requestedOrigin && !resolveAllowedOriginForRequest(req)) {
     return jsonErrorResponse(req, 403, {
@@ -636,8 +705,21 @@ export async function handlePayrollAdministration({ req, userContext, db }: Hand
     });
   }
 
-  const limit = consumeEdgeRateLimit(`payroll-administration:${userContext.user.id}`, 60, 60_000);
-  if (!limit.allowed) {
+  const limit = await consumePayrollAdministrationRateLimit(userContext.user.id, rateLimitDependencies);
+  if (limit.outcome === "unavailable") {
+    return jsonErrorResponse(req, 503, {
+      code: "upstream_error",
+      error: "Payroll administration rate limiter unavailable.",
+      message: "Payroll administration rate limiter unavailable.",
+      classification: {
+        category: "upstream",
+        severity: "high",
+        retryable: true,
+        httpStatus: 503,
+      },
+    });
+  }
+  if (limit.outcome === "denied") {
     return jsonErrorResponse(req, 429, {
       code: "rate_limited",
       error: "Too many payroll administration requests",
@@ -649,7 +731,7 @@ export async function handlePayrollAdministration({ req, userContext, db }: Hand
         httpStatus: 429,
       },
     }, {
-      ...(typeof limit.retryAfter === "number" ? { "Retry-After": String(limit.retryAfter) } : {}),
+      "Retry-After": String(limit.retryAfterSeconds),
     });
   }
 

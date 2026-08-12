@@ -1,6 +1,6 @@
 # Endpoint Ownership Matrix
 
-Last verified: `2026-08-02 (runtime exception review)`
+Last verified: `2026-08-12 (payroll transport convergence review)`
 Machine-readable source: `docs/api/endpoint-convergence-status.json`
 
 | Public API path | Current runtime | Authoritative target | Wave | Status | Owner | Exception expiry |
@@ -15,6 +15,10 @@ Machine-readable source: `docs/api/endpoint-convergence-status.json`
 | `/api/assessment-drafts` | Netlify `assessment-drafts` | Legacy server `assessment-drafts` handler | A | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
 | `/api/assessment-promote` | Netlify `assessment-promote` | Legacy server `assessment-promote` handler | B | legacy_shim | Backend Platform | 2026-09-01T23:59:59.999Z |
 | `/api/assessment-plan-pdf` | Netlify `assessment-plan-pdf` | Legacy server `assessment-plan-pdf` handler | A | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
+| `/api/payroll-approvals` | Netlify `payroll-approvals` transport adapter | Supabase edge `payroll-approvals` | B | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
+| `/api/payroll-administration` | Netlify `payroll-administration` transport adapter | Supabase edge `payroll-administration` | B | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
+| `/api/payroll-time-events` | Netlify `payroll-time-events` transport adapter | Supabase edge `payroll-time-events` | B | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
+| `/api/payroll-timesheets` | Netlify `payroll-timesheets` transport adapter | Supabase edge `payroll-timesheets` | B | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
 | `/api/programs` | Retired Netlify shim | Supabase edge `programs` | B | retired | Backend Platform | N/A |
 | `/api/goals` | Retired Netlify shim | Supabase edge `goals` | B | retired | Backend Platform | N/A |
 | `/api/program-notes` | Retired Netlify shim | Supabase edge `program-notes` | B | retired | Backend Platform | N/A |

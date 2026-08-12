@@ -3,14 +3,12 @@ import {
   consumeRateLimit,
   corsHeadersForRequest,
   errorResponse,
-  fetchAuthenticatedUserIdWithStatus,
   fetchJson,
   getAccessToken,
   getSupabaseConfig,
   isDisallowedOriginRequest,
   jsonForRequest,
   resolveOrgAndRoleWithStatus,
-  resolveUserRoleWithStatus,
 } from "./shared";
 import { getApiAuthorityMode, proxyToEdgeAuthority } from "./edgeAuthority";
 
@@ -19,7 +17,6 @@ const TRACE_HEADER_NAMES = [
   "x-correlation-id",
   "x-agent-operation-id",
 ] as const;
-const PAYROLL_ALLOWED_ROLES = new Set(["admin", "super_admin"]);
 const FORBIDDEN_AUTHORITY_KEYS = new Set([
   "organization_id",
   "organizationid",
@@ -60,6 +57,7 @@ const PAYROLL_CAPABILITIES = [
   "payroll.view_compensation",
 ] as const;
 const PAYROLL_CADENCE = ["weekly", "biweekly", "monthly"] as const;
+const PAYROLL_GENERATION_CADENCE = ["weekly", "biweekly"] as const;
 const EXTERNAL_IDENTIFIER_REGEX = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$/;
 const IDEMPOTENCY_KEY_REGEX = /^[\x21-\x7E]{1,200}$/;
 const TIME_REGEX = /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
@@ -81,6 +79,7 @@ const payGroupNameSchema = z.string().refine(
 const idempotencyKeySchema = z.string().regex(IDEMPOTENCY_KEY_REGEX);
 const timestampSchema = z.string().regex(TIMESTAMP_REGEX);
 const cadenceSchema = z.enum(PAYROLL_CADENCE);
+const generationCadenceSchema = z.enum(PAYROLL_GENERATION_CADENCE);
 const capabilitySchema = z.enum(PAYROLL_CAPABILITIES);
 
 const payrollAdministrationActionSchema = z.discriminatedUnion("action", [
@@ -183,7 +182,7 @@ const payrollAdministrationActionSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("set_generation_version"),
     payGroupId: z.string().uuid(),
-    cadence: cadenceSchema,
+    cadence: generationCadenceSchema,
     effectiveFrom: z.string().date(),
     effectiveThrough: z.string().date().nullable().optional(),
     startsOn: z.string().date(),
@@ -455,10 +454,21 @@ const publicMutationResponseSchema = z.discriminatedUnion("action", [
 ]);
 
 const payrollAdministrationErrorSchema = z.object({
-  success: z.literal(false),
-  error: z.string().min(1),
+  success: z.literal(false).optional(),
+  error: z.string().min(1).optional(),
   requestId: z.string().min(1),
-  code: z.enum(["conflict", "state_conflict", "validation_error", "forbidden", "upstream_error", "rate_limited", "invalid_response"]),
+  code: z.enum([
+    "conflict",
+    "state_conflict",
+    "validation_error",
+    "unauthorized",
+    "forbidden",
+    "not_found",
+    "internal_error",
+    "upstream_error",
+    "rate_limited",
+    "invalid_response",
+  ]),
   message: z.string().min(1),
   classification: z.object({
     category: z.string().min(1),
@@ -842,7 +852,8 @@ const buildForwardedEdgeResponse = (
   const requestKey = request.headers.get("Idempotency-Key")?.trim() ?? "";
   const headerKey = forwardedHeaders.get("Idempotency-Key")?.trim() ?? "";
   const bodyKey = payload.idempotencyKey?.trim() ?? "";
-  if (requestKey || headerKey || bodyKey) {
+  const endpointOwnedEnvelope = payload.success === false || payload.error !== undefined || bodyKey.length > 0;
+  if (endpointOwnedEnvelope && (requestKey || headerKey || bodyKey)) {
     if (!headerKey || !bodyKey || headerKey !== bodyKey || (requestKey && requestKey !== headerKey)) {
       return payrollErrorResponse(request, 502, {
         code: "invalid_response",
@@ -900,7 +911,11 @@ export async function payrollAdministrationHandler(request: Request): Promise<Re
   if (request.method === "OPTIONS") {
     return new Response("ok", {
       status: 200,
-      headers: { ...corsHeadersForRequest(request), ...traceHeaders },
+      headers: {
+        ...corsHeadersForRequest(request),
+        ...traceHeaders,
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+      },
     });
   }
 
@@ -930,36 +945,19 @@ export async function payrollAdministrationHandler(request: Request): Promise<Re
     });
   }
 
-  const { organizationId, upstreamError: roleUpstreamError } = await resolveOrgAndRoleWithStatus(accessToken);
+  const {
+    organizationId,
+    isAdmin,
+    isSuperAdmin,
+    upstreamError: roleUpstreamError,
+  } = await resolveOrgAndRoleWithStatus(accessToken);
   if (roleUpstreamError) {
     return errorResponse(request, "upstream_error", "Unable to validate organization access", {
       status: 502,
       headers: traceHeaders,
     });
   }
-  if (!organizationId) {
-    return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
-  }
-
-  const { userId, upstreamError: userUpstreamError } = await fetchAuthenticatedUserIdWithStatus(accessToken);
-  if (userUpstreamError) {
-    return errorResponse(request, "upstream_error", "Unable to validate authenticated user", {
-      status: 502,
-      headers: traceHeaders,
-    });
-  }
-  if (!userId) {
-    return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
-  }
-
-  const { role, upstreamError: userRoleUpstreamError } = await resolveUserRoleWithStatus(accessToken, userId);
-  if (userRoleUpstreamError) {
-    return errorResponse(request, "upstream_error", "Unable to validate payroll role", {
-      status: 502,
-      headers: traceHeaders,
-    });
-  }
-  if (!role || !PAYROLL_ALLOWED_ROLES.has(role)) {
+  if (!organizationId || (!isAdmin && !isSuperAdmin)) {
     return errorResponse(request, "forbidden", "Forbidden", { headers: traceHeaders });
   }
 

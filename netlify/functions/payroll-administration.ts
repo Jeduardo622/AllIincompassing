@@ -1,5 +1,12 @@
 import { Handler } from "@netlify/functions";
 import { payrollAdministrationHandler } from "../../src/server/api/payroll-administration";
+import { errorResponse } from "../../src/server/api/shared";
+
+const TRACE_HEADER_NAMES = [
+  "x-request-id",
+  "x-correlation-id",
+  "x-agent-operation-id",
+] as const;
 
 const toNetlifyResponse = async (response: Response) => {
   const headers: Record<string, string> = {};
@@ -34,10 +41,19 @@ export const handler: Handler = async (event) => {
     const response = await payrollAdministrationHandler(request);
     return toNetlifyResponse(response);
   } catch {
-    return {
-      statusCode: 500,
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ error: "Internal Server Error" }),
-    };
+    const request = new Request("https://netlify.internal/api/payroll-administration", {
+      headers: event.headers as HeadersInit,
+    });
+    const traceHeaders = TRACE_HEADER_NAMES.reduce<Record<string, string>>((headers, name) => {
+      const value = request.headers.get(name)?.trim();
+      if (value) {
+        headers[name] = value;
+      }
+      return headers;
+    }, {});
+    return toNetlifyResponse(errorResponse(request, "internal_error", "Internal server error", {
+      status: 500,
+      headers: traceHeaders,
+    }));
   }
 };

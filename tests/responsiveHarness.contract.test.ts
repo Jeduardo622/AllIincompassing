@@ -7,6 +7,8 @@ import { build, preview, type PreviewServer } from "vite";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { runResponsiveUiObserver } from "../scripts/playwright-responsive-ui-observer";
+
 const repoRoot = process.cwd();
 const fixtureRoot = path.join(repoRoot, "tests", "fixtures", "responsive-harness");
 const configFile = path.join(repoRoot, "vite.responsive-harness.config.ts");
@@ -85,7 +87,7 @@ describe("responsive harness contract", () => {
 
     browser = await chromium.launch({ headless: true });
 
-    const visit = async (route: "/clients/test-client" | "/schedule" | "/dashboard") => {
+    const visit = async (route: "/clients/test-client" | "/schedule" | "/dashboard" | "/payroll") => {
       const page = await browser!.newPage();
       const requests: Array<{ method: string; url: string }> = [];
       page.on("request", (request) => {
@@ -101,10 +103,31 @@ describe("responsive harness contract", () => {
       } else if (route === "/schedule") {
         await page.getByRole("dialog", { name: /Auto Schedule Sessions/i }).waitFor();
         await page.getByRole("button", { name: /Generate Preview/i }).waitFor();
-      } else {
+      } else if (route === "/dashboard") {
         await page.getByRole("dialog", { name: /Amend BT Note/i }).waitFor();
         await page.getByLabel("Discussed domains/progress/data collection").waitFor();
         expect(await page.getByLabel("Discussed programs/progress/data collection").count()).toBe(0);
+      } else {
+        await page.getByRole("heading", { name: "Payroll", exact: true }).waitFor();
+        const tabs = ["Employment", "Pay Groups", "Periods", "Exceptions", "Approvals"] as const;
+        for (const tab of tabs) {
+          await page.getByRole("button", { name: tab, exact: true }).click();
+          if (tab === "Employment") {
+            await page.getByLabel("External payroll org ID").waitFor();
+            await page.getByRole("button", { name: "Add rate version" }).waitFor();
+          } else if (tab === "Pay Groups") {
+            await page.getByRole("button", { name: "Create pay group assignment" }).waitFor();
+          } else if (tab === "Periods") {
+            await page.getByRole("button", { name: "Generate periods" }).waitFor();
+          } else if (tab === "Exceptions") {
+            await page.getByRole("heading", { name: "Blocking exceptions" }).waitFor();
+          } else {
+            await page.getByLabel("Reopen reason").waitFor();
+            await page.getByRole("button", { name: "Lock period" }).waitFor();
+          }
+
+          expect(await page.getByRole("button", { name: /grant capability|revoke capability|mutate policy|export/i }).count()).toBe(0);
+        }
       }
 
       const runtimeState = await page.evaluate(() => ({
@@ -121,7 +144,16 @@ describe("responsive harness contract", () => {
       expect(runtimeState.harness?.cookieWrites).toBe(0);
       expect(runtimeState.harness?.fetchCalls ?? []).toEqual([]);
       expect(runtimeState.harness?.xhrCalls ?? []).toEqual([]);
-      expect((runtimeState.harness?.apiCalls ?? []).every((call) => call.method === "GET")).toBe(true);
+      const apiCalls = runtimeState.harness?.apiCalls ?? [];
+      if (route === "/payroll") {
+        expect(apiCalls.length).toBeGreaterThan(0);
+        expect(apiCalls.every((call) => (
+          call.method === "POST"
+          && (call.path === "/api/payroll-administration" || call.path === "/api/payroll-approvals")
+        ))).toBe(true);
+      } else {
+        expect(apiCalls.every((call) => call.method === "GET")).toBe(true);
+      }
 
       expect(requests.every((request) => request.method === "GET")).toBe(true);
       expect(
@@ -134,5 +166,23 @@ describe("responsive harness contract", () => {
     await visit("/clients/test-client");
     await visit("/schedule");
     await visit("/dashboard");
+    await visit("/payroll");
+
+    const observerSummary = await runResponsiveUiObserver([
+      "node",
+      "scripts/playwright-responsive-ui-observer.ts",
+      "--base-url=http://127.0.0.1:4176",
+      "--route=/payroll",
+    ]);
+    expect(observerSummary.ok).toBe(true);
+    expect(observerSummary.results).toHaveLength(2);
+    for (const result of observerSummary.results) {
+      expect(result.result).toBe("pass");
+      expect(result.failureCodes).toEqual([]);
+      const evidence = JSON.parse(readFileSync(result.evidencePath, "utf8")) as Record<string, unknown>;
+      expect(evidence.scenarioId).toBe("none");
+      rmSync(result.screenshotPath, { force: true });
+      rmSync(result.evidencePath, { force: true });
+    }
   }, 120_000);
 });

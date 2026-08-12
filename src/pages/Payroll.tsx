@@ -87,7 +87,7 @@ const Field = ({
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-dark"
+      className="min-h-11 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-dark"
     />
   </label>
 );
@@ -108,7 +108,7 @@ const SelectField = ({
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-dark"
+      className="min-h-11 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-dark"
     >
       {options.map((option) => (
         <option key={option} value={option}>{option}</option>
@@ -150,7 +150,7 @@ const ActionButton = ({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`rounded-lg px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-800 ${classes}`}
+      className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-800 ${classes}`}
     >
       {label}
     </button>
@@ -165,11 +165,16 @@ const isOkState = (value: unknown): value is { state: "ok" } =>
 const QueryStatusPanel = ({
   title,
   body,
+  variant,
 }: {
   title: string;
   body: string;
+  variant: "loading" | "error";
 }) => (
-  <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-600 dark:border-gray-700 dark:bg-dark-lighter dark:text-gray-300">
+  <div
+    role={variant === "loading" ? "status" : "alert"}
+    className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-600 dark:border-gray-700 dark:bg-dark-lighter dark:text-gray-300"
+  >
     <p className="font-medium text-gray-900 dark:text-white">{title}</p>
     <p className="mt-1">{body}</p>
   </div>
@@ -659,7 +664,7 @@ function ExceptionsTab({
     return (
       <div className="grid gap-6">
         <SectionCard title="Blocking exceptions" body="Blocker visibility comes from the immutable payroll approval review surfaces.">
-          <QueryStatusPanel title="Loading payroll review queue" body="Waiting for the authoritative payroll review queue." />
+          <QueryStatusPanel variant="loading" title="Loading payroll review queue" body="Waiting for the authoritative payroll review queue." />
         </SectionCard>
       </div>
     );
@@ -669,7 +674,7 @@ function ExceptionsTab({
     return (
       <div className="grid gap-6">
         <SectionCard title="Blocking exceptions" body="Blocker visibility comes from the immutable payroll approval review surfaces.">
-          <QueryStatusPanel title="Authoritative payroll review queue is unavailable" body="Payroll administration stays fail-closed until the review queue loads successfully." />
+          <QueryStatusPanel variant="error" title="Authoritative payroll review queue is unavailable" body="Payroll administration stays fail-closed until the review queue loads successfully." />
         </SectionCard>
       </div>
     );
@@ -696,12 +701,12 @@ function ExceptionsTab({
         )}
         {selectedReview && reviewDetailsQuery.isLoading ? (
           <div className="mt-4">
-            <QueryStatusPanel title="Loading approval details" body="Waiting for authoritative blocker details for the selected snapshot." />
+            <QueryStatusPanel variant="loading" title="Loading approval details" body="Waiting for authoritative blocker details for the selected snapshot." />
           </div>
         ) : null}
         {selectedReview && (reviewDetailsQuery.isError || (reviewDetailsQuery.data && !isOkState(reviewDetailsQuery.data))) ? (
           <div className="mt-4">
-            <QueryStatusPanel title="Authoritative approval details are unavailable" body="Payroll administration stays fail-closed until the selected approval details load successfully." />
+            <QueryStatusPanel variant="error" title="Authoritative approval details are unavailable" body="Payroll administration stays fail-closed until the selected approval details load successfully." />
           </div>
         ) : null}
         {reviewDetails ? (
@@ -731,6 +736,59 @@ function ExceptionsTab({
   );
 }
 
+function ReopenPeriodControl({
+  snapshotId,
+  snapshotHash,
+  pending,
+  onReopen,
+}: {
+  snapshotId: string;
+  snapshotHash: string;
+  pending: boolean;
+  onReopen: (snapshotId: string, snapshotHash: string, reason: string) => Promise<unknown>;
+}) {
+  const [reason, setReason] = useState("");
+  const trimmedReason = reason.trim();
+  const helpId = "payroll-reopen-reason-help";
+
+  const submitReopen = async () => {
+    if (!trimmedReason) {
+      return;
+    }
+    try {
+      await onReopen(snapshotId, snapshotHash, trimmedReason);
+      setReason("");
+    } catch {
+      // Mutation state renders the authoritative error without discarding the operator rationale.
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium text-gray-700 dark:text-gray-200">Reopen reason</span>
+        <textarea
+          required
+          aria-describedby={helpId}
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          rows={3}
+          className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-dark"
+        />
+        <span id={helpId} className="mt-1 block text-xs text-amber-800 dark:text-amber-200">
+          {trimmedReason ? "The entered rationale will be recorded with the reopen action." : "Reopen reason is required."}
+        </span>
+      </label>
+      <ActionButton
+        label="Reopen period"
+        variant="secondary"
+        disabled={pending || !trimmedReason}
+        onClick={() => void submitReopen()}
+      />
+    </div>
+  );
+}
+
 function ApprovalsTab({
   reviewQueueQuery,
   reviewDetailsQuery,
@@ -753,22 +811,20 @@ function ApprovalsTab({
   canReopenPeriod: boolean;
   canViewCompensation: boolean;
   onLock: (snapshotId: string, snapshotHash: string) => void;
-  onReopen: (snapshotId: string, snapshotHash: string, reason: string) => void;
+  onReopen: (snapshotId: string, snapshotHash: string, reason: string) => Promise<unknown>;
   lockPending: boolean;
   reopenPending: boolean;
   actionError: unknown;
 }) {
-  const [reopenReason, setReopenReason] = useState("");
-  const trimmedReopenReason = reopenReason.trim();
   const reviewQueue = isOkState(reviewQueueQuery.data) ? reviewQueueQuery.data : null;
   const reviewDetails = isOkState(reviewDetailsQuery.data) ? reviewDetailsQuery.data : null;
 
   if (reviewQueueQuery.isLoading) {
     return (
       <SectionCard title="Approvals" body="Lock and reopen actions are driven from the immutable approval queue.">
-        <QueryStatusPanel title="Loading payroll review queue" body="Waiting for the authoritative payroll review queue." />
+        <QueryStatusPanel variant="loading" title="Loading payroll review queue" body="Waiting for the authoritative payroll review queue." />
         <div className="mt-4">
-          <QueryStatusPanel title="Loading approval details" body="Waiting for authoritative approval details for the selected snapshot." />
+          <QueryStatusPanel variant="loading" title="Loading approval details" body="Waiting for authoritative approval details for the selected snapshot." />
         </div>
       </SectionCard>
     );
@@ -777,7 +833,7 @@ function ApprovalsTab({
   if (reviewQueueQuery.isError || !reviewQueue) {
     return (
       <SectionCard title="Approvals" body="Lock and reopen actions are driven from the immutable approval queue.">
-        <QueryStatusPanel title="Authoritative payroll review queue is unavailable" body="Payroll administration stays fail-closed until the review queue loads successfully." />
+        <QueryStatusPanel variant="error" title="Authoritative payroll review queue is unavailable" body="Payroll administration stays fail-closed until the review queue loads successfully." />
       </SectionCard>
     );
   }
@@ -817,9 +873,9 @@ function ApprovalsTab({
 
       <SectionCard title="Approval details" body="This view stays immutable. It does not permit punch editing.">
         {selectedReview && reviewDetailsQuery.isLoading ? (
-          <QueryStatusPanel title="Loading approval details" body="Waiting for authoritative approval details for the selected snapshot." />
+          <QueryStatusPanel variant="loading" title="Loading approval details" body="Waiting for authoritative approval details for the selected snapshot." />
         ) : selectedReview && (reviewDetailsQuery.isError || (reviewDetailsQuery.data && !isOkState(reviewDetailsQuery.data))) ? (
-          <QueryStatusPanel title="Authoritative approval details are unavailable" body="Payroll administration stays fail-closed until the selected approval details load successfully." />
+          <QueryStatusPanel variant="error" title="Authoritative approval details are unavailable" body="Payroll administration stays fail-closed until the selected approval details load successfully." />
         ) : !selectedReview || !reviewDetails ? (
           <EmptyPanel title="No approval details selected" body="Select a queue row to review blocker state, history, and lock controls." />
         ) : (
@@ -885,19 +941,6 @@ function ApprovalsTab({
               )}
             </div>
 
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-gray-700 dark:text-gray-200">Reopen reason</span>
-              <textarea
-                value={reopenReason}
-                onChange={(event) => setReopenReason(event.target.value)}
-                rows={3}
-                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-dark"
-              />
-              {!trimmedReopenReason ? (
-                <span className="mt-1 block text-xs text-amber-800 dark:text-amber-200">Reopen reason is required.</span>
-              ) : null}
-            </label>
-
             <div className="flex flex-wrap gap-2">
               {canLockPeriod ? (
                 <ActionButton
@@ -906,15 +949,16 @@ function ApprovalsTab({
                   onClick={() => onLock(reviewDetails.snapshotId, reviewDetails.snapshotHash)}
                 />
               ) : null}
-              {canReopenPeriod ? (
-                <ActionButton
-                  label="Reopen period"
-                  variant="secondary"
-                  disabled={reopenPending || !trimmedReopenReason}
-                  onClick={() => onReopen(reviewDetails.snapshotId, reviewDetails.snapshotHash, trimmedReopenReason)}
-                />
-              ) : null}
             </div>
+            {canReopenPeriod ? (
+              <ReopenPeriodControl
+                key={`${selectedReview.snapshotId}:${selectedReview.snapshotHash}`}
+                snapshotId={reviewDetails.snapshotId}
+                snapshotHash={reviewDetails.snapshotHash}
+                pending={reopenPending}
+                onReopen={onReopen}
+              />
+            ) : null}
             <MutationError error={actionError} />
           </div>
         )}
@@ -991,7 +1035,7 @@ export function Payroll() {
     return <FailurePanel title="Payroll administration is unavailable" body="The payroll administration route stays fail-closed until user and organization scope resolve." />;
   }
 
-  if (administrationQuery.isError || !administration) {
+  if (administrationQuery.isError || !administration || administration.state !== "ok") {
     return <FailurePanel title="Payroll administration is unavailable" body="The authoritative payroll administration response could not be loaded." />;
   }
 
@@ -1023,7 +1067,7 @@ export function Payroll() {
             key={tab}
             type="button"
             onClick={() => setActiveTab(tab)}
-            className={`rounded-full px-4 py-2 text-sm font-medium ${activeTab === tab ? "bg-blue-600 text-white" : "bg-white text-gray-700 shadow-sm dark:bg-dark-lighter dark:text-gray-200"}`}
+            className={`min-h-11 rounded-full px-4 py-2 text-sm font-medium ${activeTab === tab ? "bg-blue-600 text-white" : "bg-white text-gray-700 shadow-sm dark:bg-dark-lighter dark:text-gray-200"}`}
           >
             {tab}
           </button>
@@ -1086,7 +1130,7 @@ export function Payroll() {
             snapshotId,
             snapshotHash,
           })}
-          onReopen={(snapshotId, snapshotHash, reason) => void reopenPayrollTimesheetMutation.mutateAsync({
+          onReopen={(snapshotId, snapshotHash, reason) => reopenPayrollTimesheetMutation.mutateAsync({
             ...scope,
             idempotencyKey: buildIdempotencyKey("payroll-reopen"),
             snapshotId,

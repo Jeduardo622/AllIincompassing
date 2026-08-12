@@ -124,49 +124,6 @@ Promise.all([
 });
 </script></body></html>`;
 
-const buildPayrollAdministrationScenarioHtml = (): string => `<!doctype html>
-<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>*{box-sizing:border-box}body{margin:0;max-width:100vw;overflow-x:hidden;background:#f5f7fb;font-family:ui-sans-serif,system-ui,sans-serif}.shell{padding:16px;display:grid;gap:16px}.hero,.card{background:#fff;border:1px solid #d7deea;border-radius:16px;padding:16px}.tabs{display:flex;flex-wrap:wrap;gap:8px}.tabs button,.actions button{min-width:48px;min-height:48px;border-radius:12px;border:1px solid #c7d2e5;background:#fff}.actions{display:flex;flex-wrap:wrap;gap:12px}</style>
-</head><body>
-<main class="shell" id="root" data-scenario="payroll-administration"><p>Loading payroll administration.</p></main>
-<script>
-Promise.all([
-  fetch('/api/runtime-config').then((response) => response.json()),
-  fetch('/api/payroll-administration', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'get_administration', selectedLocalDate: '2026-08-12' }),
-  }).then((response) => response.json()),
-  fetch('/api/payroll-approvals', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'review_queue', selectedLocalDate: '2026-08-12' }),
-  }).then((response) => response.json()),
-]).then(async ([runtimeConfig, administration, queue]) => {
-  if (!runtimeConfig || administration?.state !== 'ok' || queue?.state !== 'ok') {
-    throw new Error('payroll-administration bootstrap failed');
-  }
-  const queueItem = queue.queue?.[0];
-  if (!queueItem?.snapshot?.id || !queueItem.snapshot?.hash) {
-    throw new Error('payroll-administration bootstrap failed');
-  }
-  const details = await fetch('/api/payroll-approvals', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'review_details',
-      snapshotId: queueItem.snapshot.id,
-      snapshotHash: queueItem.snapshot.hash,
-    }),
-  }).then((response) => response.json());
-  if (details?.state !== 'ok') {
-    throw new Error('payroll-administration bootstrap failed');
-  }
-  const root = document.getElementById('root');
-  root.innerHTML = '<section class="hero"><h1>Payroll</h1><p>Administration UI</p></section><section class="tabs"><button>Employment</button><button>Pay Groups</button><button>Periods</button><button>Exceptions</button><button>Approvals</button></section><section class="actions"><button>Create employment</button><button>Add rate version</button><button>Lock period</button><button>Reopen period</button></section><section class="card"><strong>Queue rows</strong><p>1 selected snapshot</p></section>';
-});
-</script></body></html>`;
-
 const parsePayrollTimeReadBody = (
   requestBody: string | null,
 ): { action: 'get_day'; localDate: string } | null => {
@@ -331,60 +288,6 @@ export const parsePayrollApprovalReadBody = (
   }
 
   return null;
-};
-
-export const parsePayrollAdministrationReadBody = (
-  requestBody: string | null,
-): { action: 'get_administration'; selectedLocalDate: string } | null => {
-  if (typeof requestBody !== 'string') {
-    return null;
-  }
-
-  let parsedBody: unknown;
-  try {
-    parsedBody = JSON.parse(requestBody);
-  } catch {
-    return null;
-  }
-
-  const parsed = z.object({
-    action: z.literal('get_administration'),
-    selectedLocalDate: z.string().date(),
-  }).strict().safeParse(parsedBody);
-  return parsed.success ? parsed.data : null;
-};
-
-const payrollAdministrationFixtureResponseSchema = z.object({
-  state: z.literal('ok'),
-  selectedLocalDate: z.string().date(),
-  capabilities: z.object({
-    canConfigureEmployment: z.boolean(),
-    canResolveExceptions: z.boolean(),
-    canLockPeriod: z.boolean(),
-    canReopenPeriod: z.boolean(),
-    canGeneratePeriods: z.boolean(),
-    canViewCompensation: z.boolean(),
-    canManagePolicyMutations: z.literal(false),
-  }).strict(),
-  orgSettings: z.array(z.unknown()),
-  policies: z.array(z.unknown()),
-  employments: z.array(z.unknown()),
-  payGroups: z.array(z.unknown()),
-  generationVersions: z.array(z.unknown()),
-  payPeriods: z.array(z.unknown()),
-  bounds: z.object({
-    orgSettings: z.number().int(),
-    policies: z.number().int(),
-    employments: z.number().int(),
-    payGroups: z.number().int(),
-    generationVersions: z.number().int(),
-    payPeriods: z.number().int(),
-  }).strict(),
-}).strict();
-
-export const parsePayrollAdministrationFixtureResponse = (payload: unknown) => {
-  const parsed = payrollAdministrationFixtureResponseSchema.safeParse(payload);
-  return parsed.success ? parsed.data : null;
 };
 
 export const parsePayrollReviewQueueFixtureResponse = (payload: unknown) => {
@@ -558,9 +461,7 @@ const maybeFulfillScenarioRequest = async (
   if (parsedArgs.scenario !== 'schedule-overlap') {
     if (parsedArgs.scenario !== 'payroll-time') {
       if (parsedArgs.scenario !== 'payroll-time-review') {
-        if (parsedArgs.scenario !== 'payroll-administration') {
-          return false;
-        }
+        return false;
       }
     }
 
@@ -574,11 +475,9 @@ const maybeFulfillScenarioRequest = async (
       await routeHandler.fulfill({
         status: 200,
         contentType: 'text/html; charset=utf-8',
-        body: parsedArgs.scenario === 'payroll-administration'
-          ? buildPayrollAdministrationScenarioHtml()
-          : buildPayrollTimeScenarioHtml(
-            parsedArgs.scenario === 'payroll-time-review' ? 'review_queue' : getPayrollTimeFixtureMode(),
-          ),
+        body: buildPayrollTimeScenarioHtml(
+          parsedArgs.scenario === 'payroll-time-review' ? 'review_queue' : getPayrollTimeFixtureMode(),
+        ),
       });
       return true;
     }
@@ -724,51 +623,6 @@ const maybeFulfillScenarioRequest = async (
       return true;
     }
 
-    if (request.method().toUpperCase() === 'POST' && requestUrl.pathname === '/api/payroll-administration') {
-      const parsedBody = parsePayrollAdministrationReadBody(request.postData());
-      if (!parsedBody) {
-        return false;
-      }
-
-      const administrationResponse = parsePayrollAdministrationFixtureResponse({
-        state: 'ok',
-        selectedLocalDate: parsedBody.selectedLocalDate,
-        capabilities: {
-          canConfigureEmployment: true,
-          canResolveExceptions: true,
-          canLockPeriod: true,
-          canReopenPeriod: true,
-          canGeneratePeriods: true,
-          canViewCompensation: false,
-          canManagePolicyMutations: false,
-        },
-        orgSettings: [],
-        policies: [],
-        employments: [],
-        payGroups: [],
-        generationVersions: [],
-        payPeriods: [],
-        bounds: {
-          orgSettings: 50,
-          policies: 20,
-          employments: 50,
-          payGroups: 50,
-          generationVersions: 50,
-          payPeriods: 50,
-        },
-      });
-      if (!administrationResponse) {
-        return false;
-      }
-
-      await routeHandler.fulfill({
-        status: 200,
-        contentType: 'application/json; charset=utf-8',
-        body: JSON.stringify(administrationResponse),
-      });
-      return true;
-    }
-
     return false;
   }
 
@@ -865,9 +719,6 @@ const maybeOpenScenarioDialog = async (
       return {};
     }
     if (scenario === 'payroll-time-review') {
-      return {};
-    }
-    if (scenario === 'payroll-administration') {
       return {};
     }
     return {};
@@ -999,6 +850,35 @@ export const collectLayoutMetrics = async (
     };
   }, { interactiveControlSelector: INTERACTIVE_CONTROL_SELECTOR, interactiveRootId });
 
+const PAYROLL_TAB_NAMES = ['Employment', 'Pay Groups', 'Periods', 'Exceptions', 'Approvals'] as const;
+
+const collectPayrollRouteMetrics = async (page: Page): Promise<{ metrics: LayoutMetrics; failure?: string }> => {
+  const aggregate: LayoutMetrics = {
+    horizontalOverflow: false,
+    clippedFixedControls: [],
+    visibleTouchTargets: [],
+  };
+
+  for (const tabName of PAYROLL_TAB_NAMES) {
+    const tab = page.getByRole('button', { name: tabName, exact: true });
+    try {
+      await tab.waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS });
+      await tab.click();
+      await page.waitForTimeout(50);
+    } catch {
+      return { metrics: aggregate, failure: 'route-surface-missing' };
+    }
+
+    const tabMetrics = await collectLayoutMetrics(page);
+    aggregate.horizontalOverflow ||= tabMetrics.horizontalOverflow;
+    aggregate.clippedFixedControls.push(...tabMetrics.clippedFixedControls);
+    aggregate.visibleTouchTargets.push(...tabMetrics.visibleTouchTargets);
+  }
+
+  aggregate.clippedFixedControls = [...new Set(aggregate.clippedFixedControls)];
+  return { metrics: aggregate };
+};
+
 export const redactPageForCapture = async (page: Page): Promise<void> => {
   await page.addStyleTag({ content: RESPONSIVE_CAPTURE_REDACTION_CSS });
 };
@@ -1094,7 +974,15 @@ const observeRouteAtViewport = async (
       failures.push(scenarioResult.failure);
     }
     try {
-      metrics = await collectLayoutMetrics(page, scenarioResult.dialogId);
+      if (!parsedArgs.scenario && route === '/payroll') {
+        const payrollInspection = await collectPayrollRouteMetrics(page);
+        metrics = payrollInspection.metrics;
+        if (payrollInspection.failure) {
+          failures.push(payrollInspection.failure);
+        }
+      } else {
+        metrics = await collectLayoutMetrics(page, scenarioResult.dialogId);
+      }
       failures.push(...classifyLayout(metrics, viewport.name));
     } catch {
       failures.push('layout evaluation failed');

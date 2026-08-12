@@ -541,6 +541,36 @@ describe("Sidebar navigation active styling", () => {
     expect(screen.queryByRole("link", { name: /^payroll$/i })).not.toBeInTheDocument();
   });
 
+  it.each([
+    ["loading", { data: undefined, isLoading: true, isError: false }],
+    ["transport error", { data: undefined, isLoading: false, isError: true }],
+    ["non-ok response", { data: { state: "feature_disabled" }, isLoading: false, isError: false }],
+  ])("keeps Payroll hidden while authoritative administration is %s", (_name, administrationQuery) => {
+    mockUseAuth.mockReturnValue({
+      signOut: vi.fn(),
+      hasRole: vi.fn((role: string) => role === "admin"),
+      user: { id: "admin-1", email: "admin@example.com", user_metadata: {} },
+      profile: { id: "admin-1", role: "admin" },
+      isGuardian: false,
+      hasAnyRole: vi.fn(() => true),
+      effectiveRole: "admin",
+      hasCapability: vi.fn(capabilityForRole("admin")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("admin"))),
+    });
+    mockUsePayrollAdministration.mockReturnValue({
+      administrationQuery,
+      reviewQueueQuery: { data: undefined },
+      reviewDetailsQuery: { data: undefined },
+      administrationActionMutation: { mutateAsync: vi.fn(), isPending: false, error: null },
+      lockPayrollTimesheetMutation: { mutateAsync: vi.fn(), isPending: false, error: null },
+      reopenPayrollTimesheetMutation: { mutateAsync: vi.fn(), isPending: false, error: null },
+    });
+
+    renderSidebar(["/"]);
+
+    expect(screen.queryByRole("link", { name: /^payroll$/i })).not.toBeInTheDocument();
+  });
+
   it("keeps the Time navigation hidden during loading, transport errors, and non-ok payroll states", () => {
     const { rerender } = render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>

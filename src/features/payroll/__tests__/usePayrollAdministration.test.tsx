@@ -53,6 +53,7 @@ function Probe() {
   return (
     <div>
       <span>{payrollAdministration.administrationQuery.data?.state ?? "loading"}</span>
+      <span data-testid="review-details-status">{payrollAdministration.reviewDetailsQuery.status}</span>
       <button
         type="button"
         onClick={() => void payrollAdministration.administrationActionMutation.mutateAsync({
@@ -267,5 +268,24 @@ describe("usePayrollAdministration", () => {
       snapshotHash: "a".repeat(64),
       canViewCompensation: true,
     })));
+  });
+
+  it("does not load review details when administration resolves to a non-ok state", async () => {
+    vi.mocked(fetchPayrollAdministration).mockResolvedValue({
+      state: "feature_disabled",
+    } as never);
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <Probe />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("feature_disabled")).toBeInTheDocument();
+    await waitFor(() => expect(vi.mocked(fetchPayrollReviewQueue)).toHaveBeenCalled());
+    await flushPromises();
+    expect(vi.mocked(fetchPayrollReviewDetails)).not.toHaveBeenCalled();
+    expect(screen.getByTestId("review-details-status")).toHaveTextContent("pending");
   });
 });

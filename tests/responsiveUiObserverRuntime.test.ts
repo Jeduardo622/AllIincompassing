@@ -348,31 +348,6 @@ describe('responsive UI observer browser runtime', () => {
     }
   }, 60_000);
 
-  it('runs the fixed payroll-administration scenario with loopback-only fulfilled administration and approval reads', async () => {
-    const requestStart = receivedRequests.length;
-    const summary = await runResponsiveUiObserver([
-      'node',
-      'scripts/playwright-responsive-ui-observer.ts',
-      `--base-url=${baseUrl}`,
-      '--route=/payroll',
-      '--scenario=payroll-administration',
-    ]);
-
-    expect(summary.ok).toBe(true);
-    expect(summary.results).toHaveLength(2);
-    expect(receivedRequests.slice(requestStart)).toEqual([]);
-    for (const result of summary.results) {
-      artifactPaths.add(result.screenshotPath);
-      artifactPaths.add(result.evidencePath);
-      expect(result.result).toBe('pass');
-      expect(result.failureCodes).toEqual([]);
-      const evidence = JSON.parse(await readFile(result.evidencePath, 'utf8')) as Record<string, unknown>;
-      expect(evidence.scenarioId).toBe('payroll-administration');
-      expect(JSON.stringify(evidence)).not.toContain('hourlyRateCents');
-      expect(JSON.stringify(evidence)).not.toContain('managerUserId');
-    }
-  }, 60_000);
-
   it('keeps payroll mutation actions fail-closed in the payroll-time scenario', async () => {
     const previousMode = process.env.RESPONSIVE_UI_OBSERVER_PAYROLL_TIME_FIXTURE;
     process.env.RESPONSIVE_UI_OBSERVER_PAYROLL_TIME_FIXTURE = 'mutation-action';

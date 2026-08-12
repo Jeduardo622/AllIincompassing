@@ -67,7 +67,7 @@ export function usePayrollAdministration(
   const administrationCapabilities = administrationQuery.data?.capabilities;
   const reviewDetailsEnabled = Boolean(
     selectedReview
-    && administrationQuery.status === "success"
+    && administrationQuery.data?.state === "ok"
     && reviewQueue?.state === "ok"
     && reviewQueue.queue.some((item) => (
       item.snapshot.id === selectedReview.snapshotId

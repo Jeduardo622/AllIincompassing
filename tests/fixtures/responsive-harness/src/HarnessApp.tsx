@@ -6,6 +6,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AutoScheduleModal } from "../../../../src/components/AutoScheduleModal";
 import { ProgramsGoalsTab } from "../../../../src/components/ClientDetails/ProgramsGoalsTab";
 import { DashboardView } from "../../../../src/pages/Dashboard";
+import { Payroll } from "../../../../src/pages/Payroll";
 import type { BtCorrectionTask } from "../../../../src/lib/supervision-session-notes";
 
 import {
@@ -180,6 +181,8 @@ const DashboardHarnessRoute = () => {
   );
 };
 
+const PayrollHarnessRoute = () => <Payroll />;
+
 export function HarnessApp() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -189,6 +192,7 @@ export function HarnessApp() {
           <Route path="/clients/test-client" element={<ClientDetailsHarnessRoute />} />
           <Route path="/schedule" element={<ScheduleHarnessRoute />} />
           <Route path="/dashboard" element={<DashboardHarnessRoute />} />
+          <Route path="/payroll" element={<PayrollHarnessRoute />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

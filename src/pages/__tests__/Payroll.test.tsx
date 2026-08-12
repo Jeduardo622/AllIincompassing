@@ -1,6 +1,6 @@
 import React from "react";
 import { MemoryRouter } from "react-router-dom";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -252,6 +252,33 @@ describe("Payroll page", () => {
     expect(screen.getByText(/did not grant access for this route/i)).toBeInTheDocument();
   });
 
+  it.each([
+    {
+      name: "loading",
+      query: { data: undefined, isLoading: true, isError: false, refetch: vi.fn() },
+      expected: /loading payroll administration/i,
+    },
+    {
+      name: "transport error",
+      query: { data: undefined, isLoading: false, isError: true, refetch: vi.fn() },
+      expected: /authoritative payroll administration response could not be loaded/i,
+    },
+    {
+      name: "non-ok response",
+      query: { data: { state: "feature_disabled" }, isLoading: false, isError: false, refetch: vi.fn() },
+      expected: /authoritative payroll administration response could not be loaded/i,
+    },
+  ])("fails closed while administration is $name", ({ query, expected }) => {
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      administrationQuery: query,
+    }));
+
+    renderPage();
+
+    expect(screen.getByText(expected)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Employment" })).not.toBeInTheDocument();
+  });
+
   it("hides compensation when canViewCompensation is false and keeps policies read-only", async () => {
     renderPage();
 
@@ -294,9 +321,12 @@ describe("Payroll page", () => {
 
     await user.click(screen.getByRole("button", { name: "Approvals" }));
     expect(screen.getByRole("button", { name: /reopen period/i })).toBeDisabled();
-    expect(screen.getByText(/reopen reason is required/i)).toBeInTheDocument();
+    const reasonField = screen.getByLabelText(/reopen reason/i);
+    const reasonHelp = screen.getByText(/reopen reason is required/i);
+    expect(reasonField).toBeRequired();
+    expect(reasonField).toHaveAttribute("aria-describedby", reasonHelp.id);
 
-    await user.type(screen.getByLabelText(/reopen reason/i), "Manager confirmed the correction is complete.");
+    await user.type(reasonField, "Manager confirmed the correction is complete.");
     await user.click(screen.getByRole("button", { name: /reopen period/i }));
 
     expect(reopenMutateAsync).toHaveBeenCalledWith(expect.objectContaining({
@@ -304,6 +334,92 @@ describe("Payroll page", () => {
       snapshotHash: "a".repeat(64),
       reason: "Manager confirmed the correction is complete.",
     }));
+  });
+
+  it("scopes reopen rationale to the selected snapshot and clears it after success", async () => {
+    const user = userEvent.setup();
+    const reopenMutateAsync = vi.fn().mockResolvedValue({ action: "reopened" });
+    const secondQueueItem = {
+      ...reviewQueue.queue[0],
+      employeeLabel: "Employee 1002",
+      employmentProfileId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      payPeriodId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      snapshot: {
+        id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        hash: "b".repeat(64),
+      },
+    };
+    const secondDetails = {
+      ...reviewDetails,
+      snapshotId: secondQueueItem.snapshot.id,
+      snapshotHash: secondQueueItem.snapshot.hash,
+    };
+
+    mockUsePayrollAdministration.mockImplementation((...args: unknown[]) => {
+      const options = args[1] as { selectedReview?: { snapshotId: string } | null } | undefined;
+      return buildPayrollAdministrationMock({
+        reviewQueueQuery: {
+          data: { ...reviewQueue, queue: [...reviewQueue.queue, secondQueueItem] },
+          isLoading: false,
+          isError: false,
+          error: null,
+        },
+        reviewDetailsQuery: {
+          data: options?.selectedReview?.snapshotId === secondQueueItem.snapshot.id ? secondDetails : reviewDetails,
+          isLoading: false,
+          isError: false,
+          error: null,
+        },
+        reopenPayrollTimesheetMutation: {
+          mutateAsync: reopenMutateAsync,
+          isPending: false,
+          error: null,
+        },
+      });
+    });
+
+    renderPage();
+
+    await user.click(screen.getByRole("button", { name: "Approvals" }));
+    const reasonField = screen.getByLabelText(/reopen reason/i);
+    await user.type(reasonField, "Reason for employee 1001");
+    await user.click(screen.getByRole("button", { name: /employee 1002/i }));
+
+    expect(screen.getByLabelText(/reopen reason/i)).toHaveValue("");
+
+    await user.type(screen.getByLabelText(/reopen reason/i), "Reason for employee 1002");
+    await user.click(screen.getByRole("button", { name: /reopen period/i }));
+
+    expect(reopenMutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+      snapshotId: secondQueueItem.snapshot.id,
+      snapshotHash: secondQueueItem.snapshot.hash,
+      reason: "Reason for employee 1002",
+    }));
+    await waitFor(() => expect(screen.getByLabelText(/reopen reason/i)).toHaveValue(""));
+  });
+
+  it("hides reopen rationale controls from an administrator with lock-only authority", async () => {
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      administrationQuery: {
+        data: {
+          ...administrationData,
+          capabilities: {
+            ...administrationData.capabilities,
+            canReopenPeriod: false,
+          },
+        },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      },
+    }));
+
+    renderPage();
+
+    await userEvent.click(screen.getByRole("button", { name: "Approvals" }));
+    expect(screen.getByRole("button", { name: /lock period/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/reopen reason/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /reopen period/i })).not.toBeInTheDocument();
   });
 
   it("renders explicit loading states for approval queue and selected details", async () => {
@@ -325,11 +441,11 @@ describe("Payroll page", () => {
     renderPage();
 
     await userEvent.click(screen.getByRole("button", { name: "Exceptions" }));
-    expect(screen.getByText(/loading payroll review queue/i)).toBeInTheDocument();
+    expect(screen.getByText(/loading payroll review queue/i).closest('[role="status"]')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Approvals" }));
-    expect(screen.getByText(/loading payroll review queue/i)).toBeInTheDocument();
-    expect(screen.getByText(/loading approval details/i)).toBeInTheDocument();
+    expect(screen.getByText(/loading payroll review queue/i).closest('[role="status"]')).toBeInTheDocument();
+    expect(screen.getByText(/loading approval details/i).closest('[role="status"]')).toBeInTheDocument();
   });
 
   it("fails closed when the review queue transport errors", async () => {
@@ -351,11 +467,11 @@ describe("Payroll page", () => {
     renderPage();
 
     await userEvent.click(screen.getByRole("button", { name: "Exceptions" }));
-    expect(screen.getByText(/authoritative payroll review queue is unavailable/i)).toBeInTheDocument();
+    expect(screen.getByText(/authoritative payroll review queue is unavailable/i).closest('[role="alert"]')).toBeInTheDocument();
     expect(screen.queryByText(/no pending exception rows/i)).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Approvals" }));
-    expect(screen.getByText(/authoritative payroll review queue is unavailable/i)).toBeInTheDocument();
+    expect(screen.getByText(/authoritative payroll review queue is unavailable/i).closest('[role="alert"]')).toBeInTheDocument();
     expect(screen.queryByText(/no approval rows/i)).not.toBeInTheDocument();
   });
 

@@ -791,14 +791,14 @@ describe("payrollAdministrationHandler", () => {
       code: "unauthorized",
       message: "Unauthorized",
       classification: { category: "auth", severity: "medium", retryable: false, httpStatus: 401 },
-      responseHeaders: { "WWW-Authenticate": "Bearer", "x-request-id": "edge-auth-request" },
+      responseHeaders: { "WWW-Authenticate": "Bearer", "Cache-Control": "no-store", "x-request-id": "edge-auth-request" },
     },
     {
       status: 500,
       code: "internal_error",
       message: "Internal server error",
       classification: { category: "internal", severity: "critical", retryable: false, httpStatus: 500 },
-      responseHeaders: { "Retry-After": "7", "x-request-id": "edge-internal-request" },
+      responseHeaders: { "Retry-After": "7", "Cache-Control": "no-store", "x-request-id": "edge-internal-request" },
     },
   ])("forwards shared Edge $status envelopes losslessly", async (testCase) => {
     vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
@@ -828,5 +828,6 @@ describe("payrollAdministrationHandler", () => {
     expect(response.headers.get("x-correlation-id")).toBe("incoming-correlation");
     expect(response.headers.get("WWW-Authenticate")).toBe(testCase.status === 401 ? "Bearer" : null);
     expect(response.headers.get("Retry-After")).toBe(testCase.status === 500 ? "7" : null);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
   });
 });

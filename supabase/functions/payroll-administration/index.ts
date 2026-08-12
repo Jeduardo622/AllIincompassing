@@ -376,13 +376,13 @@ export const consumePayrollAdministrationRateLimit = async (
     if (
       !Number.isInteger(count) || count < 1
       || !Number.isInteger(expiryApplied) || (expiryApplied !== 0 && expiryApplied !== 1)
-      || !Number.isInteger(ttl) || ttl < 1
+      || !Number.isInteger(ttl) || ttl < 0
     ) {
       return { outcome: "unavailable" };
     }
 
     return count > 60
-      ? { outcome: "denied", retryAfterSeconds: ttl }
+      ? { outcome: "denied", retryAfterSeconds: Math.max(1, ttl) }
       : { outcome: "allowed" };
   } catch {
     return { outcome: "unavailable" };

@@ -429,7 +429,7 @@ jobs:
       - lint_typecheck
       - unit_tests
       - build
-    if: github.event_name == 'workflow_dispatch' && inputs.activate_payroll_administration == true
+    if: github.event_name == 'workflow_dispatch' && inputs.activate_payroll_administration == true && github.ref == 'refs/heads/main'
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -449,7 +449,34 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: node scripts/ci/check-edge-deploy-prerequisites.mjs payroll-administration
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for key in UPSTASH_REDIS_REST_URL UPSTASH_REDIS_REST_TOKEN; do
+            if [ -z "${!key:-}" ]; then
+              missing+=("${key}")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required payroll-administration deploy configuration: ${missing[*]}" >&2
+            exit 1
+          fi
+          node scripts/ci/check-edge-deploy-prerequisites.mjs payroll-administration
+
+      - name: Verify payroll-administration immutable current main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_WORKFLOW_SHA: ${{ github.sha }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          live_main_sha="$(gh api --method GET "repos/${GH_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          if [ -z "${live_main_sha}" ] || [ "${live_main_sha}" != "${EXPECTED_WORKFLOW_SHA}" ]; then
+            echo "::error::Refusing payroll-administration deployment because workflow SHA is not current origin/main." >&2
+            exit 1
+          fi
 
       - name: Deploy payroll-administration edge function
         env:

@@ -685,6 +685,24 @@ Deno.test("distributed Edge limiter denies over quota with Retry-After", async (
   assertEquals((await response.json() as { code: string }).code, "rate_limited");
 });
 
+Deno.test("distributed Edge limiter accepts TTL zero and emits a minimum Retry-After", async () => {
+  const response = await handlePayrollAdministrationBase({
+    req: createRequest({ action: "get_administration", selectedLocalDate: "2026-08-12" }),
+    userContext: createUserContext("admin", "edge-expiring-limit-user"),
+    db: createRpcClient(() => {
+      throw new Error("RPC should not execute when rate limited");
+    }),
+    rateLimitDependencies: {
+      getEnv: allowedRateLimitDependencies.getEnv,
+      fetch: () => Promise.resolve(new Response(JSON.stringify([{ result: 61 }, { result: 0 }, { result: 0 }]), { status: 200 })),
+    },
+  } as Parameters<typeof handlePayrollAdministrationBase>[0]);
+
+  assertEquals(response.status, 429);
+  assertEquals(response.headers.get("Retry-After"), "1");
+  assertEquals((await response.json() as { code: string }).code, "rate_limited");
+});
+
 Deno.test("distributed Edge limiter fails closed when Upstash configuration is missing", async () => {
   const response = await handlePayrollAdministrationBase({
     req: createRequest({ action: "get_administration", selectedLocalDate: "2026-08-12" }),
@@ -713,6 +731,9 @@ Deno.test("distributed Edge limiter fails closed on upstream and malformed respo
   for (const fetchImpl of [
     () => Promise.reject(new Error("redis unavailable")),
     () => Promise.resolve(new Response(JSON.stringify([{ result: "not-a-count" }]), { status: 200 })),
+    () => Promise.resolve(new Response(JSON.stringify([{ result: 61 }, { result: 0 }, { result: -1 }]), { status: 200 })),
+    () => Promise.resolve(new Response(JSON.stringify([{ result: 61 }, { result: 0 }, { result: "not-a-ttl" }]), { status: 200 })),
+    () => Promise.resolve(new Response(JSON.stringify([{ result: 61 }, { result: 0 }, {}]), { status: 200 })),
   ]) {
     const response = await handlePayrollAdministrationBase({
       req: createRequest({ action: "get_administration", selectedLocalDate: "2026-08-12" }),

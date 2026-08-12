@@ -877,6 +877,9 @@ const buildForwardedEdgeResponse = (
   if (forwardedHeaders.get("WWW-Authenticate")) {
     responseHeaders.set("WWW-Authenticate", forwardedHeaders.get("WWW-Authenticate") as string);
   }
+  if (forwardedHeaders.get("Cache-Control")) {
+    responseHeaders.set("Cache-Control", forwardedHeaders.get("Cache-Control") as string);
+  }
   return new Response(JSON.stringify(payload), {
     status,
     headers: responseHeaders,

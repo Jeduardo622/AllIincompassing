@@ -17,7 +17,30 @@ const PAYROLL_ADMINISTRATION_DEPLOY_PREREQ_COMMAND =
   "node scripts/ci/check-edge-deploy-prerequisites.mjs payroll-administration";
 const MAIN_PUSH_IF = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
 const PAYROLL_ACTIVATION_IF = "github.event_name == 'workflow_dispatch' && inputs.activate_payroll_timesheets == true";
-const PAYROLL_ADMINISTRATION_ACTIVATION_IF = "github.event_name == 'workflow_dispatch' && inputs.activate_payroll_administration == true";
+const PAYROLL_ADMINISTRATION_ACTIVATION_IF = "github.event_name == 'workflow_dispatch' && inputs.activate_payroll_administration == true && github.ref == 'refs/heads/main'";
+const PAYROLL_ADMINISTRATION_MAIN_VERIFICATION_STEP = "Verify payroll-administration immutable current main";
+const PAYROLL_ADMINISTRATION_MAIN_VERIFICATION_LINES = [
+  "set -euo pipefail",
+  `live_main_sha="$(gh api --method GET "repos/\${GH_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"`,
+  `if [ -z "\${live_main_sha}" ] || [ "\${live_main_sha}" != "\${EXPECTED_WORKFLOW_SHA}" ]; then`,
+  `echo "::error::Refusing payroll-administration deployment because workflow SHA is not current origin/main." >&2`,
+  "exit 1",
+  "fi",
+];
+const PAYROLL_ADMINISTRATION_UPSTASH_PREREQ_LINES = [
+  "set -euo pipefail",
+  "missing=()",
+  "for key in UPSTASH_REDIS_REST_URL UPSTASH_REDIS_REST_TOKEN; do",
+  `if [ -z "\${!key:-}" ]; then`,
+  `missing+=("\${key}")`,
+  "fi",
+  "done",
+  `if [ "\${#missing[@]}" -gt 0 ]; then`,
+  `echo "::error::Missing required payroll-administration deploy configuration: \${missing[*]}" >&2`,
+  "exit 1",
+  "fi",
+  PAYROLL_ADMINISTRATION_DEPLOY_PREREQ_COMMAND,
+];
 const RUNTIME_PARITY_IF = `(${MAIN_PUSH_IF}) || (github.event_name == 'workflow_dispatch' && (inputs.activate_payroll_timesheets == true || inputs.activate_payroll_administration == true))`;
 const AI_DEPLOY_IF =
   "github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.change_scope.outputs.ai_agent_changed == 'true'";
@@ -433,6 +456,8 @@ const sameSet = (actual, expected) => {
   const sortedExpected = [...expected].sort();
   return sortedActual.length === sortedExpected.length && sortedActual.every((value, index) => value === sortedExpected[index]);
 };
+const sameSequence = (actual, expected) =>
+  actual.length === expected.length && actual.every((value, index) => value === expected[index]);
 const hasSequence = (lines, sequence) =>
   lines.some((_, index) => sequence.every((value, offset) => lines[index + offset] === value));
 const hasOrderedSequence = (lines, sequence) => {
@@ -525,7 +550,7 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
     job.steps.filter((step) => stepIsExactCommand(step, PAYROLL_ADMINISTRATION_DEPLOY_COMMAND)).map((step) => ({ jobName, step })),
   );
   const payrollAdministrationPrereqSteps = Object.entries(jobs).flatMap(([jobName, job]) =>
-    job.steps.filter((step) => stepIsExactCommand(step, PAYROLL_ADMINISTRATION_DEPLOY_PREREQ_COMMAND)).map((step) => ({ jobName, step })),
+    job.steps.filter((step) => stepHasExactCommand(step, PAYROLL_ADMINISTRATION_DEPLOY_PREREQ_COMMAND)).map((step) => ({ jobName, step })),
   );
   const fillDocsDeploySteps = Object.entries(jobs).flatMap(([jobName, job]) =>
     job.steps.filter((step) => stepIsExactCommand(step, FILL_DOCS_DEPLOY_COMMAND)).map((step) => ({ jobName, step })),
@@ -747,7 +772,15 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
 
   if (deployPayrollAdministration) {
     if (deployPayrollAdministration.if !== PAYROLL_ADMINISTRATION_ACTIVATION_IF) {
-      violations.push("deploy_payroll_administration must require explicit manual activation");
+      const activationIf = deployPayrollAdministration.if ?? "";
+      if (
+        !activationIf.includes("github.event_name == 'workflow_dispatch'") ||
+        !activationIf.includes("inputs.activate_payroll_administration == true")
+      ) {
+        violations.push("deploy_payroll_administration must require explicit manual activation");
+      } else {
+        violations.push("deploy_payroll_administration must require immutable current-main manual activation");
+      }
     }
     if (!sameSet(deployPayrollAdministration.needs, PAYROLL_DEPLOY_NEEDS)) {
       violations.push(`deploy_payroll_administration needs must exactly equal ${PAYROLL_DEPLOY_NEEDS.join(", ")}`);
@@ -762,8 +795,44 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
       violations.push("deploy_payroll_administration must validate deploy prerequisites before deploying");
     }
     const prereqStep = deployPayrollAdministration.steps[prereqIndex];
-    if (!prereqStep || !stepIsExactCommand(prereqStep, PAYROLL_ADMINISTRATION_DEPLOY_PREREQ_COMMAND)) {
+    if (!prereqStep || !stepHasExactCommand(prereqStep, PAYROLL_ADMINISTRATION_DEPLOY_PREREQ_COMMAND)) {
       violations.push("deploy_payroll_administration must run the shared edge deploy prerequisite helper");
+    }
+    const upstashBindings = {
+      UPSTASH_REDIS_REST_URL: "${{ secrets.UPSTASH_REDIS_REST_URL }}",
+      UPSTASH_REDIS_REST_TOKEN: "${{ secrets.UPSTASH_REDIS_REST_TOKEN }}",
+    };
+    const upstashBindingLocations = Object.entries(jobs).flatMap(([jobName, job]) =>
+      job.steps.flatMap((step) =>
+        Object.keys(upstashBindings)
+          .filter((name) => step.env?.[name] !== undefined)
+          .map((name) => ({ jobName, step, name, value: step.env[name] })),
+      ),
+    );
+    if (
+      !prereqStep ||
+      !sameSequence(executableLines(prereqStep.run), PAYROLL_ADMINISTRATION_UPSTASH_PREREQ_LINES) ||
+      Object.entries(upstashBindings).some(([name, value]) => prereqStep.env?.[name] !== value) ||
+      upstashBindingLocations.length !== 2 ||
+      upstashBindingLocations.some(({ jobName, step, name, value }) =>
+        jobName !== "deploy_payroll_administration" || step !== prereqStep || value !== upstashBindings[name]
+      )
+    ) {
+      violations.push("deploy_payroll_administration prerequisites must require both Upstash REST secrets");
+    }
+    const verifyIndex = deployPayrollAdministration.steps.findIndex(
+      (step) => step.name === PAYROLL_ADMINISTRATION_MAIN_VERIFICATION_STEP,
+    );
+    const verifyStep = deployPayrollAdministration.steps[verifyIndex];
+    if (
+      verifyIndex !== deployIndex - 1 ||
+      !verifyStep ||
+      verifyStep.env?.GH_TOKEN !== "${{ github.token }}" ||
+      verifyStep.env?.EXPECTED_WORKFLOW_SHA !== "${{ github.sha }}" ||
+      verifyStep.env?.GH_REPOSITORY !== "${{ github.repository }}" ||
+      !sameSequence(executableLines(verifyStep.run), PAYROLL_ADMINISTRATION_MAIN_VERIFICATION_LINES)
+    ) {
+      violations.push("deploy_payroll_administration must verify github.sha equals live origin/main immediately before deploy");
     }
   }
 

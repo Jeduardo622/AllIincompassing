@@ -56,7 +56,7 @@ No schema, migration, auth, RLS, grant, tenant filter, API response shape, runti
 - blocked checks: live branch protection -> CI only; privileged function database grants -> missing protected database URL; Supabase preview drift -> missing `SUPABASE_DB_URL`; hosted function auth parity -> CI-only configuration; no credentials or hosted systems were accessed
 - reviewer: completed; initial code/security findings were corrected, and final code, security, Supabase, and documentation reviews found no unresolved implementation defect
 - residual risk: the change is proven against synthetic Adobe-collapsed text but has not been deployed or exercised with customer documents; production activation remains outside this slice
-- pr handoff: local branch is review-ready; PR identifier and live checks will be appended immediately after publication
+- pr handoff: ready at PR `#927` (`https://github.com/Jeduardo622/AllIincompassing/pull/927`); live checks are pending and human review remains required
 
 ## Specialist Review
 
@@ -66,3 +66,12 @@ No schema, migration, auth, RLS, grant, tenant filter, API response shape, runti
 - Documentation review found the handoff accurate before the final CI-order correction.
 - Code review identified ambiguous checkbox wording in this handoff; the example now states the tested `U+2610` marker explicitly rather than implying a literal word token.
 - Security review identified that a standalone parser job could finish after the main-branch function deployment. The Deno suites now run inside the already-required `unit_tests` job, and the workflow contract proves that deployment depends on that job.
+
+## Pull Request State
+
+- PR: `#927` (`https://github.com/Jeduardo622/AllIincompassing/pull/927`)
+- publication head: `07a5001b3c446d945101c506a8b1ff6988381846`
+- live checks at publication: CI `change-scope`, `tenant-safety`, Lighthouse, and Netlify deploy preview pending; Supabase Preview skipped
+- review decision: no GitHub human review submitted
+- merge state: `BLOCKED`
+- merge result: not merged; critical-lane human review and exact-head required checks remain mandatory

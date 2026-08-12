@@ -10586,6 +10586,10 @@ export type Database = {
           therapist_name: string
         }[]
       }
+      get_session_payroll_context: {
+        Args: { session_id: string }
+        Returns: Json
+      }
       get_sessions_optimized: {
         Args: {
           p_client_id?: string
@@ -11845,3 +11849,4 @@ export const Constants = {
     },
   },
 } as const
+

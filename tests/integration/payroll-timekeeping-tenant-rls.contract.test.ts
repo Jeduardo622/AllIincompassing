@@ -22,13 +22,25 @@ const captureSql = captureMigrationName
       "utf8",
     )
   : "";
-const functionDefinition = (qualifiedName: string): string =>
-  `${sql}\n${captureSql}`.match(
+const sessionLifecycleMigrationName =
+  readdirSync(path.join(process.cwd(), "supabase", "migrations")).find((name) =>
+    name.endsWith("payroll_session_lifecycle_context.sql"),
+  ) ?? "";
+const sessionLifecycleSql = sessionLifecycleMigrationName
+  ? readFileSync(
+      path.join(process.cwd(), "supabase", "migrations", sessionLifecycleMigrationName),
+      "utf8",
+    )
+  : "";
+const functionDefinition = (qualifiedName: string): string => {
+  const matches = `${sql}\n${captureSql}\n${sessionLifecycleSql}`.match(
     new RegExp(
       `create or replace function ${qualifiedName.replace(".", "\\.")}\\([\\s\\S]*?\\n\\$\\$;`,
-      "i",
+      "gi",
     ),
-  )?.[0] ?? "";
+  );
+  return matches?.at(-1) ?? "";
+};
 const policyDefinition = (policyName: string): string =>
   sql.match(
     new RegExp(`create policy ${policyName}[\\s\\S]*?\\n\\s*\\);`, "i"),
@@ -48,6 +60,24 @@ describe("payroll timekeeping tenant and RLS contract", () => {
     expect(captureSql).not.toMatch(/grant select on public\.timekeeping_exceptions to service_role/i);
     expect(captureSql).not.toMatch(
       /create policy .*timekeeping_exceptions.*for select.*to authenticated.*using\s*\(\s*true\s*\)/i,
+    );
+  });
+
+  it("adds the bounded Task 2E-A lifecycle migration without widening raw source-event access", () => {
+    expect(sessionLifecycleSql).toMatch(
+      /@migration-dependencies:\s*20260811214856_payroll_timekeeping_capture_read_model\.sql/i,
+    );
+    expect(sessionLifecycleSql).toMatch(
+      /create or replace function public\.get_session_payroll_context\(session_id uuid\)/i,
+    );
+    expect(sessionLifecycleSql).toMatch(
+      /grant execute on function public\.get_session_payroll_context\(uuid\) to authenticated/i,
+    );
+    expect(sessionLifecycleSql).not.toMatch(
+      /grant execute on function public\.get_session_payroll_context\(uuid\) to authenticated,\s*service_role/i,
+    );
+    expect(sessionLifecycleSql).not.toMatch(
+      /grant select on public\.session_attendance_events to service_role/i,
     );
   });
 
@@ -161,9 +191,28 @@ describe("payroll timekeeping tenant and RLS contract", () => {
       /role_row\.name in \('admin', 'super_admin', 'admin_schedule'\)/i,
     );
     const definition = functionDefinition("public.record_session_attendance_event");
-    expect(definition).toMatch(/session_attendance\.record_assigned/i);
-    expect(definition).not.toMatch(/from public\.user_roles membership/i);
-    expect(definition).not.toMatch(/app\.current_user_has_exact_role_for_org/i);
+    expect(definition).toMatch(/public\.get_session_payroll_context/i);
+  });
+
+  it("keeps session attendance authority server-derived and authenticated-only", () => {
+    const contextDefinition = functionDefinition("public.get_session_payroll_context");
+    expect(contextDefinition).toMatch(/auth\.uid\(\)/i);
+    expect(contextDefinition).toMatch(/app\.resolve_user_organization_id/i);
+    expect(contextDefinition).toMatch(/current_user_is_super_admin/i);
+    expect(contextDefinition).toMatch(/current_user_has_exact_role_for_org/i);
+    expect(contextDefinition).toMatch(/user_therapist_links/i);
+    expect(contextDefinition).toMatch(/location_type/i);
+    expect(contextDefinition).toMatch(/'other'/i);
+    expect(contextDefinition).not.toMatch(/profile\.role/i);
+    expect(contextDefinition).not.toMatch(/event_payload/i);
+
+    const definition = functionDefinition("public.record_session_attendance_event");
+    expect(definition).toMatch(/public\.get_session_payroll_context/i);
+    expect(definition).not.toMatch(/event_payload ->> 'timezone'/i);
+    expect(definition).not.toMatch(/event_payload ->> 'workLocation'/i);
+    expect(definition).not.toMatch(/v_event_data ->> 'employeeTimeEventId'/i);
+    expect(definition).not.toMatch(/data->>'employeeTimeEventId'/i);
+    expect(definition).not.toMatch(/data->>'activeShiftEventId'/i);
   });
 
   it("uses employment and pay-group event time instead of current_date for source authority and locks", () => {
@@ -192,6 +241,12 @@ describe("payroll timekeeping tenant and RLS contract", () => {
     );
     expect(sql).toMatch(
       /grant execute on function public\.request_session_attendance_correction\(jsonb, text\) to authenticated, service_role/i,
+    );
+    expect(sessionLifecycleSql).toMatch(
+      /revoke all on function public\.record_session_attendance_event\(jsonb, text\) from service_role/i,
+    );
+    expect(sessionLifecycleSql).not.toMatch(
+      /grant execute on function public\.record_session_attendance_event\(jsonb, text\) to authenticated,\s*service_role/i,
     );
   });
 

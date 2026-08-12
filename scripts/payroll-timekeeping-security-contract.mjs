@@ -178,11 +178,9 @@ const timePayload = (eventType, occurredAt, extra = {}) => ({
   data: { eventType, ...extra },
 });
 
-const attendancePayload = (eventType, occurredAt, sessionId = IDS.sessionA) => ({
+const attendancePayload = (eventType, occurredAt, sessionId = IDS.sessionA, extra = {}) => ({
   occurredAt,
-  timezone: "America/Los_Angeles",
-  workLocation: "client_site",
-  data: { eventType, sessionId },
+  data: { eventType, sessionId, ...extra },
 });
 
 const recordTime = (client, userId, payload, key, commit = true) =>
@@ -230,6 +228,21 @@ const getPayrollDay = (client, userId, localDate, commit = false) =>
     commit,
   );
 
+const getSessionPayrollContext = (client, userId, sessionId, commit = false) =>
+  withRole(
+    client,
+    "authenticated",
+    userId,
+    async () =>
+      (
+        await client.query(
+          "select public.get_session_payroll_context($1::uuid) as result",
+          [sessionId],
+        )
+      ).rows[0].result,
+    commit,
+  );
+
 const main = async () => {
   const admin = await connect();
   try {
@@ -243,6 +256,7 @@ const main = async () => {
       where n.nspname = 'public'
         and p.proname = any(array[
           'get_payroll_day',
+          'get_session_payroll_context',
           'record_employee_time_event',
           'record_session_attendance_event',
           'request_time_correction',
@@ -250,11 +264,12 @@ const main = async () => {
         ])
       order by p.proname
     `);
-    assert(signatures.rowCount === 5, "Expected exactly five payroll RPCs including get_payroll_day.");
+    assert(signatures.rowCount === 6, "Expected exactly six payroll RPCs including get_session_payroll_context.");
     assert(
       signatures.rows.every(
         (row) =>
           row.args === "local_date date" ||
+          row.args === "session_id uuid" ||
           row.args === "event_payload jsonb, idempotency_key text" ||
           row.args === "correction_payload jsonb, idempotency_key text",
       ),
@@ -264,6 +279,8 @@ const main = async () => {
       const signature =
         row.proname === "get_payroll_day"
           ? "public.get_payroll_day(date)"
+          : row.proname === "get_session_payroll_context"
+            ? "public.get_session_payroll_context(uuid)"
           : `public.${row.proname}(jsonb,text)`;
       const privileges = await admin.query(
         `select
@@ -274,7 +291,14 @@ const main = async () => {
       );
       assert(!privileges.rows[0].anon, `${signature} is executable by anon.`);
       assert(privileges.rows[0].authenticated, `${signature} is not executable by authenticated.`);
-      assert(privileges.rows[0].service_role, `${signature} is not executable by service_role.`);
+      if (
+        row.proname === "record_session_attendance_event" ||
+        row.proname === "get_session_payroll_context"
+      ) {
+        assert(!privileges.rows[0].service_role, `${signature} is executable by service_role.`);
+      } else {
+        assert(privileges.rows[0].service_role, `${signature} is not executable by service_role.`);
+      }
     }
 
     await expectReject(
@@ -292,6 +316,11 @@ const main = async () => {
       disabledDay.bootstrap?.organizationId === IDS.orgA,
       "Disabled payroll day read did not preserve the canonical organization.",
     );
+    await expectReject(
+      () => getSessionPayrollContext(admin, IDS.userA, IDS.sessionA),
+      /42501|feature is disabled/i,
+      "feature-disabled session payroll context",
+    );
 
     await expectReject(
       () => recordTime(admin, IDS.userA, timePayload("shift_started", "2026-08-11T16:00:00Z"), "disabled-start"),
@@ -304,6 +333,21 @@ const main = async () => {
       "feature-disabled attendance event",
     );
     await setFeature(admin, true);
+
+    const preShiftContext = await getSessionPayrollContext(admin, IDS.userA, IDS.sessionA);
+    assert(
+      preShiftContext.actorIsAssignedEmployee === true &&
+        preShiftContext.canClockSelf === true,
+      "Assigned employee session context did not expose self attendance authority.",
+    );
+    assert(
+      preShiftContext.canonicalWorkLocation === "office",
+      "Session context did not map the scheduled clinic location to office.",
+    );
+    assert(
+      preShiftContext.activeShiftEventId === null,
+      "Session context reported an active shift before one existed.",
+    );
 
     await admin.query(
       "update public.employment_profiles set home_jurisdiction = 'TX' where id = $1",
@@ -443,20 +487,26 @@ const main = async () => {
       /23514|started session/i,
       "attendance end before start",
     );
+    const activeShiftStart = await recordTime(
+      admin,
+      IDS.userA,
+      timePayload("shift_started", "2026-08-12T00:05:00Z"),
+      "session-day-shift-start",
+    );
     const attendanceStart = await recordAttendance(
       admin,
       IDS.userA,
-      attendancePayload("session_started", "2026-08-11T16:10:00Z"),
+      attendancePayload("session_started", "2026-08-12T00:10:00Z"),
       "attendance-start",
     );
     assert(
-      attendanceStart.exception_id,
-      "Outside-shift attendance start did not return the linked exception id.",
+      attendanceStart.employee_time_event_id === activeShiftStart.event_id,
+      "Active-shift attendance start did not link to the derived shift start event.",
     );
     const attendanceReplay = await recordAttendance(
       admin,
       IDS.userA,
-      attendancePayload("session_started", "2026-08-11T16:10:00Z"),
+      attendancePayload("session_started", "2026-08-12T00:10:00Z"),
       "attendance-start",
     );
     assert(
@@ -472,7 +522,7 @@ const main = async () => {
         recordAttendance(
           admin,
           IDS.userA,
-          attendancePayload("session_started", "2026-08-11T16:11:00Z"),
+          attendancePayload("session_started", "2026-08-12T00:11:00Z"),
           "attendance-start",
         ),
       /23505|IDEMPOTENCY_CONFLICT/i,
@@ -487,8 +537,53 @@ const main = async () => {
       [IDS.orgA, attendanceStart.event_id],
     );
     assert(
-      linkedExceptionCount.rows[0].count === 1,
-      "Outside-shift exception was not created exactly once for the attendance event.",
+      linkedExceptionCount.rows[0].count === 0,
+      "Active-shift attendance start incorrectly created an outside-shift exception.",
+    );
+    await expectReject(
+      () => recordAttendance(admin, IDS.userA, attendancePayload("session_started", "2026-08-12T00:11:00Z"), "attendance-duplicate"),
+      /23514|duplicate session start/i,
+      "duplicate attendance start",
+    );
+
+    await recordTime(
+      admin,
+      IDS.userA,
+      timePayload("shift_ended", "2026-08-12T00:20:00Z"),
+      "session-day-shift-end",
+    );
+    const laterActiveShiftStart = await recordTime(
+      admin,
+      IDS.userA,
+      timePayload("shift_started", "2026-08-12T00:25:00Z"),
+      "session-day-shift-restart",
+    );
+
+    const activeShiftContext = await getSessionPayrollContext(admin, IDS.userA, IDS.sessionA);
+    assert(
+      activeShiftContext.activeShiftEventId === laterActiveShiftStart.event_id,
+      "Session payroll context did not expose the current active shift event id.",
+    );
+    assert(
+      activeShiftContext.canonicalWorkLocation === "office",
+      "Session payroll context did not prefer the active shift work location.",
+    );
+    await recordTime(
+      admin,
+      IDS.userA,
+      timePayload("shift_ended", "2026-08-12T00:30:00Z"),
+      "session-day-shift-restart-end",
+    );
+
+    const attendanceEnd = await recordAttendance(
+      admin,
+      IDS.userA,
+      attendancePayload("session_ended", "2026-08-12T00:40:00Z"),
+      "attendance-end",
+    );
+    assert(
+      attendanceEnd.employee_time_event_id === activeShiftStart.event_id,
+      "Session end did not reuse the open start shift link before considering the current active shift.",
     );
 
     const okDay = await getPayrollDay(admin, IDS.userA, "2026-08-11");
@@ -520,32 +615,18 @@ const main = async () => {
     );
     assert(
       Array.isArray(okDay.day?.exceptions) &&
-        okDay.day.exceptions.some(
-          (exception) =>
-            exception.id === attendanceStart.exception_id &&
-            exception.sourceSessionAttendanceEventId === attendanceStart.event_id &&
-            exception.exceptionCode === "session_outside_shift",
+        !okDay.day.exceptions.some(
+          (exception) => exception.sourceSessionAttendanceEventId === attendanceStart.event_id,
         ),
-      "Payroll day read did not return the linked outside-shift exception.",
+      "Payroll day read incorrectly surfaced an outside-shift exception for a linked session start.",
     );
     await expectReject(
-      () => recordAttendance(admin, IDS.userA, attendancePayload("session_started", "2026-08-11T16:11:00Z"), "attendance-duplicate"),
-      /23514|duplicate session start/i,
-      "duplicate attendance start",
-    );
-    await recordAttendance(
-      admin,
-      IDS.userA,
-      attendancePayload("session_ended", "2026-08-11T18:10:00Z"),
-      "attendance-end",
-    );
-    await expectReject(
-      () => recordAttendance(admin, IDS.userA, attendancePayload("session_started", "2026-08-11T18:10:00Z"), "equal-attendance-chronology"),
+      () => recordAttendance(admin, IDS.userA, attendancePayload("session_started", "2026-08-12T00:40:00Z"), "equal-attendance-chronology"),
       /23514|latest confirmed session attendance event/i,
       "equal-time attendance chronology guard",
     );
     await expectReject(
-      () => recordAttendance(admin, IDS.userA, attendancePayload("session_started", "2026-08-11T17:00:00Z"), "backdated-attendance"),
+      () => recordAttendance(admin, IDS.userA, attendancePayload("session_started", "2026-08-12T00:20:00Z"), "backdated-attendance"),
       /23514|latest confirmed session attendance event/i,
       "backdated attendance event",
     );
@@ -573,6 +654,14 @@ const main = async () => {
         IDS.delegatedSessionA,
       ),
       "delegated-historical-attendance-start",
+    );
+    assert(
+      delegatedHistoricalAttendanceStart.employee_time_event_id === null,
+      "Outside-shift delegated attendance unexpectedly linked a payroll shift event.",
+    );
+    assert(
+      delegatedHistoricalAttendanceStart.exception_id,
+      "Outside-shift delegated attendance did not return the linked exception id.",
     );
     await recordAttendance(
       admin,
@@ -726,7 +815,7 @@ const main = async () => {
       "Current-employment attendance correction was not appended.",
     );
 
-    const laterDay = await getPayrollDay(admin, IDS.userA, "2026-08-18");
+    const laterDay = await getPayrollDay(admin, IDS.userA, "2026-08-19");
     assert(laterDay.state === "ok", "Later payroll day read did not return ok.");
     assert(
       !laterDay.day?.timeCorrectionRequests?.some(
@@ -773,7 +862,7 @@ const main = async () => {
     await expectReject(
       () => withRole(admin, "service_role", IDS.userA, () => admin.query(
         "update public.timekeeping_exceptions set details = details || '{\"tamper\":true}'::jsonb where id = $1",
-        [attendanceStart.exception_id],
+        [delegatedHistoricalAttendanceStart.exception_id],
       ), true),
       /42501|permission denied|append-only/i,
       "service-role exception mutation",

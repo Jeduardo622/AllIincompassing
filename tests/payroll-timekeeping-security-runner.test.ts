@@ -12,8 +12,10 @@ describe("payroll timekeeping security runner", () => {
     );
 
     expect(script).toContain("get_payroll_day");
+    expect(script).toContain("get_session_payroll_context");
     expect(script).toContain("session_outside_shift");
     expect(script).toContain("timekeeping_exceptions");
+    expect(script).toContain("actorIsAssignedEmployee");
     expect(script).toContain("requires the exact local Supabase loopback database");
   });
 

@@ -196,6 +196,83 @@ describe("payrollTimeEventsHandler", () => {
     );
   });
 
+  it("calls get_session_payroll_context in legacy mode with only the caller token and strict request body", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
+    vi.mocked(fetchJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        sessionId: "77777777-7777-7777-7777-777777777777",
+        organizationId: "88888888-8888-8888-8888-888888888888",
+        employmentProfileId: "99999999-9999-9999-9999-999999999999",
+        employmentTimezone: "America/Los_Angeles",
+        actorIsAssignedEmployee: true,
+        canClockSelf: false,
+        canonicalWorkLocation: "office",
+        activeShiftEventId: null,
+      },
+    });
+
+    const response = await payrollTimeEventsHandler(
+      new Request("http://localhost/api/payroll-time-events", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${createAuthToken()}`,
+        },
+        body: JSON.stringify({
+          action: "get_session_context",
+          sessionId: "77777777-7777-7777-7777-777777777777",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(vi.mocked(fetchJson)).toHaveBeenCalledWith(
+      "https://example.supabase.co/rest/v1/rpc/get_session_payroll_context",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          apikey: "anon-key",
+          Authorization: `Bearer ${createAuthToken()}`,
+        }),
+        body: JSON.stringify({
+          session_id: "77777777-7777-7777-7777-777777777777",
+        }),
+      }),
+    );
+    expect(await response.json()).toEqual({
+      sessionId: "77777777-7777-7777-7777-777777777777",
+      organizationId: "88888888-8888-8888-8888-888888888888",
+      employmentProfileId: "99999999-9999-9999-9999-999999999999",
+      employmentTimezone: "America/Los_Angeles",
+      actorIsAssignedEmployee: true,
+      canClockSelf: false,
+      canonicalWorkLocation: "office",
+      activeShiftEventId: null,
+    });
+  });
+
+  it("rejects get_session_context authority fields in legacy mode before any RPC call", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
+
+    const response = await payrollTimeEventsHandler(
+      new Request("http://localhost/api/payroll-time-events", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${createAuthToken()}`,
+        },
+        body: JSON.stringify({
+          action: "get_session_context",
+          sessionId: "77777777-7777-7777-7777-777777777777",
+          activeShiftEventId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(vi.mocked(fetchJson)).not.toHaveBeenCalled();
+  });
+
   it("rejects forbidden authority fields in legacy mode before any RPC call", async () => {
     vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
 

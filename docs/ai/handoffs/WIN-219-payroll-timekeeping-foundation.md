@@ -78,3 +78,28 @@
 ## Handoff Summary
 
 Task 1 establishes a default-disabled payroll timekeeping schema and stable RPC boundary while keeping payroll time separate from insurance/audit session attendance. It includes event-effective employment binding, pay-group-scoped locks, append-only corrections, tenant-safe RLS, explicit delegated-attendance authority, and compensation privacy. Focused tests, clean reset, executable local security proof, policy, lint, typecheck, tenant validation, and build pass; the unrelated repository-wide coverage failure remains explicitly blocked for CI/human review.
+
+## Task 2E-B Progress
+
+- Date: 2026-08-12
+- Slice: protected session-context transport for `payroll-time-events`
+- Scope: `supabase/functions/payroll-time-events/index.ts`, `src/server/api/payroll-time-events.ts`, `src/features/payroll/api.ts`, focused tests, and this handoff/progress note
+- Behavior added:
+  - extends the action union with only `{ action: 'get_session_context', sessionId: uuid }`
+  - invokes `get_session_payroll_context(session_id)` under the authenticated caller in both the Edge function and the local caller-JWT server path
+  - rejects raw authority response fields such as organization, user, actor, employment, shift, timezone, and canonical location fields before schema stripping
+  - validates the context response strictly and fails closed on drift
+  - adds `fetchSessionPayrollContext(sessionId)` with request-body minimalism and exact nullable-field parsing
+- Verification:
+  - `deno test --no-check --allow-env supabase/functions/payroll-time-events/index.test.ts`: pass
+  - `npx vitest run src/server/__tests__/payrollTimeEventsHandler.test.ts --reporter=dot`: pass
+  - `npx vitest run src/features/payroll/__tests__/api.test.ts --reporter=dot`: pass
+  - `npx vitest run tests/api-convergence-boundary-exceptions.test.ts tests/payroll-timekeeping-security-runner.test.ts tests/payroll-session-lifecycle-context-migration.test.ts tests/integration/payroll-timekeeping-tenant-rls.contract.test.ts src/server/__tests__/payrollTimeEventsHandler.test.ts src/features/payroll/__tests__/api.test.ts --reporter=dot`: pass, 50 tests
+  - `npm run ci:check-focused`: pass on 2026-08-12; DB/CI-backed probes skipped as documented by the script
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run validate:tenant`: pass
+  - `npm run build`: pass
+  - `npm run test:ci`: blocked by repository-wide coverage heap exhaustion after broad suite progress; process terminates with Node out-of-memory and `ERR_IPC_CHANNEL_CLOSED`
+  - `npm run verify:local`: blocked by the same `test:ci` heap exhaustion in its umbrella run
+- Residual risk: the bounded payroll transport slice is green in focused coverage, but exact-head critical-lane closure still depends on CI or an environment-adjusted repo-wide coverage run that avoids the existing local heap failure.

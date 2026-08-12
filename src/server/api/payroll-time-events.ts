@@ -31,13 +31,28 @@ const PRESERVED_EDGE_HEADERS = new Set([
 const FORBIDDEN_AUTHORITY_KEYS = new Set([
   "organization_id",
   "organizationId",
+  "user_id",
+  "userId",
   "actor_id",
   "actorId",
   "actor_user_id",
   "actorUserId",
+  "employment_profile_id",
+  "employmentProfileId",
+  "employment_timezone",
+  "employmentTimezone",
+  "canonical_work_location",
+  "canonicalWorkLocation",
+  "active_shift_event_id",
+  "activeShiftEventId",
+  "actor_is_assigned_employee",
+  "actorIsAssignedEmployee",
+  "can_clock_self",
+  "canClockSelf",
 ]);
 const SUPPORTED_ACTIONS = new Set([
   "get_day",
+  "get_session_context",
   "record_time_event",
   "record_session_attendance",
   "request_correction",
@@ -90,8 +105,20 @@ const attendanceCorrectionSchema = z.object({
   }).passthrough(),
 }).passthrough();
 
+const sessionPayrollContextResponseSchema = z.object({
+  sessionId: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  employmentProfileId: z.string().uuid(),
+  employmentTimezone: z.string().min(1),
+  actorIsAssignedEmployee: z.boolean(),
+  canClockSelf: z.boolean(),
+  canonicalWorkLocation: workLocationSchema,
+  activeShiftEventId: z.string().uuid().nullable(),
+}).strict();
+
 const payrollActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("get_day"), localDate: z.string().date() }),
+  z.object({ action: z.literal("get_session_context"), sessionId: z.string().uuid() }).strict(),
   z.object({ action: z.literal("record_time_event"), event: timeEventSchema }),
   z.object({ action: z.literal("record_session_attendance"), event: sessionAttendanceSchema }),
   z.object({ action: z.literal("request_correction"), correction: correctionSchema }),
@@ -162,6 +189,9 @@ const validateAuthorityAndIdempotency = (
   if (parsed.action === "get_day") {
     return { idempotencyKey: null };
   }
+  if (parsed.action === "get_session_context") {
+    return { idempotencyKey: null };
+  }
 
   const headerKey = request.headers.get("Idempotency-Key")?.trim() ?? "";
   if (!headerKey) {
@@ -190,6 +220,11 @@ const mapActionToRpc = (parsed: PayrollAction, idempotencyKey: string | null) =>
       return {
         functionName: "get_payroll_day",
         args: { local_date: parsed.localDate },
+      };
+    case "get_session_context":
+      return {
+        functionName: "get_session_payroll_context",
+        args: { session_id: parsed.sessionId },
       };
     case "record_time_event":
       return {
@@ -456,6 +491,17 @@ export async function payrollTimeEventsHandler(request: Request): Promise<Respon
 
     if (!result.ok || !result.data) {
       return mapLegacyError(request, traceHeaders, result, validated.idempotencyKey);
+    }
+
+    if (parsed.data.action === "get_session_context") {
+      const parsedContext = sessionPayrollContextResponseSchema.safeParse(result.data);
+      if (!parsedContext.success) {
+        return errorResponse(request, "invalid_response", "Invalid payroll session context response.", {
+          status: 502,
+          headers: traceHeaders,
+        });
+      }
+      return buildSuccessResponse(request, traceHeaders, parsedContext.data);
     }
 
     if (validated.idempotencyKey) {

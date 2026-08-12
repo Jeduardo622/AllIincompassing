@@ -309,6 +309,8 @@ git commit -m "feat(payroll): add protected timekeeping foundation"
 
 ### Task 2: Employee Capture and Session Attendance (PR 2)
 
+Progress note 2026-08-12: Task 2E-B protected session-context transport is implemented in the existing `payroll-time-events` Edge, server, and client transports with focused green tests; repo-wide `test:ci` and `verify:local` remain blocked locally by aggregate coverage heap exhaustion outside the bounded slice.
+
 **Files:**
 - Create: one governed `supabase/migrations/*_payroll_timekeeping_capture_read_model.sql` migration on top of the PR 1 foundation
 - Create: `tests/payroll-timekeeping-capture-migration.test.ts`

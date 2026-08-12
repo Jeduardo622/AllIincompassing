@@ -71,6 +71,17 @@ const attendanceCorrectionPayloadSchema = z.object({
   }).passthrough(),
 }).passthrough();
 
+const payrollSessionContextSchema = z.object({
+  sessionId: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  employmentProfileId: z.string().uuid(),
+  employmentTimezone: z.string().min(1),
+  actorIsAssignedEmployee: z.boolean(),
+  canClockSelf: z.boolean(),
+  canonicalWorkLocation: workLocationSchema,
+  activeShiftEventId: z.string().uuid().nullable(),
+}).strict();
+
 const payrollBootstrapSchema = z.object({
   organizationId: z.string().min(1),
   employmentProfileId: z.string().min(1).nullable(),
@@ -179,6 +190,7 @@ export type PayrollSessionAttendanceEvent = z.infer<typeof sessionAttendanceEven
 export type PayrollTimeCorrectionRequest = z.infer<typeof timeCorrectionRequestSchema>;
 export type PayrollSessionAttendanceCorrectionRequest = z.infer<typeof sessionAttendanceCorrectionRequestSchema>;
 export type PayrollTimekeepingException = z.infer<typeof timekeepingExceptionSchema>;
+export type PayrollSessionContext = z.infer<typeof payrollSessionContextSchema>;
 export type PayrollDayResponse = {
   state: PayrollDayState;
   bootstrap?: PayrollBootstrap;
@@ -363,6 +375,31 @@ export async function fetchPayrollDay(scope: PayrollScope): Promise<PayrollDayRe
     },
     ...(parsed.totals?.label ? { totals: { label: parsed.totals.label } } : {}),
   };
+}
+
+export async function fetchSessionPayrollContext(sessionId: string): Promise<PayrollSessionContext> {
+  const response = await postPayrollAction({
+    action: "get_session_context",
+    sessionId: z.string().uuid().parse(sessionId),
+  });
+
+  if (!response.ok) {
+    throw await parseFailure(response, "Failed to fetch payroll session context.");
+  }
+
+  const parsed = await parseJsonResponse(response.clone(), payrollSessionContextSchema);
+  if (!parsed) {
+    throw toNormalizedApiError(
+      {
+        code: "invalid_response",
+        error: "Invalid payroll session context response.",
+      },
+      502,
+      "Invalid payroll session context response.",
+    );
+  }
+
+  return parsed;
 }
 
 export async function recordTimeEvent(

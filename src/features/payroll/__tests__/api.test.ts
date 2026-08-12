@@ -7,6 +7,7 @@ vi.mock("../../../lib/api", () => ({
 import { callApi } from "../../../lib/api";
 import {
   fetchPayrollDay,
+  fetchSessionPayrollContext,
   recordSessionAttendance,
   recordTimeEvent,
   requestSessionAttendanceCorrection,
@@ -200,6 +201,70 @@ describe("payroll api client", () => {
         }),
       }),
     );
+  });
+
+  it("fetches session payroll context with only sessionId and parses the exact nullable fields", async () => {
+    mockedCallApi.mockResolvedValueOnce(
+      jsonResponse({
+        sessionId: "77777777-7777-7777-7777-777777777777",
+        organizationId: "88888888-8888-8888-8888-888888888888",
+        employmentProfileId: "99999999-9999-9999-9999-999999999999",
+        employmentTimezone: "America/Los_Angeles",
+        actorIsAssignedEmployee: true,
+        canClockSelf: false,
+        canonicalWorkLocation: "office",
+        activeShiftEventId: null,
+      }),
+    );
+
+    await expect(
+      fetchSessionPayrollContext("77777777-7777-7777-7777-777777777777"),
+    ).resolves.toEqual({
+      sessionId: "77777777-7777-7777-7777-777777777777",
+      organizationId: "88888888-8888-8888-8888-888888888888",
+      employmentProfileId: "99999999-9999-9999-9999-999999999999",
+      employmentTimezone: "America/Los_Angeles",
+      actorIsAssignedEmployee: true,
+      canClockSelf: false,
+      canonicalWorkLocation: "office",
+      activeShiftEventId: null,
+    });
+
+    const [path, init] = mockedCallApi.mock.calls[0] ?? [];
+    expect(path).toBe("/api/payroll-time-events");
+    expect(init).toEqual(
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          action: "get_session_context",
+          sessionId: "77777777-7777-7777-7777-777777777777",
+        }),
+      }),
+    );
+    const headers = init?.headers as Headers;
+    expect(headers.get("Idempotency-Key")).toBeNull();
+  });
+
+  it("fails closed when session payroll context response shape drifts", async () => {
+    mockedCallApi.mockResolvedValueOnce(
+      jsonResponse({
+        sessionId: "77777777-7777-7777-7777-777777777777",
+        organizationId: "88888888-8888-8888-8888-888888888888",
+        employmentProfileId: "99999999-9999-9999-9999-999999999999",
+        employmentTimezone: null,
+        actorIsAssignedEmployee: true,
+        canClockSelf: false,
+        canonicalWorkLocation: "office",
+        activeShiftEventId: null,
+      }),
+    );
+
+    await expect(
+      fetchSessionPayrollContext("77777777-7777-7777-7777-777777777777"),
+    ).rejects.toMatchObject({
+      code: "invalid_response",
+      status: 502,
+    });
   });
 
   it("sends mutation requests with the exact occurredAt and Idempotency-Key header only", async () => {

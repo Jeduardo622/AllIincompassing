@@ -155,6 +155,69 @@ Deno.test("get_day calls get_payroll_day without requiring an idempotency key", 
   ]);
 });
 
+Deno.test("get_session_context calls get_session_payroll_context and returns a strictly validated context payload", async () => {
+  const calls: RpcCall[] = [];
+  const response = await handlePayrollTimeEvents({
+    req: createRequest({
+      action: "get_session_context",
+      sessionId: "77777777-7777-7777-7777-777777777777",
+    }),
+    userContext: createUserContext(),
+    db: createRpcClient((fn, args) => {
+      calls.push({ fn, args });
+      return {
+        data: {
+          sessionId: "77777777-7777-7777-7777-777777777777",
+          organizationId: "88888888-8888-8888-8888-888888888888",
+          employmentProfileId: "99999999-9999-9999-9999-999999999999",
+          employmentTimezone: "America/Los_Angeles",
+          actorIsAssignedEmployee: true,
+          canClockSelf: true,
+          canonicalWorkLocation: "client_site",
+          activeShiftEventId: null,
+        },
+        error: null,
+      };
+    }),
+  });
+
+  assertEquals(response.status, 200);
+  assertEquals(calls, [
+    {
+      fn: "get_session_payroll_context",
+      args: { session_id: "77777777-7777-7777-7777-777777777777" },
+    },
+  ]);
+  assertEquals(await response.json(), {
+    sessionId: "77777777-7777-7777-7777-777777777777",
+    organizationId: "88888888-8888-8888-8888-888888888888",
+    employmentProfileId: "99999999-9999-9999-9999-999999999999",
+    employmentTimezone: "America/Los_Angeles",
+    actorIsAssignedEmployee: true,
+    canClockSelf: true,
+    canonicalWorkLocation: "client_site",
+    activeShiftEventId: null,
+  });
+});
+
+Deno.test("get_session_context rejects raw authority fields before schema stripping", async () => {
+  const response = await handlePayrollTimeEvents({
+    req: createRequest({
+      action: "get_session_context",
+      sessionId: "77777777-7777-7777-7777-777777777777",
+      employmentProfileId: "99999999-9999-9999-9999-999999999999",
+    }),
+    userContext: createUserContext(),
+    db: createRpcClient(() => {
+      throw new Error("RPC should not run when authority fields are present");
+    }),
+  });
+
+  const body = await response.json() as { error: string };
+  assertEquals(response.status, 400);
+  assertMatch(body.error, /authority/i);
+});
+
 Deno.test("mutation requires Idempotency-Key and echoes replay information from the RPC response", async () => {
   const response = await handlePayrollTimeEvents({
     req: createRequest(

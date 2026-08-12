@@ -20,6 +20,7 @@ const IDS = {
   payGroupWeeklyA: "90000000-0000-4000-8000-000000000002",
   payGroupBiweeklyA: "90000000-0000-4000-8000-000000000102",
   payGroupMonthlyA: "90000000-0000-4000-8000-000000000103",
+  futureGlobalPolicy: "90000000-0000-4000-8000-000000000104",
 } as const;
 
 const databaseUrl = process.env.PAYROLL_LOCAL_DATABASE_URL;
@@ -94,6 +95,7 @@ const cleanup = async (client: Client) => {
   await client.query("begin");
   try {
     await client.query("set local session_replication_role = replica");
+    await client.query("delete from public.payroll_policy_versions where id = $1::uuid", [IDS.futureGlobalPolicy]);
     for (const table of [
       "payroll_blocker_resolutions",
       "timesheet_approvals",
@@ -1224,6 +1226,23 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll administration rpc runtime contr
     ).rejects.toThrow();
   });
 
+  it("returns missing_prerequisite when effective-dated organization settings are absent", async () => {
+    await admin.query(
+      `delete from public.payroll_organization_settings
+       where organization_id = $1::uuid`,
+      [IDS.orgA],
+    );
+
+    const missingSettings = await getTimesheetPeriod(admin, IDS.employeeA, "2026-08-12");
+    expect(missingSettings).toMatchObject({
+      state: "missing_prerequisite",
+      period: {
+        employmentProfileId: IDS.employmentA,
+      },
+      snapshot: null,
+    });
+  });
+
   it("returns missing_prerequisite without broadening events when no pay period covers the selected date, and maps missing policy to unsupported_policy", async () => {
     await executeAdministration(
       admin,
@@ -1249,9 +1268,11 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll administration rpc runtime contr
     const missingPeriod = await getTimesheetPeriod(admin, IDS.employeeA, "2026-08-13");
     expect(missingPeriod).toMatchObject({
       state: "missing_prerequisite",
-      employmentProfileId: IDS.employmentA,
+      period: {
+        employmentProfileId: IDS.employmentA,
+      },
     });
-    expect(missingPeriod.snapshot).toBeUndefined();
+    expect(missingPeriod.snapshot).toBeNull();
 
     const weeklyAssignmentId = (
       await admin.query(
@@ -1309,6 +1330,35 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll administration rpc runtime contr
       "generate-periods-for-unsupported-policy",
       IDS.adminA,
     );
+    const organizationPolicyId = (
+      await admin.query(
+        `select id
+         from public.payroll_policy_versions
+         where organization_id = $1::uuid
+           and jurisdiction = 'CA'
+           and activation_status = 'active'
+         order by effective_from desc, created_at desc, id desc
+         limit 1`,
+        [IDS.orgA],
+      )
+    ).rows[0].id as string;
+    await admin.query(
+      `insert into public.payroll_policy_versions (
+         id, organization_id, jurisdiction, policy_name, activation_status,
+         supports_monthly_nonexempt, effective_from
+       ) values ($1::uuid, null, 'CA', 'Future global policy', 'active', false, '2026-08-21')`,
+      [IDS.futureGlobalPolicy],
+    );
+
+    const selectedPolicy = await getTimesheetPeriod(admin, IDS.employeeA, "2026-08-20");
+    expect(selectedPolicy).toMatchObject({
+      state: "ok",
+      period: {
+        employmentProfileId: IDS.employmentA,
+        policyVersionId: organizationPolicyId,
+      },
+    });
+    await admin.query("delete from public.payroll_policy_versions where id = $1::uuid", [IDS.futureGlobalPolicy]);
     await admin.query(
       `delete from public.payroll_policy_versions
        where organization_id = $1::uuid`,
@@ -1318,7 +1368,9 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll administration rpc runtime contr
     const unsupportedPolicy = await getTimesheetPeriod(admin, IDS.employeeA, "2026-08-20");
     expect(unsupportedPolicy).toMatchObject({
       state: "unsupported_policy",
-      employmentProfileId: IDS.employmentA,
+      period: {
+        employmentProfileId: IDS.employmentA,
+      },
     });
   });
 

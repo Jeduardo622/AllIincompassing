@@ -851,7 +851,7 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
     ).rejects.toThrow();
   });
 
-  it("rejects stale approval invalidation rewrites before authority checks with zero writes", async () => {
+  it("rejects unauthorized stale actions after proactive invalidation with zero additional writes", async () => {
     const snapshot = await deriveSnapshot(admin, "approval-stale-authority");
     const snapshotHash = await readSnapshotHash(admin, snapshot.snapshotId);
     await transitionApproval(
@@ -869,6 +869,7 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
     await insertTimeEvent(admin, "shift_started", "2026-08-12T16:00:00Z");
     await insertTimeEvent(admin, "shift_ended", "2026-08-12T20:00:00Z");
     await deriveSnapshot(admin, "approval-stale-authority-v2");
+    expect((await readLatestApproval(admin)).action).toBe("approval_invalidated");
 
     for (const [action, payload] of [
       ["manager_approve", {}],
@@ -890,7 +891,7 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
         ),
       ).rejects.toThrow();
       expect(await countWorkflowRows(admin)).toEqual(before);
-      expect((await readLatestApproval(admin)).action).toBe("submitted");
+      expect((await readLatestApproval(admin)).action).toBe("approval_invalidated");
     }
   });
 
@@ -916,23 +917,19 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
     expect(secondSnapshot.snapshotId).not.toBe(firstSnapshot.snapshotId);
     const secondHash = await readSnapshotHash(admin, secondSnapshot.snapshotId);
 
-    const invalidated = await transitionApproval(
-      admin,
-      {
-        action: "manager_approve",
-        snapshotId: firstSnapshot.snapshotId,
-        snapshotHash: firstHash,
-      },
-      "approve-after-drift",
-      IDS.managerA,
-    );
-    expect(invalidated).toMatchObject({
-      action: "approval_invalidated",
-      replayed: false,
-      snapshotId: firstSnapshot.snapshotId,
-    });
-
     expect((await readLatestApproval(admin)).action).toBe("approval_invalidated");
+    await expect(
+      transitionApproval(
+        admin,
+        {
+          action: "manager_approve",
+          snapshotId: firstSnapshot.snapshotId,
+          snapshotHash: firstHash,
+        },
+        "approve-after-drift",
+        IDS.managerA,
+      ),
+    ).rejects.toThrow(/invalid approval transition/i);
 
     const recovered = await transitionApproval(
       admin,
@@ -2271,13 +2268,7 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
       await locker.query("commit");
 
       expect(derived.snapshotId).not.toBe(firstSnapshot.snapshotId);
-      expect(
-        await approvePromise,
-      ).toMatchObject({
-        action: "approval_invalidated",
-        snapshotId: firstSnapshot.snapshotId,
-        replayed: false,
-      });
+      await expect(approvePromise).rejects.toThrow(/invalid approval transition/i);
     } finally {
       try {
         await locker.query("rollback");

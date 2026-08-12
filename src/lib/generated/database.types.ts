@@ -10537,6 +10537,10 @@ export type Database = {
         Args: { p_end_date: string; p_start_date: string }
         Returns: Json
       }
+      get_schedule_session_by_id: {
+        Args: { p_session_id: string }
+        Returns: Json
+      }
       get_scheduling_efficiency_factor: {
         Args: { p_slot_time: string; p_therapist_id: string }
         Returns: number

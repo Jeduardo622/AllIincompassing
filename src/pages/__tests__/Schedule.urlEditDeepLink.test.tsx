@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { useLocation } from "react-router-dom";
 import { renderWithProviders, screen, waitFor } from "../../test/utils";
+import { supabase } from "../../lib/supabase";
 import { Schedule } from "../Schedule";
 import type { Client, Session, Therapist } from "../../types";
 
@@ -160,6 +161,41 @@ describe("Schedule URL edit deep links", () => {
       expect(params.has("scheduleModal")).toBe(false);
       expect(params.has("scheduleSessionId")).toBe(false);
       expect(params.has("scheduleExp")).toBe(false);
+    });
+    expect(screen.queryByText(/Edit Session/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps a BT deep link closed when the schedule-scoped RPC denies the session", async () => {
+    const foreignSessionId = "00000000-0000-4000-8000-000000000999";
+    const rpcSpy = vi.spyOn(supabase, "rpc").mockResolvedValue({
+      data: null,
+      error: null,
+      count: null,
+      status: 200,
+      statusText: "OK",
+    });
+    const expiresAtMs = Date.now() + 60_000;
+
+    renderWithProviders(
+      <>
+        <Schedule />
+        <SearchProbe />
+      </>,
+      {
+        auth: { role: "bt", organizationId: "org-1" },
+        router: {
+          initialEntries: [
+            `/?scheduleModal=edit&scheduleSessionId=${foreignSessionId}&scheduleExp=${expiresAtMs}`,
+          ],
+        },
+      },
+    );
+
+    await waitFor(() => {
+      expect(rpcSpy).toHaveBeenCalledWith("get_schedule_session_by_id", {
+        p_session_id: foreignSessionId,
+      });
+      expect(screen.getByTestId("schedule-search").textContent).toBe("");
     });
     expect(screen.queryByText(/Edit Session/i)).not.toBeInTheDocument();
   });

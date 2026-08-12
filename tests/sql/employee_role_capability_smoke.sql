@@ -458,6 +458,8 @@ declare
   cross_org_note_count int;
   optimized_count int;
   optimized_therapist_id text;
+  own_deep_link jsonb;
+  foreign_deep_link jsonb;
   affected_rows int;
   batch_data jsonb;
   dropdown_data jsonb;
@@ -483,6 +485,18 @@ begin
       '00000000-0000-4000-8000-000000000013'
     ),
     'legacy therapist rejected another therapist session for a shared client',
+    current_user
+  );
+
+  own_deep_link := public.get_schedule_session_by_id('00000000-0000-4000-8000-000000000507');
+  foreign_deep_link := public.get_schedule_session_by_id('00000000-0000-4000-8000-000000000501');
+  insert into role_smoke_results
+  values (
+    'therapist_schedule_deep_link_scope',
+    own_deep_link->>'id' = '00000000-0000-4000-8000-000000000507'
+      and foreign_deep_link is null,
+    'own=' || coalesce(own_deep_link->>'id', 'null')
+      || ', foreign=' || coalesce(foreign_deep_link->>'id', 'null'),
     current_user
   );
 
@@ -599,6 +613,8 @@ declare
   historical_count int;
   optimized_count int;
   optimized_therapist_id text;
+  own_deep_link jsonb;
+  foreign_deep_link jsonb;
   batch_data jsonb;
   dropdown_data jsonb;
 begin
@@ -622,6 +638,18 @@ begin
       '00000000-0000-4000-8000-000000000015'
     ),
     'BT rejected another therapist session for an assigned client',
+    current_user
+  );
+
+  own_deep_link := public.get_schedule_session_by_id('00000000-0000-4000-8000-000000000501');
+  foreign_deep_link := public.get_schedule_session_by_id('00000000-0000-4000-8000-000000000507');
+  insert into role_smoke_results
+  values (
+    'bt_schedule_deep_link_scope',
+    own_deep_link->>'id' = '00000000-0000-4000-8000-000000000501'
+      and foreign_deep_link is null,
+    'own=' || coalesce(own_deep_link->>'id', 'null')
+      || ', foreign=' || coalesce(foreign_deep_link->>'id', 'null'),
     current_user
   );
 

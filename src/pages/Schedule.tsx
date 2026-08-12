@@ -2209,11 +2209,7 @@ export const Schedule = React.memo(() => {
     let cancelled = false;
     void (async () => {
       const { data, error } = await supabase
-        .from("sessions")
-        .select("*")
-        .eq("id", sessionId)
-        .eq("organization_id", activeOrganizationId)
-        .maybeSingle();
+        .rpc("get_schedule_session_by_id", { p_session_id: sessionId });
       if (cancelled) {
         return;
       }

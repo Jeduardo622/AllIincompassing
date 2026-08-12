@@ -10,6 +10,13 @@ const migrationPath = path.join(
   "migrations",
   "20260812160246_restrict_bt_schedule_to_linked_therapist.sql",
 );
+const deepLinkMigrationPath = path.join(
+  process.cwd(),
+  "supabase",
+  "migrations",
+  "20260812170000_restrict_schedule_deep_link_to_linked_therapist.sql",
+);
+const schedulePagePath = path.join(process.cwd(), "src", "pages", "Schedule.tsx");
 const smokePath = path.join(
   process.cwd(),
   "tests",
@@ -18,6 +25,8 @@ const smokePath = path.join(
 );
 
 const sql = readFileSync(migrationPath, "utf8");
+const deepLinkSql = readFileSync(deepLinkMigrationPath, "utf8");
+const schedulePage = readFileSync(schedulePagePath, "utf8");
 const smokeSql = readFileSync(smokePath, "utf8");
 
 const extractFunction = (name: string): string => {
@@ -97,5 +106,21 @@ describe("BT schedule therapist-owner scope migration", () => {
     expect(sql).toContain(
       "DROP FUNCTION app.current_user_can_read_schedule_session(uuid, uuid, uuid)",
     );
+  });
+
+  it("routes schedule deep-link lookups through the therapist-owned predicate", () => {
+    expect(deepLinkSql).toContain(
+      "CREATE OR REPLACE FUNCTION public.get_schedule_session_by_id(p_session_id uuid)",
+    );
+    expect(deepLinkSql).toContain(
+      "app.current_user_can_read_schedule_session(v_org, s.client_id, s.therapist_id)",
+    );
+    expect(deepLinkSql).toContain(
+      "REVOKE EXECUTE ON FUNCTION public.get_schedule_session_by_id(uuid) FROM PUBLIC, anon;",
+    );
+    expect(schedulePage).toContain('.rpc("get_schedule_session_by_id"');
+    expect(schedulePage).not.toContain('.from("sessions")\n        .select("*")');
+    expect(smokeSql).toContain("therapist_schedule_deep_link_scope");
+    expect(smokeSql).toContain("bt_schedule_deep_link_scope");
   });
 });

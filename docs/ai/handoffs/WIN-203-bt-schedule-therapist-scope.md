@@ -68,3 +68,13 @@
 
 - Linear: [WIN-203](https://linear.app/winningedgeai/issue/WIN-203)
 - Branch: `codex/bt-owned-schedule-scope`
+
+## PR Review Follow-up
+
+- Codex P2 `discussion_r3768415295` identified a Schedule edit deep-link fallback that still queried `sessions` directly under the broader clinical policy.
+- Added a forward migration for `get_schedule_session_by_id(uuid)`, which derives organization context and reuses `app.current_user_can_read_schedule_session` before returning a row.
+- Replaced the direct-table deep-link lookup with the scoped RPC without changing direct clinical session RLS.
+- Added BT and therapist owned/foreign runtime SQL probes plus a focused BT deep-link UI regression test.
+- Focused follow-up verification: migration/deep-link/Schedule tests passed (`45/45`); lint, typecheck, policy checks, and production build passed.
+- Independent code, security, and Supabase follow-up reviews found no remaining blocker; the RPC returns only the session row, matching the prior direct lookup payload while enforcing schedule scope.
+- Final review-fixed `npm run verify:local` passed in 430.1 seconds, including full coverage verification and `220/220` Tier-0 routes.

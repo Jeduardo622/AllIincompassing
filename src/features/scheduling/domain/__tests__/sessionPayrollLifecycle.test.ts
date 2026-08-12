@@ -152,6 +152,7 @@ describe("sessionPayrollLifecycle", () => {
     const fetchSessionContext = vi
       .fn()
       .mockResolvedValueOnce({ ...baseContext, activeShiftEventId: null })
+      .mockResolvedValueOnce({ ...baseContext, activeShiftEventId: null })
       .mockResolvedValueOnce({ ...baseContext, activeShiftEventId: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee" });
     const timeEventTypes: string[] = [];
     const attendanceLinks: Array<string | null | undefined> = [];
@@ -203,10 +204,466 @@ describe("sessionPayrollLifecycle", () => {
       request: startRequest,
     });
 
-    expect(fetchSessionContext).toHaveBeenCalledTimes(2);
+    expect(fetchSessionContext).toHaveBeenCalledTimes(3);
     expect(timeEventTypes).toEqual(["shift_started"]);
     expect(timeEventTypes).not.toContain("shift_ended");
     expect(attendanceLinks).toEqual(["eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"]);
+  });
+
+  it("rejects invalid executeStart choices before enqueueing any payroll or clinical side effects", async () => {
+    const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
+    const invalidCases = [
+      {
+        name: "ready active rejects delegated",
+        prepared: {
+          kind: "ready" as const,
+          mode: "active" as const,
+          context: baseContext,
+          attendance: {
+            idempotencyKey: "invalid-active-key",
+            occurredAt: "2026-08-12T16:12:00.000Z",
+          },
+        },
+        choice: "delegated" as const,
+      },
+      {
+        name: "ready delegated rejects active",
+        prepared: {
+          kind: "ready" as const,
+          mode: "delegated" as const,
+          context: { ...baseContext, actorIsAssignedEmployee: false, activeShiftEventId: null },
+          attendance: {
+            idempotencyKey: "invalid-delegated-key",
+            occurredAt: "2026-08-12T16:13:00.000Z",
+          },
+        },
+        choice: "active" as const,
+      },
+      {
+        name: "clock choice rejects active",
+        prepared: {
+          kind: "clock_choice_required" as const,
+          context: { ...baseContext, activeShiftEventId: null },
+          attendance: {
+            idempotencyKey: "invalid-clock-choice-key",
+            occurredAt: "2026-08-12T16:14:00.000Z",
+          },
+        },
+        choice: "active" as const,
+      },
+      {
+        name: "clock in rejects delegated actor",
+        prepared: {
+          kind: "clock_choice_required" as const,
+          context: { ...baseContext, actorIsAssignedEmployee: false, activeShiftEventId: null },
+          attendance: {
+            idempotencyKey: "invalid-clock-in-key",
+            occurredAt: "2026-08-12T16:15:00.000Z",
+          },
+        },
+        choice: "clock_in" as const,
+      },
+      {
+        name: "clock in rejects actor without self-clock permission",
+        prepared: {
+          kind: "clock_choice_required" as const,
+          context: { ...baseContext, activeShiftEventId: null, canClockSelf: false },
+          attendance: {
+            idempotencyKey: "invalid-clock-permission-key",
+            occurredAt: "2026-08-12T16:16:00.000Z",
+          },
+        },
+        choice: "clock_in" as const,
+      },
+    ];
+
+    for (const invalidCase of invalidCases) {
+      const store = createInMemoryPayrollOutboxStore();
+      const enqueueOutboxEvent = vi.fn();
+      const drainOutbox = vi.fn();
+      const recordTimeEvent = vi.fn();
+      const recordSessionAttendance = vi.fn();
+      const startClinicalSession = vi.fn();
+      const lifecycle = createSessionPayrollLifecycle({
+        store,
+        fetchSessionContext: vi.fn(async () => invalidCase.prepared.context),
+        enqueueOutboxEvent,
+        drainOutbox,
+        findRetainedEvent: vi.fn(async () => null),
+        reconfirmRetainedEvent: vi.fn(),
+        clearRetainedEvent: vi.fn(),
+        recordTimeEvent,
+        recordSessionAttendance,
+        startClinicalSession,
+        completeClinicalSession: vi.fn(),
+        revalidateTerminalOutcome: vi.fn(),
+        isOnline: vi.fn(() => true),
+        createIdempotencyKey: vi.fn(() => "unused-key"),
+        now: vi.fn(() => invalidCase.prepared.attendance.occurredAt),
+      });
+
+      await expect(
+        lifecycle.executeStart({
+          scope: baseScope,
+          prepared: invalidCase.prepared,
+          choice: invalidCase.choice,
+          request: startRequest,
+        }),
+        invalidCase.name,
+      ).rejects.toThrow();
+
+      expect(enqueueOutboxEvent, invalidCase.name).not.toHaveBeenCalled();
+      expect(drainOutbox, invalidCase.name).not.toHaveBeenCalled();
+      expect(recordTimeEvent, invalidCase.name).not.toHaveBeenCalled();
+      expect(recordSessionAttendance, invalidCase.name).not.toHaveBeenCalled();
+      expect(startClinicalSession, invalidCase.name).not.toHaveBeenCalled();
+      await expect(listPayrollOutboxEvents(store, baseScope), invalidCase.name).resolves.toEqual([]);
+    }
+  });
+
+  it("rejects stale or mismatched prepared context before any executeStart side effects", async () => {
+    const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
+    const cases = [
+      {
+        name: "prepared session mismatch",
+        prepared: {
+          kind: "ready" as const,
+          mode: "active" as const,
+          context: { ...baseContext, sessionId: "12121212-1212-1212-1212-121212121212" },
+          attendance: {
+            idempotencyKey: "stale-session-mismatch-key",
+            occurredAt: "2026-08-12T16:16:30.000Z",
+          },
+        },
+        request: startRequest,
+        freshContext: baseContext,
+        choice: "active" as const,
+      },
+      {
+        name: "fresh context invalidates stale active preparation",
+        prepared: {
+          kind: "ready" as const,
+          mode: "active" as const,
+          context: baseContext,
+          attendance: {
+            idempotencyKey: "stale-active-key",
+            occurredAt: "2026-08-12T16:16:31.000Z",
+          },
+        },
+        request: startRequest,
+        freshContext: { ...baseContext, activeShiftEventId: null },
+        choice: "active" as const,
+      },
+    ];
+
+    for (const testCase of cases) {
+      const store = createInMemoryPayrollOutboxStore();
+      const enqueueOutboxEvent = vi.fn();
+      const drainOutbox = vi.fn();
+      const recordTimeEvent = vi.fn();
+      const recordSessionAttendance = vi.fn();
+      const startClinicalSession = vi.fn();
+      const lifecycle = createSessionPayrollLifecycle({
+        store,
+        fetchSessionContext: vi.fn(async () => testCase.freshContext),
+        enqueueOutboxEvent,
+        drainOutbox,
+        findRetainedEvent: vi.fn(async () => null),
+        reconfirmRetainedEvent: vi.fn(),
+        clearRetainedEvent: vi.fn(),
+        recordTimeEvent,
+        recordSessionAttendance,
+        startClinicalSession,
+        completeClinicalSession: vi.fn(),
+        revalidateTerminalOutcome: vi.fn(),
+        isOnline: vi.fn(() => true),
+        createIdempotencyKey: vi.fn(() => "unused-key"),
+        now: vi.fn(() => testCase.prepared.attendance.occurredAt),
+      });
+
+      await expect(
+        lifecycle.executeStart({
+          scope: baseScope,
+          prepared: testCase.prepared,
+          choice: testCase.choice,
+          request: testCase.request,
+        }),
+        testCase.name,
+      ).rejects.toThrow();
+
+      expect(enqueueOutboxEvent, testCase.name).not.toHaveBeenCalled();
+      expect(drainOutbox, testCase.name).not.toHaveBeenCalled();
+      expect(recordTimeEvent, testCase.name).not.toHaveBeenCalled();
+      expect(recordSessionAttendance, testCase.name).not.toHaveBeenCalled();
+      expect(startClinicalSession, testCase.name).not.toHaveBeenCalled();
+      await expect(listPayrollOutboxEvents(store, baseScope), testCase.name).resolves.toEqual([]);
+    }
+  });
+
+  it("fails closed when the authoritative post-clock-in context still lacks an active shift link", async () => {
+    const store = createInMemoryPayrollOutboxStore();
+    const fetchSessionContext = vi
+      .fn()
+      .mockResolvedValueOnce({ ...baseContext, activeShiftEventId: null })
+      .mockResolvedValueOnce({ ...baseContext, activeShiftEventId: null });
+    const recordTimeEvent = vi.fn(async (input) => confirmed(input.idempotencyKey));
+    const recordSessionAttendance = vi.fn(async (input) => confirmed(input.idempotencyKey));
+    const startClinicalSession = vi.fn();
+
+    const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
+    const lifecycle = createSessionPayrollLifecycle({
+      store,
+      fetchSessionContext,
+      enqueueOutboxEvent: vi.fn(async (input) => {
+        const { enqueuePayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return enqueuePayrollOutboxEvent(input);
+      }),
+      drainOutbox: vi.fn(async (input) => {
+        const { drainPayrollOutbox } = await import("../../../payroll/outbox");
+        return drainPayrollOutbox(input);
+      }),
+      findRetainedEvent: vi.fn(async () => null),
+      reconfirmRetainedEvent: vi.fn(),
+      clearRetainedEvent: vi.fn(),
+      recordTimeEvent,
+      recordSessionAttendance,
+      startClinicalSession,
+      completeClinicalSession: vi.fn(),
+      revalidateTerminalOutcome: vi.fn(),
+      isOnline: vi.fn(() => true),
+      createIdempotencyKey: vi
+        .fn()
+        .mockReturnValueOnce("shift-started-missing-link-key")
+        .mockReturnValueOnce("session-started-missing-link-key"),
+      now: vi.fn(() => "2026-08-12T16:17:00.000Z"),
+    });
+
+    const prepared = await lifecycle.prepareStart({ scope: baseScope, sessionId: baseContext.sessionId });
+    await expect(
+      lifecycle.executeStart({
+        scope: baseScope,
+        prepared,
+        choice: "clock_in",
+        request: startRequest,
+      }),
+    ).rejects.toThrow();
+
+    expect(recordTimeEvent).toHaveBeenCalledTimes(1);
+    expect(recordSessionAttendance).not.toHaveBeenCalled();
+    expect(startClinicalSession).not.toHaveBeenCalled();
+    await expect(listPayrollOutboxEvents(store, baseScope)).resolves.toEqual([]);
+  });
+
+  it("rewrites a pending retained continue-without-clock-in attendance with the linked payload after clock-in confirmation", async () => {
+    const store = createInMemoryPayrollOutboxStore();
+    const initialLifecycleFetch = vi.fn(async () => ({ ...baseContext, activeShiftEventId: null }));
+    const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
+    const firstLifecycle = createSessionPayrollLifecycle({
+      store,
+      fetchSessionContext: initialLifecycleFetch,
+      enqueueOutboxEvent: vi.fn(async (input) => {
+        const { enqueuePayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return enqueuePayrollOutboxEvent(input);
+      }),
+      drainOutbox: vi.fn(async () => ({ confirmedKeys: [] })),
+      findRetainedEvent: undefined,
+      reconfirmRetainedEvent: vi.fn(),
+      clearRetainedEvent: vi.fn(),
+      recordTimeEvent: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      recordSessionAttendance: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      startClinicalSession: vi.fn(),
+      completeClinicalSession: vi.fn(),
+      revalidateTerminalOutcome: vi.fn(),
+      isOnline: vi.fn(() => false),
+      createIdempotencyKey: vi.fn(() => "retained-upgrade-key"),
+      now: vi.fn(() => "2026-08-12T16:18:00.000Z"),
+    });
+
+    const preparedOffline = await firstLifecycle.prepareStart({ scope: baseScope, sessionId: baseContext.sessionId });
+    await expect(
+      firstLifecycle.executeStart({
+        scope: baseScope,
+        prepared: preparedOffline,
+        choice: "continue_without_clock_in",
+        request: startRequest,
+      }),
+    ).resolves.toMatchObject({
+      kind: "attendance_not_confirmed",
+      attendanceIdempotencyKey: "retained-upgrade-key",
+    });
+
+    const retainedPending = await listPayrollOutboxEvents(store, baseScope);
+    expect(retainedPending).toHaveLength(1);
+    expect(retainedPending[0]).toMatchObject({
+      idempotencyKey: "retained-upgrade-key",
+      state: "pending",
+    });
+    expect((retainedPending[0].payload as { data?: Record<string, unknown> }).data).not.toHaveProperty("employeeTimeEventId");
+
+    const recordSessionAttendance = vi.fn(async (input) => confirmed(input.idempotencyKey));
+    const secondLifecycle = createSessionPayrollLifecycle({
+      store,
+      fetchSessionContext: vi
+        .fn()
+        .mockResolvedValueOnce({ ...baseContext, activeShiftEventId: null })
+        .mockResolvedValueOnce({ ...baseContext, activeShiftEventId: null })
+        .mockResolvedValueOnce({ ...baseContext, activeShiftEventId: "f1f1f1f1-f1f1-f1f1-f1f1-f1f1f1f1f1f1" }),
+      enqueueOutboxEvent: vi.fn(async (input) => {
+        const { enqueuePayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return enqueuePayrollOutboxEvent(input);
+      }),
+      drainOutbox: vi.fn(async (input) => {
+        const { drainPayrollOutbox } = await import("../../../payroll/outbox");
+        return drainPayrollOutbox(input);
+      }),
+      findRetainedEvent: undefined,
+      reconfirmRetainedEvent: vi.fn(async (input) => {
+        const { reconfirmRetainedPayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return reconfirmRetainedPayrollOutboxEvent(input);
+      }),
+      clearRetainedEvent: vi.fn(async (input) => {
+        const { clearRetainedPayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return clearRetainedPayrollOutboxEvent(input);
+      }),
+      recordTimeEvent: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      recordSessionAttendance,
+      startClinicalSession: vi.fn(async () => ({ outcome: "started" as const })),
+      completeClinicalSession: vi.fn(),
+      revalidateTerminalOutcome: vi.fn(),
+      isOnline: vi.fn(() => true),
+      createIdempotencyKey: vi.fn(() => "shift-upgrade-key"),
+      now: vi.fn(() => "2026-08-12T16:19:00.000Z"),
+    });
+
+    const preparedOnline = await secondLifecycle.prepareStart({ scope: baseScope, sessionId: baseContext.sessionId });
+    expect(preparedOnline.attendance).toEqual({
+      idempotencyKey: "retained-upgrade-key",
+      occurredAt: "2026-08-12T16:18:00.000Z",
+    });
+
+    await expect(
+      secondLifecycle.executeStart({
+        scope: baseScope,
+        prepared: preparedOnline,
+        choice: "clock_in",
+        request: startRequest,
+      }),
+    ).resolves.toMatchObject({
+      kind: "started",
+      attendanceIdempotencyKey: "retained-upgrade-key",
+      shiftIdempotencyKey: "shift-upgrade-key",
+    });
+
+    expect(recordSessionAttendance).toHaveBeenCalledWith(expect.objectContaining({
+      idempotencyKey: "retained-upgrade-key",
+      event: expect.objectContaining({
+        occurredAt: "2026-08-12T16:18:00.000Z",
+        data: expect.objectContaining({
+          eventType: "session_started",
+          employeeTimeEventId: "f1f1f1f1-f1f1-f1f1-f1f1-f1f1f1f1f1f1",
+        }),
+      }),
+    }));
+    expect(await listPayrollOutboxEvents(store, baseScope)).toEqual([]);
+  });
+
+  it("fails closed on clock_in retry when the retained attendance is already confirmed for the original unlinked choice", async () => {
+    const store = createInMemoryPayrollOutboxStore();
+    const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
+    const firstLifecycle = createSessionPayrollLifecycle({
+      store,
+      fetchSessionContext: vi.fn(async () => ({ ...baseContext, activeShiftEventId: null })),
+      enqueueOutboxEvent: vi.fn(async (input) => {
+        const { enqueuePayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return enqueuePayrollOutboxEvent(input);
+      }),
+      drainOutbox: vi.fn(async (input) => {
+        const { drainPayrollOutbox } = await import("../../../payroll/outbox");
+        return drainPayrollOutbox(input);
+      }),
+      findRetainedEvent: undefined,
+      reconfirmRetainedEvent: vi.fn(async (input) => {
+        const { reconfirmRetainedPayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return reconfirmRetainedPayrollOutboxEvent(input);
+      }),
+      clearRetainedEvent: vi.fn(),
+      recordTimeEvent: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      recordSessionAttendance: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      startClinicalSession: vi.fn(async () => {
+        throw new Error("clinical start failed");
+      }),
+      completeClinicalSession: vi.fn(),
+      revalidateTerminalOutcome: vi.fn(),
+      isOnline: vi.fn(() => true),
+      createIdempotencyKey: vi.fn(() => "confirmed-unlinked-key"),
+      now: vi.fn(() => "2026-08-12T16:20:00.000Z"),
+    });
+
+    const preparedContinue = await firstLifecycle.prepareStart({ scope: baseScope, sessionId: baseContext.sessionId });
+    await expect(
+      firstLifecycle.executeStart({
+        scope: baseScope,
+        prepared: preparedContinue,
+        choice: "continue_without_clock_in",
+        request: startRequest,
+      }),
+    ).rejects.toThrow("clinical start failed");
+
+    const recordTimeEvent = vi.fn(async (input) => confirmed(input.idempotencyKey));
+    const recordSessionAttendance = vi.fn(async (input) => confirmed(input.idempotencyKey));
+    const startClinicalSession = vi.fn();
+    const retryLifecycle = createSessionPayrollLifecycle({
+      store,
+      fetchSessionContext: vi.fn(async () => ({ ...baseContext, activeShiftEventId: null })),
+      enqueueOutboxEvent: vi.fn(async (input) => {
+        const { enqueuePayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return enqueuePayrollOutboxEvent(input);
+      }),
+      drainOutbox: vi.fn(async (input) => {
+        const { drainPayrollOutbox } = await import("../../../payroll/outbox");
+        return drainPayrollOutbox(input);
+      }),
+      findRetainedEvent: undefined,
+      reconfirmRetainedEvent: vi.fn(async (input) => {
+        const { reconfirmRetainedPayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return reconfirmRetainedPayrollOutboxEvent(input);
+      }),
+      clearRetainedEvent: vi.fn(),
+      recordTimeEvent,
+      recordSessionAttendance,
+      startClinicalSession,
+      completeClinicalSession: vi.fn(),
+      revalidateTerminalOutcome: vi.fn(),
+      isOnline: vi.fn(() => true),
+      createIdempotencyKey: vi.fn(() => "should-not-be-used"),
+      now: vi.fn(() => "2026-08-12T16:21:00.000Z"),
+    });
+
+    const preparedRetry = await retryLifecycle.prepareStart({ scope: baseScope, sessionId: baseContext.sessionId });
+    expect(preparedRetry.attendance).toEqual({
+      idempotencyKey: "confirmed-unlinked-key",
+      occurredAt: "2026-08-12T16:20:00.000Z",
+    });
+
+    await expect(
+      retryLifecycle.executeStart({
+        scope: baseScope,
+        prepared: preparedRetry,
+        choice: "clock_in",
+        request: startRequest,
+      }),
+    ).rejects.toThrow();
+
+    expect(recordTimeEvent).not.toHaveBeenCalled();
+    expect(recordSessionAttendance).not.toHaveBeenCalled();
+    expect(startClinicalSession).not.toHaveBeenCalled();
+    const retainedConfirmed = await listPayrollOutboxEvents(store, baseScope);
+    expect(retainedConfirmed).toHaveLength(1);
+    expect(retainedConfirmed[0]).toMatchObject({
+      idempotencyKey: "confirmed-unlinked-key",
+      state: "confirmed_pending_clinical",
+    });
+    expect((retainedConfirmed[0].payload as { data?: Record<string, unknown> }).data).not.toHaveProperty("employeeTimeEventId");
   });
 
   it("reuses the retained session_started key and occurredAt across reloads and preserves the row on clinical failure", async () => {
@@ -485,6 +942,50 @@ describe("sessionPayrollLifecycle", () => {
     await expect(listPayrollOutboxEvents(failureStore, baseScope)).resolves.toEqual([
       expect.objectContaining({
         idempotencyKey: "close-terminal-key",
+        state: "confirmed_pending_clinical",
+      }),
+    ]);
+  });
+
+  it("throws an explicit unwired close error after confirmed attendance and preserves the retained row", async () => {
+    const store = createInMemoryPayrollOutboxStore();
+    const { createSessionPayrollLifecycle } = await import("../sessionPayrollLifecycle");
+    const lifecycle = createSessionPayrollLifecycle({
+      store,
+      fetchSessionContext: vi.fn(async () => baseContext),
+      enqueueOutboxEvent: vi.fn(async (input) => {
+        const { enqueuePayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return enqueuePayrollOutboxEvent(input);
+      }),
+      drainOutbox: vi.fn(async (input) => {
+        const { drainPayrollOutbox } = await import("../../../payroll/outbox");
+        return drainPayrollOutbox(input);
+      }),
+      findRetainedEvent: vi.fn(async () => null),
+      reconfirmRetainedEvent: vi.fn(),
+      clearRetainedEvent: vi.fn(async (input) => {
+        const { clearRetainedPayrollOutboxEvent } = await import("../../../payroll/outbox");
+        return clearRetainedPayrollOutboxEvent(input);
+      }),
+      recordTimeEvent: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      recordSessionAttendance: vi.fn(async (input) => confirmed(input.idempotencyKey)),
+      startClinicalSession: vi.fn(),
+      revalidateTerminalOutcome: vi.fn(),
+      isOnline: vi.fn(() => true),
+      createIdempotencyKey: vi.fn(() => "close-unwired-key"),
+      now: vi.fn(() => "2026-08-12T16:35:00.000Z"),
+    });
+
+    await expect(
+      lifecycle.closeSession({
+        scope: baseScope,
+        request: completeRequest,
+      }),
+    ).rejects.toThrow(/completeClinicalSession/i);
+
+    await expect(listPayrollOutboxEvents(store, baseScope)).resolves.toEqual([
+      expect.objectContaining({
+        idempotencyKey: "close-unwired-key",
         state: "confirmed_pending_clinical",
       }),
     ]);

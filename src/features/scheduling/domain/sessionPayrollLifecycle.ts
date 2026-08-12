@@ -43,6 +43,10 @@ type StartPreparation =
     attendance: AttendanceDescriptor;
   };
 
+type ExpectedStartPreparation = Pick<StartPreparation, "kind"> & {
+  mode?: StartMode;
+};
+
 type StartResult =
   | {
     kind: "started";
@@ -155,9 +159,80 @@ const getAttendanceFromRetained = (
   occurredAt: retained?.occurredAt ?? fallbackOccurredAt,
 });
 
+const deriveExpectedStartPreparation = (
+  context: PayrollSessionContext,
+): ExpectedStartPreparation => {
+  if (context.actorIsAssignedEmployee && !context.activeShiftEventId) {
+    return { kind: "clock_choice_required" };
+  }
+
+  return {
+    kind: "ready",
+    mode: context.actorIsAssignedEmployee ? "active" : "delegated",
+  };
+};
+
 const assertRetainedNotNeedsAttention = (retained: PendingPayrollEvent | null): void => {
   if (retained?.state === "needs_attention" || retained?.safeCode) {
     throw new Error("Retained payroll outbox event requires attention.");
+  }
+};
+
+const getRetainedAttendanceLink = (
+  retained: PendingPayrollEvent | null,
+): string | null | undefined =>
+  (retained?.payload as { data?: { employeeTimeEventId?: string | null } } | undefined)?.data?.employeeTimeEventId;
+
+const assertPreparedSessionMatchesRequest = (
+  prepared: StartPreparation,
+  request: StartSessionRequest,
+): void => {
+  if (prepared.context.sessionId !== request.sessionId) {
+    throw new Error("Prepared payroll session context does not match the requested session.");
+  }
+};
+
+const assertPreparedMatchesFreshContext = (
+  prepared: StartPreparation,
+  freshContext: PayrollSessionContext,
+): ExpectedStartPreparation => {
+  const expected = deriveExpectedStartPreparation(freshContext);
+
+  if (prepared.kind !== expected.kind) {
+    throw new Error("Prepared payroll session context is stale for start execution.");
+  }
+  if (expected.kind === "ready" && prepared.mode !== expected.mode) {
+    throw new Error("Prepared payroll start mode is stale for start execution.");
+  }
+
+  return expected;
+};
+
+const assertAllowedStartChoice = (
+  expected: ExpectedStartPreparation,
+  choice: StartChoice,
+  freshContext: PayrollSessionContext,
+): void => {
+  if (expected.kind === "clock_choice_required") {
+    if (choice !== "clock_in" && choice !== "continue_without_clock_in") {
+      throw new Error("Clock-choice-required start accepts only clock_in or continue_without_clock_in.");
+    }
+    if (choice === "clock_in") {
+      if (!freshContext.actorIsAssignedEmployee) {
+        throw new Error("Only the assigned employee may clock in from session start.");
+      }
+      if (!freshContext.canClockSelf) {
+        throw new Error("The assigned employee cannot self-clock for this session.");
+      }
+    }
+    return;
+  }
+
+  if (expected.mode === "active" && choice !== "active") {
+    throw new Error("Ready active start accepts only the active choice.");
+  }
+  if (expected.mode === "delegated" && choice !== "delegated") {
+    throw new Error("Ready delegated start accepts only the delegated choice.");
   }
 };
 
@@ -199,7 +274,9 @@ const defaultDependencies = (): Required<LifecycleDependencies> => ({
   recordTimeEvent,
   recordSessionAttendance,
   startClinicalSession: startSessionApiRequest,
-  completeClinicalSession: async () => undefined,
+  completeClinicalSession: async () => {
+    throw new Error("completeClinicalSession is not wired for session payroll lifecycle close.");
+  },
   revalidateTerminalOutcome: revalidateTerminalSessionOutcome,
   isOnline: isPayrollTransportOnline,
   createIdempotencyKey,
@@ -261,6 +338,37 @@ export function createSessionPayrollLifecycle(
     })) ?? buildSyntheticRetainedEvent(scope, attendance);
   };
 
+  const rewriteRetainedAttendance = async (
+    scope: PayrollScope,
+    context: PayrollSessionContext,
+    eventType: SessionAttendanceEventType,
+    employeeTimeEventId: string | null | undefined,
+    retained: PendingPayrollEvent,
+  ): Promise<PendingPayrollEvent | null> => {
+    await deps.enqueueOutboxEvent({
+      store: deps.store,
+      organizationId: scope.organizationId,
+      userId: scope.userId,
+      localDate: scope.localDate,
+      action: "record_session_attendance",
+      idempotencyKey: retained.idempotencyKey,
+      occurredAt: retained.occurredAt,
+      payload: buildAttendancePayload(context, eventType, retained.occurredAt, employeeTimeEventId),
+      retainForClinical: true,
+    });
+
+    return (await deps.findRetainedEvent({
+      store: deps.store,
+      organizationId: scope.organizationId,
+      userId: scope.userId,
+      sessionId: context.sessionId,
+      eventType,
+    })) ?? buildSyntheticRetainedEvent(scope, {
+      idempotencyKey: retained.idempotencyKey,
+      occurredAt: retained.occurredAt,
+    });
+  };
+
   const confirmRetainedAttendance = async (
     scope: PayrollScope,
     retained: PendingPayrollEvent | null,
@@ -310,8 +418,9 @@ export function createSessionPayrollLifecycle(
       });
       assertRetainedNotNeedsAttention(retained);
       const attendance = getAttendanceFromRetained(retained, deps.now(), deps.createIdempotencyKey);
+      const expected = deriveExpectedStartPreparation(context);
 
-      if (context.actorIsAssignedEmployee && !context.activeShiftEventId) {
+      if (expected.kind === "clock_choice_required") {
         return {
           kind: "clock_choice_required",
           context,
@@ -321,20 +430,37 @@ export function createSessionPayrollLifecycle(
 
       return {
         kind: "ready",
-        mode: context.actorIsAssignedEmployee ? "active" : "delegated",
+        mode: expected.mode,
         context,
         attendance,
       };
     },
 
     async executeStart(input: ExecuteStartInput): Promise<StartResult> {
+      assertPreparedSessionMatchesRequest(input.prepared, input.request);
+      const freshContext = await deps.fetchSessionContext(input.request.sessionId);
+      const expected = assertPreparedMatchesFreshContext(input.prepared, freshContext);
+      assertAllowedStartChoice(expected, input.choice, freshContext);
+
       const attendanceDescriptor = input.prepared.attendance;
-      const initialContext = input.prepared.context;
+      const initialContext = freshContext;
       let shiftIdempotencyKey: string | undefined;
       let contextForAttendance = initialContext;
       let employeeTimeEventId: string | null | undefined;
+      let retained = await deps.findRetainedEvent({
+        store: deps.store,
+        organizationId: input.scope.organizationId,
+        userId: input.scope.userId,
+        sessionId: input.request.sessionId,
+        eventType: "session_started",
+      });
+      assertRetainedNotNeedsAttention(retained);
 
       if (input.choice === "clock_in") {
+        if (retained?.state === "confirmed_pending_clinical") {
+          throw new Error("A confirmed retained session start cannot be rewritten for a clock-in retry.");
+        }
+
         shiftIdempotencyKey = deps.createIdempotencyKey();
 
         await deps.enqueueOutboxEvent({
@@ -375,30 +501,38 @@ export function createSessionPayrollLifecycle(
         }
 
         contextForAttendance = await deps.fetchSessionContext(input.request.sessionId);
+        if (!contextForAttendance.activeShiftEventId) {
+          throw new Error("Clock-in start requires an authoritative active shift after confirmation.");
+        }
         employeeTimeEventId = contextForAttendance.activeShiftEventId;
       } else if (input.choice === "active") {
         employeeTimeEventId = initialContext.activeShiftEventId;
       } else {
         employeeTimeEventId = undefined;
       }
+      const retainedLink = getRetainedAttendanceLink(retained);
+      if (retained?.state === "confirmed_pending_clinical" && retainedLink !== employeeTimeEventId) {
+        throw new Error("A confirmed retained session start cannot be retroactively relinked.");
+      }
 
-      let retained = await deps.findRetainedEvent({
-        store: deps.store,
-        organizationId: input.scope.organizationId,
-        userId: input.scope.userId,
-        sessionId: input.request.sessionId,
-        eventType: "session_started",
-      });
-      assertRetainedNotNeedsAttention(retained);
-
-      retained = await ensureRetainedAttendance(
-        input.scope,
-        contextForAttendance,
-        "session_started",
-        employeeTimeEventId,
-        retained,
-        attendanceDescriptor,
-      );
+      if (retained && retained.state !== "confirmed_pending_clinical" && retainedLink !== employeeTimeEventId) {
+        retained = await rewriteRetainedAttendance(
+          input.scope,
+          contextForAttendance,
+          "session_started",
+          employeeTimeEventId,
+          retained,
+        );
+      } else {
+        retained = await ensureRetainedAttendance(
+          input.scope,
+          contextForAttendance,
+          "session_started",
+          employeeTimeEventId,
+          retained,
+          attendanceDescriptor,
+        );
+      }
       const confirmation = await confirmRetainedAttendance(input.scope, retained);
       if (!confirmation.confirmed) {
         return {

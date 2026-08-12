@@ -104,6 +104,13 @@
       "reason": "The public API adapter remains for contract stability while direct Edge convergence is reviewed.",
       "owner": "Backend Platform",
       "expiresAt": "2026-09-01T23:59:59.999Z"
+    },
+    {
+      "functionFile": "payroll-timesheets.ts",
+      "publicApiPath": "/api/payroll-timesheets",
+      "reason": "The public API adapter remains for contract stability while payroll timesheet derivation and snapshot transport converge on the reviewed Edge boundary.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-09-01T23:59:59.999Z"
     }
   ]
 }

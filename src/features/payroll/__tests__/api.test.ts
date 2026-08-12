@@ -6,7 +6,9 @@ vi.mock("../../../lib/api", () => ({
 
 import { callApi } from "../../../lib/api";
 import {
+  derivePayrollTimesheetSnapshot,
   fetchPayrollDay,
+  fetchPayrollTimesheetPeriod,
   fetchSessionPayrollContext,
   recordSessionAttendance,
   recordTimeEvent,
@@ -201,6 +203,215 @@ describe("payroll api client", () => {
         }),
       }),
     );
+  });
+
+  it("fetches payroll period review by localDate so the database owns pay-period boundaries", async () => {
+    mockedCallApi.mockResolvedValueOnce(
+      jsonResponse({
+        state: "ok",
+        period: {
+          selectedLocalDate: "2026-08-11",
+          periodStart: "2026-08-10",
+          periodEnd: "2026-08-16",
+          timezone: "America/Los_Angeles",
+          rateVersions: [
+            {
+              id: "88888888-8888-8888-8888-888888888888",
+              effectiveFrom: "2026-08-01T00:00:00.000Z",
+              effectiveThrough: null,
+              hourlyRateCents: 2000,
+            },
+          ],
+          exceptions: [],
+        },
+        snapshot: null,
+      }),
+    );
+
+    const result = await fetchPayrollTimesheetPeriod({
+      organizationId: "org-1",
+      userId: "user-1",
+      localDate: "2026-08-11",
+    });
+
+    expect(result).toMatchObject({
+      state: "ok",
+      period: {
+        selectedLocalDate: "2026-08-11",
+        periodStart: "2026-08-10",
+        periodEnd: "2026-08-16",
+      },
+    });
+    expect(result.period.rateVersions?.[0]).not.toHaveProperty("hourlyRateCents");
+
+    const [path, init] = mockedCallApi.mock.calls[0] ?? [];
+    expect(path).toBe("/api/payroll-timesheets");
+    expect(init).toEqual(
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          action: "get_period",
+          selectedLocalDate: "2026-08-11",
+        }),
+      }),
+    );
+  });
+
+  it.each(["missing_prerequisite", "unsupported_policy"] as const)(
+    "preserves the authoritative %s period state when boundaries are not available",
+    async (state) => {
+      mockedCallApi.mockResolvedValueOnce(
+        jsonResponse({
+          state,
+          period: {
+            selectedLocalDate: "2026-08-11",
+            timezone: "America/Los_Angeles",
+            events: [],
+            rateVersions: [],
+            exceptions: [],
+          },
+          snapshot: null,
+        }),
+      );
+
+      await expect(
+        fetchPayrollTimesheetPeriod({
+          organizationId: "org-1",
+          userId: "user-1",
+          localDate: "2026-08-11",
+        }),
+      ).resolves.toMatchObject({
+        state,
+        period: {
+          selectedLocalDate: "2026-08-11",
+          timezone: "America/Los_Angeles",
+        },
+      });
+    },
+  );
+
+  it("preserves HTTP-200 blocked derive payloads with localDate, nullable sourceHash, and exact idempotency confirmation", async () => {
+    mockedCallApi.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          state: "blocked",
+          snapshotId: null,
+          sourceHash: "blocked-source-hash",
+          lockable: false,
+          replayed: false,
+          idempotencyKey: "timesheet-blocked-key",
+          totals: {
+            regularSeconds: 0,
+            overtimeSeconds: 0,
+            doubleTimeSeconds: 0,
+            mealPremiumCents: 0,
+            grossEarningsCents: 0,
+          },
+          period: {
+            selectedLocalDate: "2026-08-11",
+            periodStart: "2026-08-10",
+            periodEnd: "2026-08-16",
+            timezone: "America/Los_Angeles",
+          },
+          exceptions: [
+            {
+              code: "meal_unresolved",
+              blocking: true,
+            },
+          ],
+        },
+        200,
+        {
+          "Idempotency-Key": "timesheet-blocked-key",
+        },
+      ),
+    );
+
+    await expect(
+      derivePayrollTimesheetSnapshot({
+        organizationId: "org-1",
+        userId: "user-1",
+        localDate: "2026-08-11",
+      }, {
+        selectedLocalDate: "2026-08-11",
+        idempotencyKey: "timesheet-blocked-key",
+      }),
+    ).resolves.toMatchObject({
+      state: "blocked",
+      snapshotId: null,
+      sourceHash: "blocked-source-hash",
+      idempotencyKey: "timesheet-blocked-key",
+      period: {
+        selectedLocalDate: "2026-08-11",
+        periodStart: "2026-08-10",
+        periodEnd: "2026-08-16",
+      },
+      exceptions: [
+        expect.objectContaining({
+          code: "meal_unresolved",
+          blocking: true,
+        }),
+      ],
+    });
+
+    const [path, init] = mockedCallApi.mock.calls[0] ?? [];
+    expect(path).toBe("/api/payroll-timesheets");
+    expect(init).toEqual(
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          action: "derive_snapshot",
+          selectedLocalDate: "2026-08-11",
+        }),
+      }),
+    );
+    const headers = init?.headers as Record<string, string> | Headers;
+    const idempotencyHeader = headers instanceof Headers ? headers.get("Idempotency-Key") : headers["Idempotency-Key"];
+    expect(idempotencyHeader).toBe("timesheet-blocked-key");
+  });
+
+  it("preserves blocked derives when payroll prerequisites do not establish period boundaries", async () => {
+    mockedCallApi.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          state: "blocked",
+          snapshotId: null,
+          sourceHash: null,
+          lockable: false,
+          replayed: false,
+          idempotencyKey: "timesheet-prerequisite-key",
+          totals: {
+            regularSeconds: 0,
+            overtimeSeconds: 0,
+            doubleTimeSeconds: 0,
+            mealPremiumCents: 0,
+            grossEarningsCents: 0,
+          },
+          period: {
+            selectedLocalDate: "2026-08-11",
+            timezone: "America/Los_Angeles",
+          },
+          exceptions: [{ code: "missing_prerequisite", blocking: true }],
+        },
+        200,
+        { "Idempotency-Key": "timesheet-prerequisite-key" },
+      ),
+    );
+
+    await expect(
+      derivePayrollTimesheetSnapshot({
+        organizationId: "org-1",
+        userId: "user-1",
+        localDate: "2026-08-11",
+      }, {
+        selectedLocalDate: "2026-08-11",
+        idempotencyKey: "timesheet-prerequisite-key",
+      }),
+    ).resolves.toMatchObject({
+      state: "blocked",
+      period: { selectedLocalDate: "2026-08-11" },
+      exceptions: [{ code: "missing_prerequisite", blocking: true }],
+    });
   });
 
   it("fetches session payroll context with only sessionId and parses the exact nullable fields", async () => {

@@ -100,6 +100,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/payroll-timesheets"
+  to = "/.netlify/functions/payroll-timesheets"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

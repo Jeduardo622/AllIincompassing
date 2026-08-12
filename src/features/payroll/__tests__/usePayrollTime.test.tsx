@@ -4,7 +4,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", () => ({
+  derivePayrollTimesheetSnapshot: vi.fn(),
   fetchPayrollDay: vi.fn(),
+  fetchPayrollTimesheetPeriod: vi.fn(),
   recordTimeEvent: vi.fn(),
   recordSessionAttendance: vi.fn(),
   requestTimeCorrection: vi.fn(),
@@ -20,13 +22,13 @@ vi.mock("../outbox", () => ({
   recoverPayrollOutbox: vi.fn(async () => undefined),
 }));
 
-import { fetchPayrollDay } from "../api";
+import { fetchPayrollDay, fetchPayrollTimesheetPeriod } from "../api";
 import {
   drainPayrollOutbox,
   listPayrollOutboxEvents,
   recoverPayrollOutbox,
 } from "../outbox";
-import { usePayrollDayReadOnly, usePayrollTime } from "../usePayrollTime";
+import { usePayrollDayReadOnly, usePayrollTime, usePayrollTimesheetPeriodReview } from "../usePayrollTime";
 
 const scope = {
   organizationId: "org-1",
@@ -56,9 +58,15 @@ function FullProbe() {
   return <div>{payrollDayQuery.data?.state ?? "loading"}</div>;
 }
 
+function TimesheetProbe({ enabled }: { enabled: boolean }) {
+  const { payrollTimesheetPeriodQuery } = usePayrollTimesheetPeriodReview(scope, { enabled });
+  return <div>{payrollTimesheetPeriodQuery.data?.state ?? "loading"}</div>;
+}
+
 describe("usePayrollTime", () => {
   beforeEach(() => {
     vi.mocked(fetchPayrollDay).mockReset();
+    vi.mocked(fetchPayrollTimesheetPeriod).mockReset();
     vi.mocked(recoverPayrollOutbox).mockClear();
     vi.mocked(drainPayrollOutbox).mockClear();
     vi.mocked(listPayrollOutboxEvents).mockClear();
@@ -84,6 +92,17 @@ describe("usePayrollTime", () => {
         exceptions: [],
       },
       totals: { label: "Calculation pending" },
+    });
+    vi.mocked(fetchPayrollTimesheetPeriod).mockResolvedValue({
+      state: "ok",
+      period: {
+        localDate: "2026-08-11",
+        periodStart: "2026-08-10",
+        periodEnd: "2026-08-16",
+        timezone: "America/Los_Angeles",
+        exceptions: [],
+      },
+      snapshot: null,
     });
     onlineManager.setOnline(true);
   });
@@ -120,5 +139,12 @@ describe("usePayrollTime", () => {
     await waitFor(() => {
       expect(listPayrollOutboxEvents).toHaveBeenCalled();
     });
+  });
+
+  it("keeps payroll period review disabled until bootstrap authority enables it", async () => {
+    renderWithQueryClient(<TimesheetProbe enabled={false} />);
+
+    expect(screen.getByText("loading")).toBeInTheDocument();
+    expect(fetchPayrollTimesheetPeriod).not.toHaveBeenCalled();
   });
 });

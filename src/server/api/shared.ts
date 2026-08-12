@@ -529,6 +529,41 @@ export async function resolveOrgAndRoleWithStatus(accessToken: string): Promise<
   };
 }
 
+export type ResolvedAppRole = "client" | "bt" | "therapist" | "midtier" | "admin_schedule" | "admin" | "bcba" | "super_admin";
+
+export async function resolveUserRoleWithStatus(
+  accessToken: string,
+  userId: string,
+): Promise<{ role: ResolvedAppRole | null; upstreamError: boolean }> {
+  const { supabaseUrl, anonKey } = getSupabaseConfig();
+  const result = await fetchJson<ResolvedAppRole>(
+    `${supabaseUrl}/rest/v1/rpc/get_user_role_from_junction`,
+    {
+      method: "POST",
+      headers: {
+        ...JSON_HEADERS,
+        apikey: anonKey,
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ p_user_id: userId }),
+    },
+  );
+  const knownRoles = new Set<ResolvedAppRole>([
+    "client",
+    "bt",
+    "therapist",
+    "midtier",
+    "admin_schedule",
+    "admin",
+    "bcba",
+    "super_admin",
+  ]);
+  return {
+    role: result.ok && knownRoles.has(result.data) ? result.data : null,
+    upstreamError: !result.ok && result.status >= 500,
+  };
+}
+
 type OrgRoleResolution = Awaited<ReturnType<typeof resolveOrgAndRoleWithStatus>>;
 
 export async function resolveSchedulingOrgAndRoleWithStatus(

@@ -195,3 +195,83 @@ Task 1 establishes a default-disabled payroll timekeeping schema and stable RPC 
 ### Handoff Summary
 
 Task 2 delivers separate payroll and insurance/audit clocks without allowing session close to end paid time. Live attendance transport is strict and minimal, server authority derives employment/shift/timezone/location, legacy outbox rows are canonicalized only during recovery, non-retryable events stop in `needs_attention`, and a pending attendance row is deferred until clock-in is confirmed. Full local coverage, build, tenant, route, Edge, responsive, browser-offline, and loopback database gates pass; only the credential-backed `ci:playwright` gate remains blocked locally.
+
+## Task 3 Derivation Closeout
+
+- Date: 2026-08-12
+- Slice: California derivation, immutable timesheet snapshots, protected snapshot transport, and additive `/time` period review
+- Status: `REVIEW_READY`
+
+### Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: migration/RLS/RPC, protected server/Edge transport, generated database types, visible `/time` review UI, and protected CI/deploy policy
+- required checks:
+  - focused calculation, migration, client, UI, server, Edge, CI-policy, and loopback database tests
+  - clean local database reset and local type generation
+  - `npm run ci:check-focused`
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm run validate:tenant`
+  - `npm run test:ci`
+  - `npm run ci:verify-coverage`
+  - `npm run test:routes:tier0`
+  - `npm run ci:playwright`
+  - `npm run build`
+  - responsive `/time` observation at `1440x900` and `390x844`
+  - `npm run verify:local`
+- executed checks:
+  - witnessed RED: `npm test -- --run tests/payroll-california-calculation.test.ts tests/payroll-timesheet-snapshot-migration.test.ts`
+  - `deno test --no-check --allow-env supabase/functions/payroll-timesheets/index.test.ts`: pass, 5 tests
+  - focused calculation, migration, client, UI, server, Edge-contract, and CI-policy suite: pass, 196 tests
+  - exact-loopback `tests/payroll-timesheet-snapshot-rpc.test.ts`: pass, 21 tests
+  - `npm run ci:check-focused`: pass
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run validate:tenant`: pass
+  - `npm run build`: pass
+  - `npx supabase db reset --local --yes`: pass after the Task 3 migration runtime fixes
+  - `npm run typegen:local`: pass
+  - rollback-only authenticated runtime/EXPLAIN sweep: pass at 0/50/200/500 rows; artifact `reports/evidence/payroll-timesheet-derive-contract-1f-2026-08-12T10-43-09-419Z.json`
+  - final aggregate `npm run verify:local` with process-local 8 GB heap: pass end to end in 535 seconds
+  - final aggregate `npm run test:ci`: pass, 506 files and 4424 tests; 32 environment-gated skips
+  - final aggregate `npm run ci:verify-coverage`: pass, 92.87% line coverage
+  - final aggregate `npm run build`: pass
+  - final aggregate `npm run test:routes:tier0`: pass, 228 tests
+  - refreshed responsive `/time` observation: pass at desktop `1440x900` and mobile `390x844`
+  - six independent repaired-diff reviews: approved by code, architecture, security, Supabase, test, and DevOps specialists
+  - prior failed aggregate diagnosis: stale report/artifact reference corrected; unrelated `ProgramsGoalsTab` timeout passed in isolation at 116/116 and in the final aggregate
+- blocked checks:
+  - `npm run ci:playwright`: blocked locally by missing approved `PW_SUPERADMIN_*` or `PW_ADMIN_*` credential pair; no `.env*` file was read
+- result: `pass-with-blocked-checks`
+- residual risk: credentialed auth/session browser coverage, hosted migration parity, and hosted deployment were not exercised; payroll/legal and human critical-lane review remain mandatory, and activation remains a separate explicit manual dispatch
+- runtime defects fixed from local proof:
+  - transport/SQL signature convergence on `selected_local_date` and `p_idempotency_key`
+  - invalid nested window/aggregate SQL in worked-seconds calculation
+  - server-owned pay-period resolution for non-Sunday weekly and biweekly groups
+  - structured blocked derivation transport/UI handling
+  - feature-disabled, unsupported-jurisdiction, and monthly fail-closed behavior
+  - raw self-rate omission while preserving own gross review
+  - transaction-level source/config locking and non-callable lock helpers
+  - append-only snapshot supersession, short-shift open-meal integrity, and DST-safe boundaries
+
+### PR Hygiene
+
+- pr-ready: yes
+- lane: `critical`
+- branch-ready: yes; `codex/payroll-timekeeping-derivation`
+- linear-ready: yes; existing `WIN-219` linkage is reused and will be updated rather than creating another issue
+- single-purpose: yes; California ordinary nonexempt derivation, immutable snapshots, protected transport, review UI, and its required deploy governance
+- unrelated changes: none; transient `deno.lock` and reliability timestamp drift were excluded
+- generated artifact drift: none; database types and the single sanitized performance artifact match their source contracts
+- protected-path drift: expected migration, `src/server/**`, Edge, Netlify, and workflow changes; critical lane and mandatory human review are retained
+- change summary: present
+- verification summary: present
+- pr handoff: ready for a stacked PR against the Task 2 capture branch
+- reviewer: six independent specialist reviews approved the repaired live diff
+- required follow-up: push, open the PR, update `WIN-219` to In Review, inspect live required checks, and stop for human/payroll/legal review; do not merge, deploy, or activate autonomously
+
+### Handoff Summary
+
+Task 3 adds the bounded California ordinary nonexempt derivation layer, immutable snapshot persistence, protected `payroll-timesheets` transport, and a self `/time` period-review surface that can create immutable review snapshots but cannot submit, approve, lock, or export. The repair round moved all pay-period and authority decisions to the database, preserved structured fail-closed outcomes, restored compensation privacy, serialized canonical snapshot inputs safely, and restricted deployment to a separate explicit manual activation. Clean local schema, focused, loopback, policy, tenant, type, performance, responsive, aggregate, and six-specialist review proofs pass. The slice is PR-ready with credentialed `ci:playwright` disclosed as the sole local blocked check; human critical-lane and payroll/legal review remain mandatory before merge or activation.

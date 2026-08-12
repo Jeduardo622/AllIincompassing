@@ -1,7 +1,9 @@
 import { useEffect } from "react";
 import { onlineManager, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  derivePayrollTimesheetSnapshot,
   fetchPayrollDay,
+  fetchPayrollTimesheetPeriod,
   recordSessionAttendance,
   recordTimeEvent,
   requestSessionAttendanceCorrection,
@@ -40,6 +42,12 @@ export const payrollTimeQueryKey = (organizationId: string, userId: string, loca
 
 export const payrollOutboxQueryKey = (organizationId: string, userId: string) =>
   ["payroll-outbox", organizationId, userId] as const;
+
+export const payrollTimesheetPeriodQueryKey = (
+  organizationId: string,
+  userId: string,
+  localDate: string,
+) => ["payroll-timesheet-period", organizationId, userId, localDate] as const;
 
 type UsePayrollTimeOptions = {
   store?: PayrollOutboxStore;
@@ -230,4 +238,39 @@ export function usePayrollDayReadOnly(
     queryFn: () => fetchPayrollDay(scope),
     enabled: options.enabled ?? true,
   });
+}
+
+export function usePayrollTimesheetPeriodReview(
+  scope: PayrollScope,
+  options: { enabled?: boolean } = {},
+) {
+  const queryClient = useQueryClient();
+  const queryKey = payrollTimesheetPeriodQueryKey(
+    scope.organizationId,
+    scope.userId,
+    scope.localDate,
+  );
+
+  const payrollTimesheetPeriodQuery = useQuery({
+    queryKey,
+    queryFn: () => fetchPayrollTimesheetPeriod(scope),
+    enabled: options.enabled ?? true,
+  });
+
+  const derivePayrollTimesheetSnapshotMutation = useMutation({
+    mutationFn: async (idempotencyKey: string) =>
+      derivePayrollTimesheetSnapshot(scope, {
+        selectedLocalDate: scope.localDate,
+        idempotencyKey,
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey });
+    },
+    networkMode: "always",
+  });
+
+  return {
+    payrollTimesheetPeriodQuery,
+    derivePayrollTimesheetSnapshotMutation,
+  };
 }

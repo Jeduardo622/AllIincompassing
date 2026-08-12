@@ -154,6 +154,14 @@
       "wave": "B",
       "status": "migrating",
       "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "payroll-timesheets.ts",
+      "publicApiPath": "/api/payroll-timesheets",
+      "edgeTarget": "payroll-timesheets",
+      "wave": "B",
+      "status": "migrating",
+      "owner": "Backend Platform"
     }
   ]
 }

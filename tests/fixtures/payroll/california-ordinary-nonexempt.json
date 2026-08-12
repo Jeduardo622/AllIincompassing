@@ -1,0 +1,248 @@
+{
+  "catalogVersion": "2026-08-12-task-3",
+  "scope": {
+    "jurisdiction": "CA",
+    "classification": "ordinary_nonexempt",
+    "integerOnly": true,
+    "notes": [
+      "Authoritative UTC instants only.",
+      "Assigned IANA timezone required.",
+      "No inferred punches or meals.",
+      "One base hourly rate effective at each instant.",
+      "Unsupported policies fail closed."
+    ]
+  },
+  "fixtures": [
+    {
+      "id": "regular-day",
+      "description": "Single clean shift under eight hours.",
+      "expected": {
+        "regularSeconds": 28800,
+        "overtimeSeconds": 0,
+        "doubleTimeSeconds": 0,
+        "mealPremiumCents": 0,
+        "grossEarningsCents": 16000,
+        "exceptionCodes": []
+      }
+    },
+    {
+      "id": "daily-overtime",
+      "description": "Ten-hour same-day shift.",
+      "expected": {
+        "regularSeconds": 28800,
+        "overtimeSeconds": 7200,
+        "doubleTimeSeconds": 0,
+        "mealPremiumCents": 0,
+        "grossEarningsCents": 22000,
+        "exceptionCodes": []
+      }
+    },
+    {
+      "id": "daily-double-time",
+      "description": "Thirteen-hour same-day shift.",
+      "expected": {
+        "regularSeconds": 28800,
+        "overtimeSeconds": 14400,
+        "doubleTimeSeconds": 3600,
+        "mealPremiumCents": 0,
+        "grossEarningsCents": 33000,
+        "exceptionCodes": []
+      }
+    },
+    {
+      "id": "weekly-overtime",
+      "description": "Five straight nine-hour days; weekly overtime only applies on remaining regular seconds.",
+      "expected": {
+        "regularSeconds": 144000,
+        "overtimeSeconds": 18000,
+        "doubleTimeSeconds": 0,
+        "mealPremiumCents": 0,
+        "grossEarningsCents": 95000,
+        "exceptionCodes": []
+      }
+    },
+    {
+      "id": "seventh-consecutive-day",
+      "description": "Seven consecutive workdays in one workweek.",
+      "expected": {
+        "regularSeconds": 216000,
+        "overtimeSeconds": 28800,
+        "doubleTimeSeconds": 7200,
+        "mealPremiumCents": 0,
+        "grossEarningsCents": 124000,
+        "exceptionCodes": []
+      }
+    },
+    {
+      "id": "cross-midnight",
+      "description": "Shift spans local midnight and splits at the configured workday boundary.",
+      "expected": {
+        "regularSeconds": 25200,
+        "overtimeSeconds": 0,
+        "doubleTimeSeconds": 0,
+        "mealPremiumCents": 0,
+        "grossEarningsCents": 14000,
+        "exceptionCodes": []
+      }
+    },
+    {
+      "id": "dst-spring",
+      "description": "Shift spans spring-forward but uses authoritative elapsed UTC seconds.",
+      "expected": {
+        "regularSeconds": 25200,
+        "overtimeSeconds": 0,
+        "doubleTimeSeconds": 0,
+        "mealPremiumCents": 0,
+        "grossEarningsCents": 14000,
+        "exceptionCodes": []
+      }
+    },
+    {
+      "id": "dst-fall",
+      "description": "Shift spans fall-back but uses authoritative elapsed UTC seconds.",
+      "expected": {
+        "regularSeconds": 32400,
+        "overtimeSeconds": 0,
+        "doubleTimeSeconds": 0,
+        "mealPremiumCents": 0,
+        "grossEarningsCents": 18000,
+        "exceptionCodes": []
+      }
+    },
+    {
+      "id": "rate-boundary",
+      "description": "Shift crosses a rate-version boundary.",
+      "expected": {
+        "regularSeconds": 28800,
+        "overtimeSeconds": 0,
+        "doubleTimeSeconds": 0,
+        "mealPremiumCents": 0,
+        "grossEarningsCents": 17200,
+        "exceptionCodes": []
+      }
+    },
+    {
+      "id": "missing-meal",
+      "description": "Qualifying shift with no meal event.",
+      "expected": {
+        "regularSeconds": 21600,
+        "overtimeSeconds": 0,
+        "doubleTimeSeconds": 0,
+        "mealPremiumCents": 0,
+        "grossEarningsCents": 12000,
+        "exceptionCodes": [
+          "meal_missing"
+        ]
+      }
+    },
+    {
+      "id": "late-meal",
+      "description": "Meal starts after the first-meal deadline.",
+      "expected": {
+        "regularSeconds": 25200,
+        "overtimeSeconds": 0,
+        "doubleTimeSeconds": 0,
+        "mealPremiumCents": 0,
+        "grossEarningsCents": 14000,
+        "exceptionCodes": [
+          "meal_late"
+        ]
+      }
+    },
+    {
+      "id": "short-meal",
+      "description": "Meal interval shorter than thirty minutes.",
+      "expected": {
+        "regularSeconds": 25200,
+        "overtimeSeconds": 0,
+        "doubleTimeSeconds": 0,
+        "mealPremiumCents": 0,
+        "grossEarningsCents": 14000,
+        "exceptionCodes": [
+          "meal_short"
+        ]
+      }
+    },
+    {
+      "id": "interrupted-meal",
+      "description": "Meal start remains open through shift end and must stay blocking.",
+      "expected": {
+        "regularSeconds": 25200,
+        "overtimeSeconds": 0,
+        "doubleTimeSeconds": 0,
+        "mealPremiumCents": 0,
+        "grossEarningsCents": 14000,
+        "exceptionCodes": [
+          "open_meal",
+          "meal_interrupted"
+        ]
+      }
+    },
+    {
+      "id": "meal-waiver",
+      "description": "Supported first-meal waiver under six hours.",
+      "expected": {
+        "regularSeconds": 21600,
+        "overtimeSeconds": 0,
+        "doubleTimeSeconds": 0,
+        "mealPremiumCents": 0,
+        "grossEarningsCents": 12000,
+        "exceptionCodes": []
+      }
+    },
+    {
+      "id": "meal-premium-owed",
+      "description": "Validated premium_owed resolution adds one hour at the effective base rate.",
+      "expected": {
+        "regularSeconds": 25200,
+        "overtimeSeconds": 0,
+        "doubleTimeSeconds": 0,
+        "mealPremiumCents": 2000,
+        "grossEarningsCents": 16000,
+        "exceptionCodes": []
+      }
+    },
+    {
+      "id": "session-outside-shift",
+      "description": "Attendance is recorded outside any linked payroll shift.",
+      "expected": {
+        "regularSeconds": 14400,
+        "overtimeSeconds": 0,
+        "doubleTimeSeconds": 0,
+        "mealPremiumCents": 0,
+        "grossEarningsCents": 8000,
+        "exceptionCodes": [
+          "session_outside_shift"
+        ]
+      }
+    },
+    {
+      "id": "correction-invalidation",
+      "description": "Correction requests invalidate the current snapshot and require review metadata.",
+      "expected": {
+        "regularSeconds": 28800,
+        "overtimeSeconds": 0,
+        "doubleTimeSeconds": 0,
+        "mealPremiumCents": 0,
+        "grossEarningsCents": 16000,
+        "exceptionCodes": [
+          "correction_pending_review"
+        ]
+      }
+    },
+    {
+      "id": "open-punch-failure",
+      "description": "Unmatched open shift blocks snapshot lockability.",
+      "expected": {
+        "regularSeconds": 0,
+        "overtimeSeconds": 0,
+        "doubleTimeSeconds": 0,
+        "mealPremiumCents": 0,
+        "grossEarningsCents": 0,
+        "exceptionCodes": [
+          "open_shift"
+        ]
+      }
+    }
+  ]
+}

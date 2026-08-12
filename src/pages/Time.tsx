@@ -6,8 +6,10 @@ import {
   type PayrollDayResponse,
   type PayrollEmployeeTimeEvent,
   type PayrollTimeEventPayload,
+  type PayrollTimesheetDeriveResponse,
+  type PayrollTimesheetPeriodResponse,
 } from "../features/payroll/api";
-import { usePayrollTime } from "../features/payroll/usePayrollTime";
+import { usePayrollTime, usePayrollTimesheetPeriodReview } from "../features/payroll/usePayrollTime";
 import type { PendingPayrollEvent } from "../features/payroll/outbox";
 
 const formatLocalDate = (date: Date, timeZone?: string | null): string => {
@@ -138,6 +140,153 @@ const deriveShiftState = (
 const buildIdempotencyKey = (prefix: string): string =>
   `${prefix}-${Math.random().toString(36).slice(2, 10)}-${Date.now()}`;
 
+const formatHours = (seconds: number | undefined): string => seconds === undefined ? 'Not derived' : `${(seconds / 3600).toFixed(2)}h`;
+const formatMoney = (cents: number | undefined): string => cents === undefined ? 'Not derived' : `$${(cents / 100).toFixed(2)}`;
+
+const PeriodReviewSummary = ({
+  periodReview,
+  deriveResult,
+  deriveError,
+  onDerive,
+  deriving,
+  deriveEnabled,
+}: {
+  periodReview: PayrollTimesheetPeriodResponse | undefined;
+  deriveResult: PayrollTimesheetDeriveResponse | undefined;
+  deriveError: string | null;
+  onDerive: () => void;
+  deriving: boolean;
+  deriveEnabled: boolean;
+}) => {
+  if (!periodReview) {
+    return null;
+  }
+
+  const blockedDerive = deriveResult?.state === 'blocked' ? deriveResult : null;
+  const displayedPeriod = blockedDerive?.period ?? periodReview.period;
+  const totals = blockedDerive?.totals ?? periodReview.snapshot?.totals ?? periodReview.totals;
+  const authoritativeExceptions = blockedDerive?.exceptions ?? periodReview.exceptions ?? periodReview.period.exceptions ?? [];
+  const isPrerequisiteBlocked = periodReview.state === 'missing_prerequisite' || periodReview.state === 'unsupported_policy';
+  const isBlocked = blockedDerive !== null || periodReview.state === 'blocked' || isPrerequisiteBlocked;
+  const periodLabel = displayedPeriod.periodStart && displayedPeriod.periodEnd
+    ? `${displayedPeriod.periodStart} through ${displayedPeriod.periodEnd}`
+    : 'Pay period boundaries unavailable';
+  const blockedMessage = periodReview.state === 'unsupported_policy'
+    ? 'Monthly payroll derivation is not active.'
+    : periodReview.state === 'missing_prerequisite'
+      ? 'Payroll prerequisites are incomplete.'
+      : 'Resolve the authoritative blocking exceptions before review can produce a lockable snapshot.';
+
+  return (
+    <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-dark-lighter">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Payroll period review</h2>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+            {periodLabel} in {displayedPeriod.timezone ?? 'employment time'}.
+          </p>
+        </div>
+        <ActionButton
+          label={periodReview.snapshot ? 'Re-derive snapshot' : 'Derive snapshot'}
+          ariaLabel="Derive payroll snapshot"
+          onClick={onDerive}
+          disabled={deriving || !deriveEnabled}
+        />
+      </div>
+
+      {isBlocked ? (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100">
+          <p className="text-sm font-semibold">Payroll derivation is blocked</p>
+          <p className="mt-1 text-sm">{blockedMessage}</p>
+        </div>
+      ) : null}
+
+      {deriveError ? (
+        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-red-900 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-100">
+          <p className="text-sm font-semibold">Payroll derive request failed</p>
+          <p className="mt-1 text-sm">{deriveError}</p>
+        </div>
+      ) : null}
+
+      <div className="mt-4 grid gap-4 md:grid-cols-5">
+        <div className="rounded-xl border border-gray-100 px-3 py-2 dark:border-gray-800">
+          <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Regular</p>
+          <p className="mt-2 text-lg font-semibold text-gray-900 dark:text-white">{formatHours(totals?.regularSeconds)}</p>
+        </div>
+        <div className="rounded-xl border border-gray-100 px-3 py-2 dark:border-gray-800">
+          <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Overtime</p>
+          <p className="mt-2 text-lg font-semibold text-gray-900 dark:text-white">{formatHours(totals?.overtimeSeconds)}</p>
+        </div>
+        <div className="rounded-xl border border-gray-100 px-3 py-2 dark:border-gray-800">
+          <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Double time</p>
+          <p className="mt-2 text-lg font-semibold text-gray-900 dark:text-white">{formatHours(totals?.doubleTimeSeconds)}</p>
+        </div>
+        <div className="rounded-xl border border-gray-100 px-3 py-2 dark:border-gray-800">
+          <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Meal premium</p>
+          <p className="mt-2 text-lg font-semibold text-gray-900 dark:text-white">{formatMoney(totals?.mealPremiumCents)}</p>
+        </div>
+        <div className="rounded-xl border border-gray-100 px-3 py-2 dark:border-gray-800">
+          <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Gross earnings</p>
+          <p className="mt-2 text-lg font-semibold text-gray-900 dark:text-white">{formatMoney(totals?.grossEarningsCents)}</p>
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <section>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Exact punches and attendance</h3>
+          <ul className="mt-3 space-y-2">
+            {(displayedPeriod.events ?? []).map((event) => (
+              <li key={event.id} className="rounded-xl border border-gray-100 px-3 py-2 text-sm dark:border-gray-800">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-medium text-gray-900 dark:text-white">{formatLabel(event.eventType)}</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{formatTimestamp(event.occurredAt)}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Policy, rates, corrections, and exceptions</h3>
+          <div className="mt-3 space-y-3">
+            <div className="rounded-xl border border-gray-100 px-3 py-2 text-sm dark:border-gray-800">
+              <p className="font-medium text-gray-900 dark:text-white">Policy version</p>
+              <p className="mt-1 text-gray-600 dark:text-gray-300">{displayedPeriod.policyVersionId ?? 'Unavailable'}</p>
+            </div>
+            <div className="rounded-xl border border-gray-100 px-3 py-2 text-sm dark:border-gray-800">
+              <p className="font-medium text-gray-900 dark:text-white">Rate versions</p>
+              <ul className="mt-2 space-y-1 text-gray-600 dark:text-gray-300">
+                {(displayedPeriod.rateVersions ?? []).map((rate) => (
+                  <li key={rate.id}>
+                    Effective {rate.effectiveFrom}
+                    {rate.effectiveThrough ? ` through ${rate.effectiveThrough}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-xl border border-gray-100 px-3 py-2 text-sm dark:border-gray-800">
+              <p className="font-medium text-gray-900 dark:text-white">Corrections and exceptions</p>
+              <ul className="mt-2 space-y-1 text-gray-600 dark:text-gray-300">
+                {(displayedPeriod.timeCorrectionRequests ?? []).map((request) => (
+                  <li key={request.id}>Time correction: {request.reasonCode}</li>
+                ))}
+                {(displayedPeriod.sessionAttendanceCorrectionRequests ?? []).map((request) => (
+                  <li key={request.id}>Attendance correction: {request.reasonCode}</li>
+                ))}
+                {authoritativeExceptions.map((exception, index) => (
+                  <li key={exception.id ?? `${exception.code ?? exception.exceptionCode ?? 'exception'}-${index}`}>
+                    {exception.code ?? exception.exceptionCode ?? 'unknown_exception'}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+};
+
 const ActionButton = ({
   label,
   ariaLabel,
@@ -182,6 +331,11 @@ export function Time() {
     requestTimeCorrectionMutation,
     requestSessionAttendanceCorrectionMutation,
   } = usePayrollTime(scope);
+  const periodReviewEnabled = payrollDayQuery.data?.state === 'ok' && payrollDayQuery.data.bootstrap?.capabilities.canViewSelf === true;
+  const {
+    payrollTimesheetPeriodQuery,
+    derivePayrollTimesheetSnapshotMutation,
+  } = usePayrollTimesheetPeriodReview(scope, { enabled: periodReviewEnabled });
 
   useEffect(() => {
     const authoritativeLocalDate = payrollDayQuery.data?.bootstrap?.localDate;
@@ -353,6 +507,14 @@ export function Time() {
     });
   };
 
+  const derivePeriodSnapshot = async () => {
+    try {
+      await derivePayrollTimesheetSnapshotMutation.mutateAsync(buildIdempotencyKey('timesheet-snapshot'));
+    } catch {
+      // React Query surfaces the transport error state for the review panel.
+    }
+  };
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -411,6 +573,23 @@ export function Time() {
           <ActionButton label="Switch to administration" disabled={!canClockSelf} onClick={() => submitTimeEvent('work_category_changed', 'administration')} />
         </div>
       </section>
+
+      {payrollTimesheetPeriodQuery.isError ? (
+        <section className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm dark:border-red-900/60 dark:bg-red-950/40">
+          <p className="text-sm font-medium text-red-900 dark:text-red-100">Payroll period review is unavailable.</p>
+        </section>
+      ) : null}
+
+      <PeriodReviewSummary
+        periodReview={payrollTimesheetPeriodQuery.data}
+        deriveResult={derivePayrollTimesheetSnapshotMutation.data}
+        deriveError={derivePayrollTimesheetSnapshotMutation.isError
+          ? ((derivePayrollTimesheetSnapshotMutation.error as { message?: string } | null)?.message ?? 'Payroll transport failed.')
+          : null}
+        onDerive={derivePeriodSnapshot}
+        deriving={derivePayrollTimesheetSnapshotMutation.isPending}
+        deriveEnabled={periodReviewEnabled}
+      />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-dark-lighter">

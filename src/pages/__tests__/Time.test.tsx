@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mockUseAuth = vi.fn();
 const mockUseActiveOrganizationId = vi.fn();
 const mockUsePayrollTime = vi.fn();
+const mockUsePayrollTimesheetPeriodReview = vi.fn();
 
 vi.mock("../../lib/authContext", () => ({
   useAuth: () => mockUseAuth(),
@@ -18,6 +19,7 @@ vi.mock("../../lib/organization", () => ({
 
 vi.mock("../../features/payroll/usePayrollTime", () => ({
   usePayrollTime: (...args: unknown[]) => mockUsePayrollTime(...args),
+  usePayrollTimesheetPeriodReview: (...args: unknown[]) => mockUsePayrollTimesheetPeriodReview(...args),
 }));
 
 import { Time } from "../Time";
@@ -129,6 +131,69 @@ const baseHookValue = {
   },
 };
 
+const basePeriodReviewValue = {
+  payrollTimesheetPeriodQuery: {
+    data: {
+      state: "ok" as const,
+      period: {
+        selectedLocalDate: "2026-08-11",
+        localDate: "2026-08-11",
+        periodStart: "2026-08-10",
+        periodEnd: "2026-08-16",
+        timezone: "America/Los_Angeles",
+        policyVersionId: "99999999-9999-9999-9999-999999999999",
+        rateVersions: [
+          {
+            id: "88888888-8888-8888-8888-888888888888",
+            effectiveFrom: "2026-08-01T00:00:00.000Z",
+            effectiveThrough: null,
+          },
+        ],
+        events: [
+          {
+            id: "timesheet-event-1",
+            source: "employee_time",
+            eventType: "shift_started",
+            occurredAt: "2026-08-11T16:00:00.000Z",
+            createdAt: "2026-08-11T16:00:01.000Z",
+            timezone: "America/Los_Angeles",
+            workLocation: "office",
+            workCategory: "direct_service",
+          },
+        ],
+        timeCorrectionRequests: basePayrollDay.day.timeCorrectionRequests,
+        sessionAttendanceCorrectionRequests: basePayrollDay.day.sessionAttendanceCorrectionRequests,
+        exceptions: [
+          {
+            id: "period-exception-1",
+            exceptionCode: "meal_missing",
+            createdAt: "2026-08-11T18:00:00.000Z",
+          },
+        ],
+      },
+      snapshot: {
+        id: "snapshot-1",
+        sourceHash: "abc123",
+        totals: {
+          regularSeconds: 28800,
+          overtimeSeconds: 7200,
+          doubleTimeSeconds: 0,
+          mealPremiumCents: 2000,
+          grossEarningsCents: 24000,
+        },
+      },
+    },
+    isError: false,
+  },
+  derivePayrollTimesheetSnapshotMutation: {
+    mutateAsync: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+    reset: vi.fn(),
+  },
+};
+
 const renderTimePage = () =>
   render(
     <MemoryRouter initialEntries={["/time"]}>
@@ -141,6 +206,7 @@ describe("Time page", () => {
     mockUseAuth.mockReset();
     mockUseActiveOrganizationId.mockReset();
     mockUsePayrollTime.mockReset();
+    mockUsePayrollTimesheetPeriodReview.mockReset();
     mockUseActiveOrganizationId.mockReturnValue("org-1");
     mockUseAuth.mockReturnValue({
       user: {
@@ -151,6 +217,7 @@ describe("Time page", () => {
       loading: false,
     });
     mockUsePayrollTime.mockReturnValue(baseHookValue);
+    mockUsePayrollTimesheetPeriodReview.mockReturnValue(basePeriodReviewValue);
   });
 
   it("renders the explicit loading state", () => {
@@ -285,17 +352,127 @@ describe("Time page", () => {
     renderTimePage();
 
     expect(screen.getByText(/calculation pending/i)).toBeInTheDocument();
-    expect(screen.getByText(/shift started/i)).toBeInTheDocument();
-    expect(screen.getByText(/session started/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/shift started/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/session started/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/pending local events/i)).toBeInTheDocument();
     expect(screen.getByText(/pending confirmation/i)).toBeInTheDocument();
-    expect(screen.getByText(/missed_punch/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/missed_punch/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/^outside_shift$/i)).toBeInTheDocument();
     expect(screen.getByText(/^session_outside_shift$/i)).toBeInTheDocument();
     expect(screen.getByText(/current work category/i)).toBeInTheDocument();
     expect(screen.getByText(/^direct_service$/i)).toBeInTheDocument();
     expect(screen.getByText(/current work location/i)).toBeInTheDocument();
     expect(screen.getByText(/^office$/i)).toBeInTheDocument();
+    expect(screen.getByText(/payroll period review/i)).toBeInTheDocument();
+    expect(screen.getByText(/\$240.00/i)).toBeInTheDocument();
+    expect(screen.getByText(/meal_missing/i)).toBeInTheDocument();
+    expect(screen.queryByText(/\$20\.00 from/i)).not.toBeInTheDocument();
+  });
+
+  it("renders authoritative blocked derive exceptions returned by the mutation", async () => {
+    const blockedResult = {
+      state: "blocked" as const,
+      snapshotId: null,
+      sourceHash: "blocked-source-hash",
+      lockable: false as const,
+      replayed: false,
+      idempotencyKey: "timesheet-blocked-key",
+      period: {
+        selectedLocalDate: "2026-08-11",
+        periodStart: "2026-08-10",
+        periodEnd: "2026-08-16",
+        timezone: "America/Los_Angeles",
+      },
+      totals: {
+        regularSeconds: 0,
+        overtimeSeconds: 0,
+        doubleTimeSeconds: 0,
+        mealPremiumCents: 0,
+        grossEarningsCents: 0,
+      },
+      exceptions: [
+        {
+          code: "meal_unresolved",
+          blocking: true,
+        },
+      ],
+    };
+    const deriveSnapshot = vi.fn().mockResolvedValue(blockedResult);
+    mockUsePayrollTimesheetPeriodReview.mockReturnValue({
+      ...basePeriodReviewValue,
+      derivePayrollTimesheetSnapshotMutation: {
+        mutateAsync: deriveSnapshot,
+        data: blockedResult,
+        isPending: false,
+        isError: false,
+        error: null,
+        reset: vi.fn(),
+      },
+    });
+
+    renderTimePage();
+
+    expect(screen.getByText(/payroll derivation is blocked/i)).toBeInTheDocument();
+    expect(screen.getByText(/meal_unresolved/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /derive payroll snapshot/i }));
+
+    expect(deriveSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["missing_prerequisite", "Payroll prerequisites are incomplete."],
+    ["unsupported_policy", "Monthly payroll derivation is not active."],
+  ] as const)("renders %s as an authoritative blocked review state", (state, expectedMessage) => {
+    mockUsePayrollTimesheetPeriodReview.mockReturnValue({
+      ...basePeriodReviewValue,
+      payrollTimesheetPeriodQuery: {
+        ...basePeriodReviewValue.payrollTimesheetPeriodQuery,
+        data: {
+          state,
+          period: {
+            selectedLocalDate: "2026-08-11",
+            timezone: "America/Los_Angeles",
+            events: [],
+            rateVersions: [],
+            exceptions: [],
+          },
+          snapshot: null,
+        },
+      },
+    });
+
+    renderTimePage();
+
+    expect(screen.getByText(expectedMessage)).toBeInTheDocument();
+    expect(screen.getByText(/pay period boundaries unavailable/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/not derived/i).length).toBeGreaterThan(0);
+  });
+
+  it("renders derive transport errors on the time route", async () => {
+    const deriveError = Object.assign(new Error("Payroll transport failed."), {
+      code: "upstream_error",
+      status: 503,
+    });
+    const deriveSnapshot = vi.fn().mockRejectedValue(deriveError);
+    mockUsePayrollTimesheetPeriodReview.mockReturnValue({
+      ...basePeriodReviewValue,
+      derivePayrollTimesheetSnapshotMutation: {
+        mutateAsync: deriveSnapshot,
+        data: undefined,
+        isPending: false,
+        isError: true,
+        error: deriveError,
+        reset: vi.fn(),
+      },
+    });
+
+    renderTimePage();
+
+    await userEvent.click(screen.getByRole("button", { name: /derive payroll snapshot/i }));
+
+    expect(deriveSnapshot).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/payroll transport failed/i)).toBeInTheDocument();
   });
 
   it("keeps needs-attention rows out of derived state and pending confirmation", () => {
@@ -482,5 +659,25 @@ describe("Time page", () => {
         ),
       ).toBe(true);
     });
+  });
+
+  it("keeps payroll period review disabled until bootstrap authority resolves ok self-view access", () => {
+    mockUsePayrollTime.mockReturnValue({
+      ...baseHookValue,
+      payrollDayQuery: {
+        ...baseHookValue.payrollDayQuery,
+        data: undefined,
+        isLoading: true,
+      },
+    });
+
+    renderTimePage();
+
+    expect(mockUsePayrollTimesheetPeriodReview).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        enabled: false,
+      }),
+    );
   });
 });

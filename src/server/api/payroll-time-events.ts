@@ -138,6 +138,15 @@ const isMissingEdgeFunctionResponse = (status: number, body: string): boolean =>
   }
 };
 
+const isMissingLegacySessionContextRpc = (
+  result: { status: number; data: unknown | null },
+): boolean => {
+  if (result.status !== 404 || !result.data || typeof result.data !== "object") return false;
+  const payload = result.data as Record<string, unknown>;
+  return payload.code === "PGRST202" &&
+    payload.message === "Could not find the function public.get_session_payroll_context(session_id) in the schema cache";
+};
+
 const payrollActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("get_day"), localDate: z.string().date() }),
   z.object({ action: z.literal("get_session_context"), sessionId: z.string().uuid() }).strict(),
@@ -546,6 +555,17 @@ export async function payrollTimeEventsHandler(request: Request): Promise<Respon
       headers: buildLegacyHeaders(accessToken, anonKey),
       body: JSON.stringify(rpc.args),
     });
+
+    if (
+      parsed.data.action === "get_session_context" &&
+      isMissingLegacySessionContextRpc(result)
+    ) {
+      return buildSuccessResponse(request, traceHeaders, {
+        state: "feature_disabled",
+        sessionId: parsed.data.sessionId,
+        organizationId,
+      });
+    }
 
     if (!result.ok || !result.data) {
       return mapLegacyError(request, traceHeaders, result, validated.idempotencyKey);

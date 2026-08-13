@@ -370,6 +370,67 @@ describe("payrollTimeEventsHandler", () => {
     });
   });
 
+  it("treats an explicitly missing legacy session-context RPC as scoped bootstrap-disabled", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
+    vi.mocked(fetchJson).mockResolvedValue({
+      ok: false,
+      status: 404,
+      data: {
+        code: "PGRST202",
+        details: "Searched for the function public.get_session_payroll_context with parameter session_id or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache.",
+        hint: "Perhaps you meant to call the function public.get_session_metrics",
+        message: "Could not find the function public.get_session_payroll_context(session_id) in the schema cache",
+      },
+    });
+
+    const response = await payrollTimeEventsHandler(
+      new Request("http://localhost/api/payroll-time-events", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken()}` },
+        body: JSON.stringify({
+          action: "get_session_context",
+          sessionId: "77777777-7777-7777-7777-777777777777",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      state: "feature_disabled",
+      sessionId: "77777777-7777-7777-7777-777777777777",
+      organizationId: "org-1",
+    });
+  });
+
+  it("does not treat another missing legacy RPC as bootstrap-disabled", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
+    vi.mocked(fetchJson).mockResolvedValue({
+      ok: false,
+      status: 404,
+      data: {
+        code: "PGRST202",
+        message: "Could not find the function public.other_function(session_id) in the schema cache",
+      },
+    });
+
+    const response = await payrollTimeEventsHandler(
+      new Request("http://localhost/api/payroll-time-events", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken()}` },
+        body: JSON.stringify({
+          action: "get_session_context",
+          sessionId: "77777777-7777-7777-7777-777777777777",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      code: "not_found",
+      message: "Not found",
+    }));
+  });
+
   it("forwards the minimal session attendance payload unchanged to the protected RPC", async () => {
     vi.mocked(getApiAuthorityMode).mockReturnValue("legacy");
     vi.mocked(fetchJson).mockResolvedValue({

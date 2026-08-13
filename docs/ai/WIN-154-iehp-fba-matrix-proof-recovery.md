@@ -45,3 +45,11 @@ The validation and proof checkouts must match the PR head SHA, the immutable Net
 ## Next Slice Gate
 
 Do not add another PDF degradation case until this recovery proof passes. After it passes, the next bounded QA slice should target Skills & Behaviors under document degradation rather than adding another referral-date/phone-only variant.
+
+## Coordinated Owner Dispatch Attempt
+
+- Branch: `codex/win-154-fba-matrix-owner-dispatch`
+- Predecessor recovery PR `#939` merged before the protected workflow ran and is no longer eligible because the workflow requires an open PR.
+- The repository owner confirmed readiness to dispatch and agreed not to merge this attempt until Codex validates the curated proof artifacts.
+- Keep this PR in draft state throughout workflow dispatch and artifact validation.
+- Mark the PR ready only after the exact-head workflow passes every acceptance requirement above.

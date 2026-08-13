@@ -778,11 +778,15 @@ function ExceptionsTab({
   reviewDetailsQuery,
   selectedReview,
   canResolveExceptions,
+  onResolveBlocker,
+  resolveStates,
 }: {
   reviewQueueQuery: ReturnType<typeof usePayrollAdministration>["reviewQueueQuery"];
   reviewDetailsQuery: ReturnType<typeof usePayrollAdministration>["reviewDetailsQuery"];
   selectedReview: ReviewSelection;
   canResolveExceptions: boolean;
+  onResolveBlocker: (input: { snapshotId: string; snapshotHash: string; blockerType: string; blockerId: string; reason: string }) => Promise<unknown>;
+  resolveStates: ReturnType<typeof usePayrollAdministration>["resolvePayrollBlockerStates"];
 }) {
   if (reviewQueueQuery.isLoading) {
     return (
@@ -840,12 +844,31 @@ function ExceptionsTab({
               <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">No blocker details are available for this snapshot.</p>
             ) : (
               <ul className="mt-3 space-y-2">
-                {reviewDetails.blockers.map((blocker, index) => (
-                  <li key={`${blocker.blockerType}-${blocker.blockerId}-${index}`} className="rounded-xl border border-gray-100 px-3 py-2 text-sm dark:border-gray-800">
+                {reviewDetails.blockers.map((blocker, index) => {
+                  const resolveState = resolveStates.reduce<(typeof resolveStates)[number] | undefined>((latest, state) => {
+                    const matchesBlocker = state.variables?.snapshotId === reviewDetails.snapshotId
+                      && state.variables.snapshotHash === reviewDetails.snapshotHash
+                      && state.variables.blockerType === blocker.blockerType
+                      && state.variables.blockerId === blocker.blockerId;
+                    return matchesBlocker && (!latest || state.submittedAt > latest.submittedAt) ? state : latest;
+                  }, undefined);
+                  return <li key={`${blocker.blockerType}-${blocker.blockerId}-${index}`} className="rounded-xl border border-gray-100 px-3 py-2 text-sm dark:border-gray-800">
                     <p className="font-medium text-gray-900 dark:text-white">{blocker.blockerType}</p>
                     <p className="mt-1 text-gray-600 dark:text-gray-300">{blocker.state}</p>
-                  </li>
-                ))}
+                    {canResolveExceptions && blocker.state !== "resolved" ? (
+                      <ResolveBlockerControl
+                        key={`${selectedReview?.snapshotId ?? "none"}:${selectedReview?.snapshotHash ?? "none"}:${blocker.blockerType}:${blocker.blockerId}`}
+                        snapshotId={reviewDetails.snapshotId}
+                        snapshotHash={reviewDetails.snapshotHash}
+                        blockerType={blocker.blockerType}
+                        blockerId={blocker.blockerId}
+                        pending={resolveState?.status === "pending"}
+                        error={resolveState?.status === "error" ? resolveState.error : null}
+                        onResolveBlocker={onResolveBlocker}
+                      />
+                    ) : null}
+                  </li>;
+                })}
               </ul>
             )}
           </div>
@@ -856,6 +879,65 @@ function ExceptionsTab({
             : "This route surfaces blocker visibility only. Punch editing is never available in payroll administration."}
         </div>
       </SectionCard>
+    </div>
+  );
+}
+
+function ResolveBlockerControl({
+  snapshotId,
+  snapshotHash,
+  blockerType,
+  blockerId,
+  pending,
+  error,
+  onResolveBlocker,
+}: {
+  snapshotId: string;
+  snapshotHash: string;
+  blockerType: string;
+  blockerId: string;
+  pending: boolean;
+  error: unknown;
+  onResolveBlocker: (input: { snapshotId: string; snapshotHash: string; blockerType: string; blockerId: string; reason: string }) => Promise<unknown>;
+}) {
+  const [reason, setReason] = useState("");
+  const trimmedReason = reason.trim();
+  const inputLabel = `Resolve reason for ${blockerType}`;
+
+  const submitResolve = async () => {
+    if (!trimmedReason) {
+      return;
+    }
+    try {
+      await onResolveBlocker({
+        snapshotId,
+        snapshotHash,
+        blockerType,
+        blockerId,
+        reason: trimmedReason,
+      });
+      setReason("");
+    } catch {
+      // Mutation state renders the authoritative error without discarding operator input.
+    }
+  };
+
+  return (
+    <div className="mt-3 space-y-3 rounded-xl border border-dashed border-gray-200 p-3 dark:border-gray-700">
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium text-gray-700 dark:text-gray-200">{inputLabel}</span>
+        <textarea
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          className="min-h-24 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-dark-lighter"
+        />
+      </label>
+      <ActionButton
+        label={`Resolve ${blockerType}`}
+        disabled={pending || !trimmedReason}
+        onClick={() => void submitResolve()}
+      />
+      <MutationError error={error} />
     </div>
   );
 }
@@ -1109,6 +1191,8 @@ export function Payroll() {
     reviewDetailsQuery,
     administrationActionMutation,
     lockPayrollTimesheetMutation,
+    resolvePayrollBlockerMutation,
+    resolvePayrollBlockerStates,
     reopenPayrollTimesheetMutation,
   } = usePayrollAdministration(scope, {
     enabled: Boolean(organizationId && user?.id),
@@ -1119,7 +1203,6 @@ export function Payroll() {
     createPayrollExportMutation,
     downloadPayrollExportMutation,
   } = usePayrollExport(scope);
-
   useEffect(() => {
     const firstSelectable = reviewQueueQuery.data?.queue.find((item) => item.snapshot.id && item.snapshot.hash);
     if (!firstSelectable?.snapshot.id || !firstSelectable.snapshot.hash) {
@@ -1243,6 +1326,17 @@ export function Payroll() {
           reviewDetailsQuery={reviewDetailsQuery}
           selectedReview={selectedReview}
           canResolveExceptions={administration.capabilities.canResolveExceptions}
+          onResolveBlocker={({ snapshotId, snapshotHash, blockerType, blockerId, reason }) => resolvePayrollBlockerMutation.mutateAsync({
+            ...scope,
+            idempotencyKey: buildIdempotencyKey("payroll-resolve-blocker"),
+            snapshotId,
+            snapshotHash,
+            blockerType: blockerType as "time_correction_request" | "session_attendance_correction_request" | "timekeeping_exception",
+            blockerId,
+            resolution: "resolved",
+            reason,
+          })}
+          resolveStates={resolvePayrollBlockerStates}
         />
       ) : null}
 

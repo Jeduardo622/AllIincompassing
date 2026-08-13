@@ -1,8 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchPayrollReviewDetails,
   fetchPayrollReviewQueue,
   lockPayrollTimesheet,
+  resolvePayrollBlocker,
   reopenPayrollTimesheet,
   type PayrollScope,
 } from "./api";
@@ -29,6 +30,18 @@ export const payrollAdministrationQueueKey = (
   userId: string,
   localDate: string,
 ) => ["payroll-administration-review-queue", organizationId, userId, localDate] as const;
+
+const payrollResolveBlockerMutationKey = (organizationId: string, userId: string) =>
+  ["payroll-administration-resolve-blocker", organizationId, userId] as const;
+
+type ResolvePayrollBlockerInput = Parameters<typeof resolvePayrollBlocker>[0];
+
+export type PayrollResolveBlockerMutationState = {
+  status: "pending" | "success" | "error" | "idle";
+  variables: ResolvePayrollBlockerInput | undefined;
+  error: unknown;
+  submittedAt: number;
+};
 
 export function usePayrollAdministration(
   scope: PayrollScope,
@@ -112,12 +125,44 @@ export function usePayrollAdministration(
     networkMode: "always",
   });
 
+  const resolvePayrollBlockerMutation = useMutation({
+    mutationKey: payrollResolveBlockerMutationKey(scope.organizationId, scope.userId),
+    mutationFn: resolvePayrollBlocker,
+    onSuccess: async (_data, variables) => {
+      await queryClient.invalidateQueries({ queryKey: administrationKey });
+      await queryClient.invalidateQueries({ queryKey: queueKey });
+      await queryClient.invalidateQueries({
+        queryKey: payrollAdministrationDetailsKey(
+          variables.organizationId,
+          variables.userId,
+          variables.snapshotId,
+          variables.snapshotHash,
+        ),
+      });
+    },
+    networkMode: "always",
+  });
+  const resolvePayrollBlockerStates = useMutationState<PayrollResolveBlockerMutationState>({
+    filters: {
+      mutationKey: payrollResolveBlockerMutationKey(scope.organizationId, scope.userId),
+      exact: true,
+    },
+    select: (mutation) => ({
+      status: mutation.state.status,
+      variables: mutation.state.variables as ResolvePayrollBlockerInput | undefined,
+      error: mutation.state.error,
+      submittedAt: mutation.state.submittedAt,
+    }),
+  });
+
   return {
     administrationQuery,
     reviewQueueQuery,
     reviewDetailsQuery,
     administrationActionMutation,
     lockPayrollTimesheetMutation,
+    resolvePayrollBlockerMutation,
+    resolvePayrollBlockerStates,
     reopenPayrollTimesheetMutation,
   };
 }

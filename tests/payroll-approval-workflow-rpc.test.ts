@@ -851,6 +851,175 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll approval workflow rpc runtime co
     ).rejects.toThrow();
   });
 
+  it("denies manager approval without an active exact grant and permits it again only after restoring an active exact grant", async () => {
+    const snapshot = await deriveSnapshot(admin, "approval-grant-gate-approve");
+    const snapshotHash = await readSnapshotHash(admin, snapshot.snapshotId);
+
+    await transitionApproval(
+      admin,
+      {
+        action: "submit",
+        snapshotId: snapshot.snapshotId,
+        snapshotHash,
+        attestation: true,
+      },
+      "submit-for-grant-gate-approve",
+      IDS.employeeA,
+    );
+
+    await admin.query(
+      `delete from public.payroll_capability_grants
+       where organization_id = $1::uuid
+         and user_id = $2::uuid
+         and capability::text = 'time.approve_assigned'`,
+      [IDS.orgA, IDS.managerA],
+    );
+
+    for (const [suffix, setupSql, setupParams] of [
+      [
+        "without-active-grant",
+        null,
+        [],
+      ],
+      [
+        "with-wrong-grant",
+        `insert into public.payroll_capability_grants (
+           organization_id, user_id, capability, effective_from, granted_by
+         ) values ($1::uuid, $2::uuid, 'time.review_assigned', '2026-08-01T00:00:00Z', $3::uuid)`,
+        [IDS.orgA, IDS.managerA, IDS.adminA],
+      ],
+      [
+        "with-expired-grant",
+        `insert into public.payroll_capability_grants (
+           organization_id, user_id, capability, effective_from, effective_through, granted_by
+         ) values (
+           $1::uuid,
+           $2::uuid,
+           'time.approve_assigned',
+           '2026-08-01T00:00:00Z',
+           '2026-08-12T23:59:59Z',
+           $3::uuid
+         )`,
+        [IDS.orgA, IDS.managerA, IDS.adminA],
+      ],
+    ] as const) {
+      if (setupSql) {
+        await admin.query(setupSql, setupParams);
+      }
+
+      const before = await countWorkflowRows(admin);
+      await expect(
+        transitionApproval(
+          admin,
+          {
+            action: "manager_approve",
+            snapshotId: snapshot.snapshotId,
+            snapshotHash,
+          },
+          `manager-approve-${suffix}`,
+          IDS.managerA,
+        ),
+      ).rejects.toThrow(/time\.approve_assigned capability is required/i);
+      expect(await countWorkflowRows(admin)).toEqual(before);
+
+      await admin.query(
+        `delete from public.payroll_capability_grants
+         where organization_id = $1::uuid
+           and user_id = $2::uuid
+           and capability::text in ('time.approve_assigned', 'time.review_assigned')`,
+        [IDS.orgA, IDS.managerA],
+      );
+    }
+
+    await admin.query(
+      `insert into public.payroll_capability_grants (
+         organization_id, user_id, capability, effective_from, granted_by
+       ) values ($1::uuid, $2::uuid, 'time.approve_assigned', '2026-08-13T00:00:00Z', $3::uuid)`,
+      [IDS.orgA, IDS.managerA, IDS.adminA],
+    );
+
+    const approved = await transitionApproval(
+      admin,
+      {
+        action: "manager_approve",
+        snapshotId: snapshot.snapshotId,
+        snapshotHash,
+      },
+      "manager-approve-restored-active-grant",
+      IDS.managerA,
+    );
+    expect(approved).toMatchObject({
+      action: "manager_approved",
+      replayed: false,
+      snapshotId: snapshot.snapshotId,
+    });
+  });
+
+  it("denies return without an active exact grant and permits it again only after restoring an active exact grant", async () => {
+    const snapshot = await deriveSnapshot(admin, "approval-grant-gate-return");
+    const snapshotHash = await readSnapshotHash(admin, snapshot.snapshotId);
+
+    await transitionApproval(
+      admin,
+      {
+        action: "submit",
+        snapshotId: snapshot.snapshotId,
+        snapshotHash,
+        attestation: true,
+      },
+      "submit-for-grant-gate-return",
+      IDS.employeeA,
+    );
+
+    await admin.query(
+      `delete from public.payroll_capability_grants
+       where organization_id = $1::uuid
+         and user_id = $2::uuid
+         and capability::text = 'time.approve_assigned'`,
+      [IDS.orgA, IDS.managerA],
+    );
+
+    const before = await countWorkflowRows(admin);
+    await expect(
+      transitionApproval(
+        admin,
+        {
+          action: "return",
+          snapshotId: snapshot.snapshotId,
+          snapshotHash,
+          comment: "Return should fail without the exact active grant",
+        },
+        "return-without-active-grant",
+        IDS.managerA,
+      ),
+    ).rejects.toThrow(/time\.approve_assigned capability is required/i);
+    expect(await countWorkflowRows(admin)).toEqual(before);
+
+    await admin.query(
+      `insert into public.payroll_capability_grants (
+         organization_id, user_id, capability, effective_from, granted_by
+       ) values ($1::uuid, $2::uuid, 'time.approve_assigned', '2026-08-13T00:00:00Z', $3::uuid)`,
+      [IDS.orgA, IDS.managerA, IDS.adminA],
+    );
+
+    const returned = await transitionApproval(
+      admin,
+      {
+        action: "return",
+        snapshotId: snapshot.snapshotId,
+        snapshotHash,
+        comment: "Return is allowed again with the exact active grant",
+      },
+      "return-restored-active-grant",
+      IDS.managerA,
+    );
+    expect(returned).toMatchObject({
+      action: "returned",
+      replayed: false,
+      snapshotId: snapshot.snapshotId,
+    });
+  });
+
   it("rejects unauthorized stale actions after proactive invalidation with zero additional writes", async () => {
     const snapshot = await deriveSnapshot(admin, "approval-stale-authority");
     const snapshotHash = await readSnapshotHash(admin, snapshot.snapshotId);

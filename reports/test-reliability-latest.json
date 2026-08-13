@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-12T22:59:33.190Z",
+  "generatedAt": "2026-08-13T02:29:40.886Z",
   "slo": {
     "suitePassRatePctTarget": 99.5,
     "rollingWindowDays": 14

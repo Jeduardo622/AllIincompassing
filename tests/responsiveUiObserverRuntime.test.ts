@@ -26,6 +26,11 @@ const passHtml = `<!doctype html>
 <style>*{box-sizing:border-box}body{margin:0;max-width:100vw;overflow-x:hidden}.control{width:48px;height:48px}.label{width:8px;height:8px}</style>
 </head><body><div class="label" data-testid="status" aria-label="Status"></div><button class="control">OK</button></body></html>`;
 
+const deceptiveTimeReviewHtml = `<!doctype html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>*{box-sizing:border-box}body{margin:0;max-width:100vw;overflow-x:hidden}</style>
+</head><body><h1>Time Review</h1><h2>Assigned queue</h2></body></html>`;
+
 const blockedHtml = `<!doctype html>
 <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>body{margin:0}button{width:48px;height:48px}</style></head>
@@ -133,6 +138,11 @@ beforeAll(async () => {
     if (request.url === '/observer-runtime-labeled-checkbox') {
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       response.end(labeledCheckboxHtml);
+      return;
+    }
+    if (request.url === '/time/review') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(deceptiveTimeReviewHtml);
       return;
     }
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
@@ -323,7 +333,7 @@ describe('responsive UI observer browser runtime', () => {
     }
   }, 60_000);
 
-  it('runs the fixed payroll-time-review scenario with loopback-only fulfilled approval reads', async () => {
+  it('fails closed when the payroll-time-review production surface is absent', async () => {
     const requestStart = receivedRequests.length;
     const summary = await runResponsiveUiObserver([
       'node',
@@ -333,16 +343,18 @@ describe('responsive UI observer browser runtime', () => {
       '--scenario=payroll-time-review',
     ]);
 
-    expect(summary.ok).toBe(true);
+    expect(summary.ok).toBe(false);
     expect(summary.results).toHaveLength(2);
-    expect(receivedRequests.slice(requestStart)).toEqual([]);
+    expect(receivedRequests.slice(requestStart)).toEqual(['GET /time/review', 'GET /time/review']);
     for (const result of summary.results) {
       artifactPaths.add(result.screenshotPath);
       artifactPaths.add(result.evidencePath);
-      expect(result.result).toBe('pass');
-      expect(result.failureCodes).toEqual([]);
+      expect(result.result).toBe('fail');
+      expect(result.failureCodes).toContain('route-surface-missing');
       const evidence = JSON.parse(await readFile(result.evidencePath, 'utf8')) as Record<string, unknown>;
       expect(evidence.scenarioId).toBe('payroll-time-review');
+      expect(evidence.screenshotPath).toBe(result.screenshotPath);
+      expect(evidence.evidencePath).toBe(result.evidencePath);
       expect(JSON.stringify(evidence)).not.toContain('hourlyRateCents');
       expect(JSON.stringify(evidence)).not.toContain('blockerId');
     }

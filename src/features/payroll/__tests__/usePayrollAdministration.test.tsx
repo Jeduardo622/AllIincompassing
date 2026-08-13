@@ -12,6 +12,7 @@ vi.mock("../api", () => ({
   fetchPayrollReviewDetails: vi.fn(),
   fetchPayrollReviewQueue: vi.fn(),
   lockPayrollTimesheet: vi.fn(),
+  resolvePayrollBlocker: vi.fn(),
   reopenPayrollTimesheet: vi.fn(),
 }));
 
@@ -23,6 +24,7 @@ import {
   fetchPayrollReviewDetails,
   fetchPayrollReviewQueue,
   lockPayrollTimesheet,
+  resolvePayrollBlocker,
   reopenPayrollTimesheet,
 } from "../api";
 import {
@@ -43,17 +45,22 @@ const flushPromises = async () => {
   await Promise.resolve();
 };
 
-function Probe() {
+const firstReview = {
+  snapshotId: "11111111-1111-1111-1111-111111111111",
+  snapshotHash: "a".repeat(64),
+};
+
+function Probe({ selectedReview = firstReview }: { selectedReview?: { snapshotId: string; snapshotHash: string } }) {
   const payrollAdministration = usePayrollAdministration(scope, {
-    selectedReview: {
-      snapshotId: "11111111-1111-1111-1111-111111111111",
-      snapshotHash: "a".repeat(64),
-    },
+    selectedReview,
   });
   return (
     <div>
       <span>{payrollAdministration.administrationQuery.data?.state ?? "loading"}</span>
       <span data-testid="review-details-status">{payrollAdministration.reviewDetailsQuery.status}</span>
+      <span data-testid="pending-resolve-count">
+        {payrollAdministration.resolvePayrollBlockerStates.filter((state) => state.status === "pending").length}
+      </span>
       <button
         type="button"
         onClick={() => void payrollAdministration.administrationActionMutation.mutateAsync({
@@ -90,6 +97,36 @@ function Probe() {
         })}
       >
         reopen
+      </button>
+      <button
+        type="button"
+        onClick={() => void payrollAdministration.resolvePayrollBlockerMutation.mutateAsync({
+          ...scope,
+          idempotencyKey: "resolve-key",
+          snapshotId: "11111111-1111-1111-1111-111111111111",
+          snapshotHash: "a".repeat(64),
+          blockerType: "timekeeping_exception",
+          blockerId: "77777777-7777-4777-8777-777777777777",
+          resolution: "resolved",
+          reason: "Resolved after verification.",
+        })}
+      >
+        resolve
+      </button>
+      <button
+        type="button"
+        onClick={() => void payrollAdministration.resolvePayrollBlockerMutation.mutateAsync({
+          ...scope,
+          idempotencyKey: "resolve-key-2",
+          snapshotId: "11111111-1111-1111-1111-111111111111",
+          snapshotHash: "a".repeat(64),
+          blockerType: "timekeeping_exception",
+          blockerId: "66666666-6666-4666-8666-666666666666",
+          resolution: "resolved",
+          reason: "Resolved the second blocker.",
+        })}
+      >
+        resolve-second
       </button>
     </div>
   );
@@ -166,6 +203,7 @@ describe("usePayrollAdministration", () => {
     vi.mocked(executePayrollAdministrationAction).mockResolvedValue({ action: "generate_periods", payGroupId: "22222222-2222-4222-8222-222222222222", generatedCount: 2, replayed: false, idempotencyKey: "admin-key" } as never);
     vi.mocked(lockPayrollTimesheet).mockResolvedValue({} as never);
     vi.mocked(reopenPayrollTimesheet).mockResolvedValue({} as never);
+    vi.mocked(resolvePayrollBlocker).mockResolvedValue({} as never);
   });
 
   it("uses exact scoped keys for administration, queue, and details", async () => {
@@ -217,6 +255,94 @@ describe("usePayrollAdministration", () => {
     await waitFor(() => expect(vi.mocked(reopenPayrollTimesheet)).toHaveBeenCalled());
     expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: payrollAdministrationQueryKey("org-1", "user-1", "2026-08-12") }));
     expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: payrollAdministrationQueueKey("org-1", "user-1", "2026-08-12") }));
+  });
+
+  it("invalidates administration, queue, and selected details after resolve blocker", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(client, "invalidateQueries");
+    render(
+      <QueryClientProvider client={client}>
+        <Probe />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("ok");
+    screen.getByRole("button", { name: "resolve" }).click();
+
+    await waitFor(() => expect(vi.mocked(resolvePayrollBlocker)).toHaveBeenCalled());
+    expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: payrollAdministrationQueryKey("org-1", "user-1", "2026-08-12") }));
+    expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: payrollAdministrationQueueKey("org-1", "user-1", "2026-08-12") }));
+    expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: payrollAdministrationDetailsKey("org-1", "user-1", "11111111-1111-1111-1111-111111111111", "a".repeat(64)) }));
+  });
+
+  it("invalidates resolve details from mutation variables when selection changes while pending", async () => {
+    let settleResolve: ((value: Awaited<ReturnType<typeof resolvePayrollBlocker>>) => void) | null = null;
+    vi.mocked(resolvePayrollBlocker).mockImplementation(() => new Promise((resolve) => {
+      settleResolve = resolve;
+    }) as ReturnType<typeof resolvePayrollBlocker>);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(client, "invalidateQueries");
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <Probe />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("ok");
+    screen.getByRole("button", { name: "resolve" }).click();
+    await waitFor(() => expect(vi.mocked(resolvePayrollBlocker)).toHaveBeenCalled());
+
+    const replacementReview = {
+      snapshotId: "22222222-2222-4222-8222-222222222222",
+      snapshotHash: "b".repeat(64),
+    };
+    rerender(
+      <QueryClientProvider client={client}>
+        <Probe selectedReview={replacementReview} />
+      </QueryClientProvider>,
+    );
+
+    settleResolve?.({} as Awaited<ReturnType<typeof resolvePayrollBlocker>>);
+
+    const submittedDetailsKey = payrollAdministrationDetailsKey(
+      "org-1",
+      "user-1",
+      firstReview.snapshotId,
+      firstReview.snapshotHash,
+    );
+    const replacementDetailsKey = payrollAdministrationDetailsKey(
+      "org-1",
+      "user-1",
+      replacementReview.snapshotId,
+      replacementReview.snapshotHash,
+    );
+    await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: submittedDetailsKey })));
+    expect(invalidateSpy).not.toHaveBeenCalledWith(expect.objectContaining({ queryKey: replacementDetailsKey }));
+    expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: payrollAdministrationQueryKey("org-1", "user-1", "2026-08-12") }));
+    expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: payrollAdministrationQueueKey("org-1", "user-1", "2026-08-12") }));
+  });
+
+  it("retains independent pending state for concurrent blocker resolutions", async () => {
+    const settlers: Array<(value: Awaited<ReturnType<typeof resolvePayrollBlocker>>) => void> = [];
+    vi.mocked(resolvePayrollBlocker).mockImplementation(() => new Promise((resolve) => {
+      settlers.push(resolve);
+    }) as ReturnType<typeof resolvePayrollBlocker>);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <Probe />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("ok");
+    screen.getByRole("button", { name: "resolve", exact: true }).click();
+    screen.getByRole("button", { name: "resolve-second" }).click();
+
+    await waitFor(() => expect(screen.getByTestId("pending-resolve-count")).toHaveTextContent("2"));
+    expect(vi.mocked(resolvePayrollBlocker)).toHaveBeenCalledTimes(2);
+
+    settlers.forEach((settle) => settle({} as Awaited<ReturnType<typeof resolvePayrollBlocker>>));
+    await waitFor(() => expect(screen.getByTestId("pending-resolve-count")).toHaveTextContent("0"));
   });
 
   it("waits for authoritative administration capabilities before loading review details", async () => {

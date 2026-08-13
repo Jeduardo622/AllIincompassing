@@ -12,6 +12,7 @@ export type ObserverArgs = {
   baseUrl: string;
   routes: string[];
   scenario?: ObserverScenario;
+  artifactRunId?: string;
 };
 
 export type ObserverScenario = 'schedule-overlap' | 'payroll-time' | 'payroll-time-review';
@@ -167,6 +168,7 @@ export const parseObserverArgs = (argv: string[]): ObserverArgs => {
   let baseUrl: string | undefined;
   const routes: string[] = [];
   let scenario: ObserverScenario | undefined;
+  let artifactRunId: string | undefined;
 
   for (const arg of argv.slice(2)) {
     if (arg.startsWith('--base-url=')) {
@@ -195,6 +197,17 @@ export const parseObserverArgs = (argv: string[]): ObserverArgs => {
       scenario = candidate;
       continue;
     }
+    if (arg.startsWith('--artifact-run-id=')) {
+      if (artifactRunId) {
+        throw new Error('Artifact run ID may be provided only once.');
+      }
+      const candidate = arg.slice('--artifact-run-id='.length);
+      if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(candidate)) {
+        throw new Error('Artifact run ID must be a lowercase alphanumeric slug.');
+      }
+      artifactRunId = candidate;
+      continue;
+    }
     throw new Error(`Unknown observer argument: ${arg}`);
   }
 
@@ -219,7 +232,7 @@ export const parseObserverArgs = (argv: string[]): ObserverArgs => {
       throw new Error('The payroll-time-review scenario requires exactly one --route=/time/review.');
     }
   }
-  return { baseUrl, routes, scenario };
+  return { baseUrl, routes, scenario, artifactRunId };
 };
 
 export const classifyLayout = (

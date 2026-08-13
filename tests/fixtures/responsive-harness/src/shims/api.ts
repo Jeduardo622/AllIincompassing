@@ -170,7 +170,7 @@ export const callApi = async (path: string, init?: RequestInit): Promise<Respons
           canReviewAssigned: true,
           canApproveAssigned: true,
           canViewCompensation: false,
-          hasOrgPayrollAccess: true,
+          hasOrgPayrollAccess: false,
         },
         queue: [{
           employeeLabel: "Employee 1001",
@@ -178,7 +178,7 @@ export const callApi = async (path: string, init?: RequestInit): Promise<Respons
           payPeriodId: "10000000-0000-4000-8000-000000000007",
           periodStart: "2026-08-01",
           periodEnd: "2026-08-14",
-          state: "manager_approved",
+          state: "submitted",
           blockerCount: 1,
           submittedAt: "2026-08-12T18:00:00.000Z",
           snapshot: {

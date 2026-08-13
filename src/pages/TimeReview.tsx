@@ -79,6 +79,10 @@ export function TimeReview() {
     });
   }, [payrollReviewQueueQuery.data?.queue]);
 
+  useEffect(() => {
+    setReturnComment("");
+  }, [selectedSnapshot?.snapshotId, selectedSnapshot?.snapshotHash]);
+
   if (loading || profileLoading || payrollReviewQueueQuery.isLoading) {
     return (
       <div className="mx-auto flex max-w-5xl items-center justify-center px-4 py-10">

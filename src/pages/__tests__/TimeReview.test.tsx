@@ -149,6 +149,57 @@ describe("TimeReview", () => {
     expect(returnButton).not.toBeDisabled();
   });
 
+  it("preserves the return comment across same-snapshot refresh and clears it when the selected snapshot changes", async () => {
+    const { rerender } = renderPage();
+
+    const returnCommentField = await screen.findByPlaceholderText(/return comment/i);
+    await userEvent.type(returnCommentField, "Needs correction.");
+    expect(returnCommentField).toHaveValue("Needs correction.");
+
+    queueData = {
+      ...queueData,
+      queue: [buildQueueItem("Employee 1001", SNAPSHOT_A)],
+    };
+    rerender(buildPage());
+    expect(screen.getByPlaceholderText(/return comment/i)).toHaveValue("Needs correction.");
+
+    queueData = {
+      ...queueData,
+      queue: [
+        buildQueueItem("Employee 1001", SNAPSHOT_A),
+        buildQueueItem("Employee 1002", SNAPSHOT_B),
+      ],
+    };
+    rerender(buildPage());
+    await userEvent.click(screen.getByRole("button", { name: /employee 1002/i }));
+    expect(screen.getByPlaceholderText(/return comment/i)).toHaveValue("");
+  });
+
+  it("clears the return comment when the queue replaces the selected snapshot with a new head", async () => {
+    queueData.queue = [
+      buildQueueItem("Employee 1001", SNAPSHOT_A),
+      buildQueueItem("Employee 1002", SNAPSHOT_B),
+    ];
+    const { rerender } = renderPage();
+
+    await userEvent.click(screen.getByRole("button", { name: /employee 1002/i }));
+    const returnCommentField = await screen.findByPlaceholderText(/return comment/i);
+    await userEvent.type(returnCommentField, "Needs correction.");
+    expect(returnCommentField).toHaveValue("Needs correction.");
+
+    queueData = {
+      ...queueData,
+      queue: [buildQueueItem("Employee 1003", SNAPSHOT_C)],
+    };
+    rerender(buildPage());
+
+    await waitFor(() => expect(mockUsePayrollApprovals).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ details: SNAPSHOT_C }),
+    ));
+    expect(screen.getByPlaceholderText(/return comment/i)).toHaveValue("");
+  });
+
   it("preserves the exact selected snapshot when the refreshed queue still contains it", async () => {
     queueData.queue = [
       buildQueueItem("Employee 1001", SNAPSHOT_A),

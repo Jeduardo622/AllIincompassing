@@ -175,6 +175,13 @@ const PayrollApprovalPanel = ({
   scope: { organizationId: string; userId: string; localDate: string };
 }) => {
   const [attested, setAttested] = useState(false);
+  const snapshotBinding = approvalQuery.data?.state === "ok" && approvalQuery.data.approval
+    ? `${approvalQuery.data.approval.snapshot.id ?? "missing"}:${approvalQuery.data.approval.snapshot.hash ?? "missing"}`
+    : null;
+
+  useEffect(() => {
+    setAttested(false);
+  }, [snapshotBinding]);
 
   if (approvalQuery.isLoading) {
     return (

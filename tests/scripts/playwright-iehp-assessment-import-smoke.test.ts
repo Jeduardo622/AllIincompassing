@@ -20,6 +20,9 @@ import {
   normalizeAssessmentChecklistResponse,
   parseAssessmentPlanPdfPreflight,
   readSyntheticGeneratedDocxText,
+  assertIehpPdfMiniMatrixPreflight,
+  assertIehpPdfMiniMatrixTasksSucceeded,
+  runIehpPdfMiniMatrixTasks,
   restoreIehpGeneratedDocxReviewSelection,
   selectConfiguredSmokeClient,
 } from '../../scripts/playwright-iehp-assessment-import-smoke';
@@ -103,6 +106,71 @@ describe('restoreIehpGeneratedDocxReviewSelection', () => {
         maxPollAttempts: 2,
       }),
     ).rejects.toThrow('IEHP assessment queue did not restore a review or uploaded assessment');
+  });
+});
+
+describe('IEHP PDF mini-matrix task runner', () => {
+  it('hard-stops ambiguous document-phone precedence before any matrix task can run', () => {
+    const runTask = vi.fn();
+
+    expect(() => assertIehpPdfMiniMatrixPreflight({
+      cases: [
+        { id: 'safe-case', documentPhone: '951.555.0101' },
+        { id: 'ambiguous-case', documentPhone: '(909) 555-4242' },
+      ],
+      expectedAssessorPhone: '909-555-4242',
+    })).toThrow(
+      'IEHP PDF mini matrix case ambiguous-case normalized document phone matched the configured snapshot phone, so precedence proof would be ambiguous.',
+    );
+    expect(runTask).not.toHaveBeenCalled();
+  });
+
+  it('attempts later tasks after a rejection and throws only after every task was attempted', async () => {
+    const attempts: string[] = [];
+    const emittedCaseIds: string[] = [];
+    const result = await runIehpPdfMiniMatrixTasks({
+      tasks: [
+        {
+          caseId: 'first-case',
+          run: async () => {
+            attempts.push('first-case');
+            return { caseId: 'first-case', cleanupVerified: true };
+          },
+        },
+        {
+          caseId: 'rejected-case',
+          run: async () => {
+            attempts.push('rejected-case');
+            throw new Error('private rejection text');
+          },
+        },
+        {
+          caseId: 'later-case',
+          run: async () => {
+            attempts.push('later-case');
+            return { caseId: 'later-case', cleanupVerified: true };
+          },
+        },
+      ],
+      onSuccess: (_evidence, caseId) => emittedCaseIds.push(caseId),
+      onFailure: (evidence) => emittedCaseIds.push(evidence.caseId),
+    });
+
+    expect(attempts).toEqual(['first-case', 'rejected-case', 'later-case']);
+    expect(emittedCaseIds).toEqual(['first-case', 'rejected-case', 'later-case']);
+    expect(result.failedCases).toEqual([{
+      ok: false,
+      mode: 'pdf-mini-matrix-case-failure',
+      caseId: 'rejected-case',
+      templateType: 'iehp_fba',
+      cleanupVerified: false,
+      failureCategory: 'case_execution_failed',
+      errorCategory: 'matrix_failures_detected',
+    }]);
+    expect(() => assertIehpPdfMiniMatrixTasksSucceeded(result.failedCases)).toThrow(
+      'IEHP PDF mini matrix encountered one or more case-local failures.',
+    );
+    expect(attempts).toHaveLength(3);
   });
 });
 
@@ -1012,7 +1080,7 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     };
 
     const miniMatrixFlagIndex = script.indexOf("const isPdfMiniMatrixMode = process.argv.includes('--pdf-mini-matrix');");
-    const matrixCaseLoopIndex = script.indexOf('for (const caseDefinition of IEHP_PDF_MINI_MATRIX_CASES)');
+    const matrixTaskBuildIndex = script.indexOf('const matrixTasks = IEHP_PDF_MINI_MATRIX_CASES.map');
     const generatorPageIndex = script.indexOf('const generatorPage = await context.newPage();');
     const setContentIndex = script.indexOf('await generatorPage.setContent(buildIehpPdfMiniMatrixHtml(caseDefinition));');
     const pagePdfIndex = script.indexOf("const pdfBuffer = await generatorPage.pdf({ format: 'Letter', printBackground: true });");
@@ -1036,7 +1104,7 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     const generatorCloseIndex = script.indexOf('await generatorPage.close();');
     const pdfFileNameIndex = script.indexOf(
       "buildIehpSmokeUploadFileName(Date.now(), 'pdf')",
-      matrixCaseLoopIndex,
+      matrixTaskBuildIndex,
     );
     const pdfMimeIndex = script.indexOf("mimeType: 'application/pdf'", pdfFileNameIndex);
     const caseRunnerIndex = script.indexOf('const runSmokeCase = async (');
@@ -1045,10 +1113,10 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     const provenanceFetchIndex = script.indexOf('const provenanceRows = await fetchIehpAssessmentProvenance');
     const assessorPhoneAssertionIndex = script.indexOf('const assessorPhoneAssertion = assertIehpAssessorPhoneChecklist');
     const referralDateAssertionIndex = script.indexOf('const referralDateAssertion = caseInput.expectedReferralDate');
-    const caseEvidenceIndex = script.indexOf('console.log(JSON.stringify(caseEvidence, null, 2));');
+    const caseEvidenceIndex = script.indexOf('console.log(JSON.stringify(sanitizePublicMatrixCaseEvidence(caseEvidence), null, 2));');
     const cleanupCallIndex = script.indexOf('await cleanupAssessmentImportArtifacts({');
     const aggregateEvidenceIndex = script.indexOf('console.log(JSON.stringify(aggregateEvidence, null, 2));');
-    const aggregateCleanupIndex = script.indexOf('cleanupVerifiedCases: passedCases.length,');
+    const aggregateCleanupIndex = script.indexOf('cleanupVerifiedCases,');
 
     expect(packageJson.scripts?.['playwright:iehp-assessment-import-smoke']).toBe(
       'tsx scripts/playwright-iehp-assessment-import-smoke.ts',
@@ -1058,8 +1126,8 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     );
     expect(miniMatrixFlagIndex).toBeGreaterThanOrEqual(0);
     expect(caseRunnerIndex).toBeGreaterThan(miniMatrixFlagIndex);
-    expect(matrixCaseLoopIndex).toBeGreaterThan(miniMatrixFlagIndex);
-    expect(generatorPageIndex).toBeGreaterThan(matrixCaseLoopIndex);
+    expect(matrixTaskBuildIndex).toBeGreaterThan(miniMatrixFlagIndex);
+    expect(generatorPageIndex).toBeGreaterThan(matrixTaskBuildIndex);
     expect(setContentIndex).toBeGreaterThan(generatorPageIndex);
     expect(pagePdfIndex).toBeGreaterThan(setContentIndex);
     expect(scanModeIndex).toBeGreaterThan(setContentIndex);
@@ -1092,28 +1160,26 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     expect(aggregateEvidenceIndex).toBeGreaterThan(aggregateCleanupIndex);
   });
 
-  it('adds the existing skills behaviors proof as one cleaned pdf mini matrix case', () => {
+  it('runs every pdf mini matrix case and the skills behaviors proof through the sequential task runner', () => {
     const script = readFileSync(
       path.join(process.cwd(), 'scripts/playwright-iehp-assessment-import-smoke.ts'),
       'utf8',
     );
 
-    const matrixCaseLoopIndex = script.indexOf('for (const caseDefinition of IEHP_PDF_MINI_MATRIX_CASES)');
+    const matrixTaskBuildIndex = script.indexOf('const matrixTasks = IEHP_PDF_MINI_MATRIX_CASES.map');
+    const matrixPreflightIndex = script.indexOf('assertIehpPdfMiniMatrixPreflight({');
     const reusableProofRunnerIndex = script.indexOf('const runSkillsBehaviorsProofCase = async () =>');
-    const matrixProofCallIndex = script.indexOf(
-      'const skillsBehaviorsCaseEvidence = await runSkillsBehaviorsProofCase();',
-      matrixCaseLoopIndex,
-    );
-    const matrixProofPushIndex = script.indexOf('passedCases.push(skillsBehaviorsCaseEvidence);', matrixProofCallIndex);
+    const matrixProofTaskIndex = script.indexOf("caseId: 'skills-behaviors-proof'", matrixTaskBuildIndex);
+    const runnerCallIndex = script.indexOf('await runIehpPdfMiniMatrixTasks({', matrixProofTaskIndex);
     const evidenceModeIndex = script.indexOf('mode: isSkillsBehaviorsProofMode');
     const matrixEvidenceModeIndex = script.indexOf("? 'pdf-mini-matrix-case'", evidenceModeIndex);
     const aggregateTotalIndex = script.indexOf('totalCases: IEHP_PDF_MINI_MATRIX_CASES.length + 1,');
     const computedSkillsCountIndex = script.indexOf(
       'const skillsBehaviorsVerifiedCases = passedCases.filter(',
-      matrixProofPushIndex,
+      runnerCallIndex,
     );
-    const exactSkillsCountGuardIndex = script.indexOf('if (skillsBehaviorsVerifiedCases !== 1)', computedSkillsCountIndex);
-    const aggregateSkillsIndex = script.indexOf('skillsBehaviorsVerifiedCases,', exactSkillsCountGuardIndex);
+    const aggregateSkillsIndex = script.indexOf('skillsBehaviorsVerifiedCases,', computedSkillsCountIndex);
+    const finalFailureThrowIndex = script.indexOf('assertIehpPdfMiniMatrixTasksSucceeded(failedCases);', aggregateSkillsIndex);
     const standaloneProofCallIndex = script.indexOf(
       'const proofCaseEvidence = await runSkillsBehaviorsProofCase();',
       aggregateSkillsIndex,
@@ -1122,13 +1188,33 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     expect(reusableProofRunnerIndex).toBeGreaterThanOrEqual(0);
     expect(evidenceModeIndex).toBeGreaterThanOrEqual(0);
     expect(matrixEvidenceModeIndex).toBeGreaterThan(evidenceModeIndex);
-    expect(matrixProofCallIndex).toBeGreaterThan(matrixCaseLoopIndex);
-    expect(matrixProofPushIndex).toBeGreaterThan(matrixProofCallIndex);
-    expect(computedSkillsCountIndex).toBeGreaterThan(matrixProofPushIndex);
-    expect(exactSkillsCountGuardIndex).toBeGreaterThan(computedSkillsCountIndex);
-    expect(aggregateTotalIndex).toBeGreaterThan(exactSkillsCountGuardIndex);
+    expect(matrixTaskBuildIndex).toBeGreaterThanOrEqual(0);
+    expect(matrixPreflightIndex).toBeGreaterThanOrEqual(0);
+    expect(matrixPreflightIndex).toBeLessThan(matrixTaskBuildIndex);
+    expect(matrixProofTaskIndex).toBeGreaterThan(matrixTaskBuildIndex);
+    expect(runnerCallIndex).toBeGreaterThan(matrixProofTaskIndex);
+    expect(computedSkillsCountIndex).toBeGreaterThan(runnerCallIndex);
+    expect(aggregateTotalIndex).toBeGreaterThan(computedSkillsCountIndex);
     expect(aggregateSkillsIndex).toBeGreaterThan(aggregateTotalIndex);
+    expect(finalFailureThrowIndex).toBeGreaterThan(aggregateSkillsIndex);
     expect(standaloneProofCallIndex).toBeGreaterThan(aggregateSkillsIndex);
+  });
+
+  it('raises the hosted extraction poll ceiling above the server runtime budget and emits sanitized per-case matrix failures', () => {
+    const script = readFileSync(
+      path.join(process.cwd(), 'scripts/playwright-iehp-assessment-import-smoke.ts'),
+      'utf8',
+    );
+
+    expect(script).toContain('const EXTRACTION_TIMEOUT_MS = 360_000;');
+    expect(script).toContain("mode: 'pdf-mini-matrix-case-failure'");
+    expect(script).toContain("failureCategory: 'case_execution_failed'");
+    expect(script).toContain("errorCategory: 'matrix_failures_detected'");
+    expect(script).toContain('const sanitizePublicMatrixCaseEvidence = (');
+    expect(script).toContain('screenshot,');
+    expect(script).toContain('errorMessage,');
+    expect(script).toContain('assessorPhoneAssertion,');
+    expect(script).toContain("cleanupVerified: false");
   });
 
   it('keeps default docx invocation free of referral-date requirements while matrix cases keep them', () => {

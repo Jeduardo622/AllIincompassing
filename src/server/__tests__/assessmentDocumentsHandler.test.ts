@@ -1287,7 +1287,9 @@ describe("assessmentDocumentsHandler", () => {
     );
   });
 
-  it("skips fresh extraction_running documents but reclaims stale extraction_running documents", async () => {
+  it("skips extraction_running documents until the explicit 10-minute stale reclaim boundary, then reclaims them", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-13T12:00:00.000Z"));
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
       organizationId: "org-1",
@@ -1318,7 +1320,9 @@ describe("assessmentDocumentsHandler", () => {
               template_type: "caloptima_fba",
               bucket_id: "client-documents",
               object_path: "clients/22222222-2222-4222-8222-222222222222/assessments/fba.pdf",
-              updated_at: documentLoadCount === 1 ? new Date().toISOString() : "2020-01-01T00:00:00.000Z",
+              updated_at: documentLoadCount === 1
+                ? "2026-08-13T11:50:01.000Z"
+                : "2026-08-13T11:50:00.000Z",
             },
           ],
         };
@@ -1375,6 +1379,10 @@ describe("assessmentDocumentsHandler", () => {
     );
     expect(freshResponse.status).toBe(202);
     await expect(freshResponse.json()).resolves.toMatchObject({ skipped: true, status: "extraction_running" });
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/functions/v1/extract-assessment-fields"),
+      expect.anything(),
+    );
 
     const staleResponse = await assessmentDocumentsExtractionBackgroundHandler(
       new Request("http://localhost/.netlify/functions/assessment-documents-extract-background", {
@@ -4115,8 +4123,14 @@ describe("assessmentDocumentsHandler", () => {
       extraction_error: null,
     });
     await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(55_000);
-    const documentStatusBodies = vi
+    await vi.advanceTimersByTimeAsync(299_999);
+    let documentStatusBodies = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-timeout"))
+      .map(([, init]) => String((init as RequestInit | undefined)?.body ?? ""));
+    expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extraction_failed\""))).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    documentStatusBodies = vi
       .mocked(fetchJson)
       .mock.calls.filter(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-timeout"))
       .map(([, init]) => String((init as RequestInit | undefined)?.body ?? ""));

@@ -20,9 +20,9 @@ import { serverLogger } from "../../lib/logger/server";
 
 const SUPPORTED_TEMPLATE_TYPES = ["caloptima_fba", "iehp_fba"] as const;
 const ASSESSMENT_DOCUMENT_BUCKET_ID = "client-documents";
-const EXTRACTION_WORKFLOW_TIMEOUT_MS = 55_000;
+const EXTRACTION_WORKFLOW_TIMEOUT_MS = 5 * 60_000;
 const EXTRACTION_RUNNING_STATUS = "extraction_running";
-const EXTRACTION_RUNNING_STALE_MS = EXTRACTION_WORKFLOW_TIMEOUT_MS * 2;
+const EXTRACTION_RUNNING_STALE_MS = 10 * 60_000;
 const AUTO_DRAFT_STRUCTURED_SECTION_STATUSES = new Set(["drafted", "approved"] as const);
 const PENDING_EXTRACTION_STATUSES = new Set(["uploaded", "extracting", "extraction_running"] as const);
 const RETRYABLE_EDGE_EXTRACTION_STATUSES = new Set([502, 503, 504, 522, 524, 546]);

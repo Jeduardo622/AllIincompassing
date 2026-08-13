@@ -50,9 +50,11 @@
     ]
   },
   "branchContext": {
-    "branch": "codex/win-275-terminology-successor",
+    "branch": "codex/win-275-terminology-ui-review-fixes",
+    "originalBranch": "codex/win-275-terminology-successor",
     "baseMergeCommit": "37e7cbfa888ebb3b33cf895cb9638f6b6590bd5f",
-    "implementationHeadCommit": "e5f9e0843149df6260838d75df66feebb11a979c",
+    "originalImplementationHeadCommit": "e5f9e0843149df6260838d75df66feebb11a979c",
+    "implementationHeadCommit": "2fb23276af27355d14e98a8d202e21cbc9b01ff9",
     "mergedVerificationHeadCommit": "f3be4aaf558c6331724f1ba1439ad7d98e4000ad"
   },
   "successorAgents": {
@@ -110,6 +112,18 @@
     },
     "responsive-closure-security-engineer": {
       "agentId": "019ff29d-0687-7e60-a659-535a66c25a49",
+      "status": "APPROVE"
+    },
+    "review-fix-code-review-engineer": {
+      "agentId": "019ff8d8-5a76-70a2-8117-2f84f6f436ea",
+      "status": "APPROVE"
+    },
+    "review-fix-test-engineer": {
+      "agentId": "019ff8d8-5c33-78f1-a833-b13bc1bb2747",
+      "status": "PASS_WITH_LOCAL_FULL_SUITE_RESOURCE_BLOCKER"
+    },
+    "review-fix-security-engineer": {
+      "agentId": "019ff8d8-5fc5-7321-b98e-134d07008c90",
       "status": "APPROVE"
     }
   },
@@ -207,7 +221,7 @@
       "path": "src/components/ClientDetails/ProgramsGoalsTab.tsx",
       "algorithm": "sha256",
       "canonicalization": "UTF-8 text with CRLF normalized to LF, matching tests/agentWorkLedgerHostedShadowProof.test.ts",
-      "canonicalSha256": "b35c8c719a68cdba9be9183b99a5a690da26d097bb12915c354243102b4bdea6"
+      "canonicalSha256": "093d2287e9c2e9b01b40f00b93cfaa7b35d4f1dcc2037408f83b5cba1c0de859"
     }
   },
   "expectedHashDrift": {
@@ -217,7 +231,7 @@
       {
         "path": "src/components/ClientDetails/ProgramsGoalsTab.tsx",
         "manifestSha256": "fbc032c2dddca32dd846ce1a89e80fdd0cb45500bb31f21c773cc2c33dd74fa4",
-        "currentBranchCanonicalSha256": "b35c8c719a68cdba9be9183b99a5a690da26d097bb12915c354243102b4bdea6"
+        "currentBranchCanonicalSha256": "093d2287e9c2e9b01b40f00b93cfaa7b35d4f1dcc2037408f83b5cba1c0de859"
       }
     ],
     "noManifestUpdatePerformed": false

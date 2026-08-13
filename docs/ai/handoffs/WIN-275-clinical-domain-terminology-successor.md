@@ -63,9 +63,9 @@ The current terminology branch changes `src/components/ClientDetails/ProgramsGoa
 
 - rolling manifest path: `docs/ai/reviews/WIN-275-solo-maintainer-attestation.json`
 - manifest hash recorded there for `src/components/ClientDetails/ProgramsGoalsTab.tsx`: `fbc032c2dddca32dd846ce1a89e80fdd0cb45500bb31f21c773cc2c33dd74fa4`
-- current canonical terminology-branch hash for that file: `b35c8c719a68cdba9be9183b99a5a690da26d097bb12915c354243102b4bdea6`
+- current canonical review-fix hash for that file: `093d2287e9c2e9b01b40f00b93cfaa7b35d4f1dcc2037408f83b5cba1c0de859`
 - canonicalization: UTF-8 text with CRLF normalized to LF, matching `tests/agentWorkLedgerHostedShadowProof.test.ts`
-- raw Windows workspace-byte SHA-256 from `Get-FileHash`: `88ac7775906c914364b54b4b70223ee39df9f76949c3a134485628ed1cfcb76f`
+- raw Windows workspace-byte SHA-256 from `Get-FileHash`: `422875b62142c14564a43001230e29854a05a59ab13d6179c298b6fb07aa0988`
 
 ## Rolling Manifest Decision
 
@@ -115,3 +115,17 @@ Specialist results:
 - result: `pass-with-blocked-checks`
 - residual risk: the four post-merge UI review findings remain for the stacked follow-up PR; critical-lane owner review and exact-head CI are mandatory
 - pr handoff: ready after Linear linkage, commit, push, and `pr-hygiene`
+
+## 2026-08-12 UI Review-Fix Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical` because `ProgramsGoalsTab.tsx` remains hash-bound review evidence
+- affected routes: `/clients/test-client` and `/schedule`
+- changes: distinguish care-plan and goal-domain creation actions, present legacy API program errors as domain errors, and separate query failure from empty-domain state while blocking save until retry
+- immutable UI implementation head: `2fb23276af27355d14e98a8d202e21cbc9b01ff9`
+- focused tests: `AddSessionNoteModal.test.tsx` and `ProgramsGoalsTab.test.tsx` passed `142/142`; hosted-proof contract passed `38/38`
+- standard checks: lint, typecheck, and production build passed
+- full local union: policy, lint, and typecheck passed before `test:ci` hit a Vitest worker RPC timeout in the pre-existing progression integration; that integration immediately passed `10/10` in isolation, while the parent evidence branch full suite passed `4236/4236`
+- responsive observer: `4/4` passed at desktop `1440x900` and mobile `390x844`; sanitized evidence is under `artifacts/responsive-ui-observer/route-e1da5b24224600e4b86f943f21a449b421da6772c554c840aecbaab450cb8fcf.*` and `artifacts/responsive-ui-observer/route-b8269c2977ef848259bf5694da1ebe4e7a041d55cb00a9e9fd3689b0c23f675f.*`
+- blocked checks: local full-suite coverage worker stability and credential-backed `npm run ci:playwright`; exact-head CI remains required
+- residual risk: stacked PR must merge only after evidence PR `#934`, exact-head CI, and owner review

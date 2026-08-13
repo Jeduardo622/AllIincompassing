@@ -87,6 +87,12 @@ function buildChain(rows: unknown[] = []): QueryChain {
   return chain;
 }
 
+function buildErrorChain(message: string): QueryChain {
+  const chain = buildChain();
+  chain.order.mockResolvedValue({ data: null, error: new Error(message) });
+  return chain;
+}
+
 // Sessions query ends with .order(...).limit(50) — order must return the chain
 // so that .limit() can be called on it as the actual terminal method.
 function buildChainWithLimit(rows: unknown[] = []): QueryChain {
@@ -391,6 +397,23 @@ describe('AddSessionNoteModal — per-goal note textareas', () => {
 
     expect(await screen.findByText('No active goals found for this client.')).toBeInTheDocument();
     expect(screen.queryByText('No active domains found for this client.')).not.toBeInTheDocument();
+  });
+
+  it('shows a retryable load error instead of an empty-domain message when domain data fails', async () => {
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') return buildErrorChain('domain query failed') as any;
+      if (table === 'goals') return buildChain([]) as any;
+      if (table === 'sessions') return buildChainWithLimit([mockSession]) as any;
+      if (table === 'session_goals') return buildChain([]) as any;
+      return buildChain([]) as any;
+    });
+
+    renderWithProviders(<AddSessionNoteModal {...defaultProps} clientId="client-load-error" />);
+
+    expect(await screen.findByText('Unable to load domains and goals.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry loading domains and goals' })).toBeInTheDocument();
+    expect(screen.queryByText('No active domains found for this client.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Note' })).toBeDisabled();
   });
 
   it('does not treat an inactive domain as active', async () => {

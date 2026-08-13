@@ -24,6 +24,8 @@ Resolve all eight non-outdated Codex review findings left on merged PR #932 and 
 7. Render the production `/time/review` component in the isolated responsive harness instead of handcrafted observer HTML.
 8. Serialize the exact run-namespaced responsive artifact paths into each evidence card.
 9. Preserve independent pending and error identity when multiple payroll blockers are resolved concurrently.
+10. Accept the strict shared Edge authentication 401 envelope and preserve its safe authentication challenge.
+11. Fail responsive proof when the production Time Review heading and assigned queue surface do not render.
 
 ## Non-goals
 
@@ -89,6 +91,8 @@ Implementation and local verification are complete. The isolated Supabase previe
   - `PAYROLL_LOCAL_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres npx vitest run tests/payroll-approval-workflow-rpc.test.ts`: pass, 26 tests
   - exact responsive regression batch: pass, 4 files and 52 tests
   - follow-up Codex regression batch for concurrent blocker state and namespaced evidence cards: pass after fixture correction, 5 files and 82 tests; the final payroll-only rerun passed 2 files and 33 tests
+  - second exact-head Codex regressions for shared Edge 401 handling and Time Review surface readiness: pass independently, API 36 tests, observer runtime 18 tests, and production harness 3 tests; a prior parallel browser run caused an unrelated schedule harness timeout, and the exact harness then passed independently
+  - final serialized follow-up verification: pass, app/API/parser batch 4 files and 97 tests, observer runtime 18 tests, production harness 3 tests, followed by typecheck, lint, build, focused policy checks, and diff validation
   - `npm run ci:check-focused`: pass; database-backed preview/grant checks skipped because `SUPABASE_DB_URL` was not configured
   - `npm run lint`: pass
   - `npm run typecheck`: pass
@@ -115,6 +119,9 @@ Implementation and local verification are complete. The isolated Supabase previe
 - responsive review found and required artifact namespace isolation; the exact combined proof and all three route observations pass, and final re-review approved with no findings
 - GitHub Codex follow-up review on PR #936 found that evidence cards retained unnamespaced paths and that a single mutation observer could lose concurrent blocker pending/error identity; the fixes use exact-blocker identity and greatest `submittedAt`, render errors per blocker, and serialize the run-namespaced paths, with exact-head re-review required after push
 - final independent code and responsive re-reviews approved the corrected follow-up diff with no findings
+- GitHub Codex exact-head review on `92891dfb` found the shared Edge authentication envelope was not accepted and Time Review proof lacked production-surface readiness; strict schema/header handling and fail-closed surface assertions are implemented, with another exact-head review required after push
+- final responsive and security reviews approved the strengthened seven-marker Time Review surface gate and malformed-401 fail-closed behavior with no findings
+- final broad code review approved the complete follow-up diff with no findings
 
 ## PR Hygiene
 
@@ -128,4 +135,4 @@ Implementation and local verification are complete. The isolated Supabase previe
 - change summary: present
 - verification summary: present
 - reviewer: completed; code, security, Supabase, and responsive reviewers approved the corrected diff
-- required follow-up: push the PR #936 follow-up commit, complete protected CI and exact-head Codex re-review, obtain human review, and do not apply or deploy the migration to production from this task
+- required follow-up: push the second PR #936 follow-up commit, rerun tenant-safety (its prior run failed only an unrelated `SessionModal` assertion after 4,750 passing tests), complete exact-head Codex re-review, obtain human review, and do not apply or deploy the migration to production from this task

@@ -794,6 +794,34 @@ const collectPayrollRouteMetrics = async (page: Page): Promise<{ metrics: Layout
   return { metrics: aggregate };
 };
 
+const collectPayrollTimeReviewMetrics = async (page: Page): Promise<{ metrics: LayoutMetrics; failure?: string }> => {
+  try {
+    await Promise.all([
+      page.getByRole('heading', { name: 'Time Review', exact: true, level: 1 })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('heading', { name: 'Assigned queue', exact: true, level: 2 })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByText('Employee 1001', { exact: true })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('heading', { name: 'Immutable snapshot details', exact: true, level: 2 })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('heading', { name: 'Blockers', exact: true, level: 3 })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('button', { name: 'Approve', exact: true })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('button', { name: 'Return', exact: true })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+    ]);
+  } catch {
+    return {
+      metrics: await collectLayoutMetrics(page),
+      failure: 'route-surface-missing',
+    };
+  }
+
+  return { metrics: await collectLayoutMetrics(page) };
+};
+
 export const redactPageForCapture = async (page: Page): Promise<void> => {
   await page.addStyleTag({ content: RESPONSIVE_CAPTURE_REDACTION_CSS });
 };
@@ -894,6 +922,12 @@ const observeRouteAtViewport = async (
         metrics = payrollInspection.metrics;
         if (payrollInspection.failure) {
           failures.push(payrollInspection.failure);
+        }
+      } else if (parsedArgs.scenario === 'payroll-time-review') {
+        const reviewInspection = await collectPayrollTimeReviewMetrics(page);
+        metrics = reviewInspection.metrics;
+        if (reviewInspection.failure) {
+          failures.push(reviewInspection.failure);
         }
       } else {
         metrics = await collectLayoutMetrics(page, scenarioResult.dialogId);

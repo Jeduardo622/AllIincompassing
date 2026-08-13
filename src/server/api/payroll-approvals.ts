@@ -284,6 +284,17 @@ const payrollApprovalErrorSchema = z.object({
   idempotencyKey: z.string().min(1).optional(),
   state: z.string().min(1).optional(),
 }).strict();
+const payrollApprovalAuthErrorSchema = z.object({
+  requestId: z.string().min(1),
+  code: z.literal("unauthorized"),
+  message: z.string().min(1),
+  classification: z.object({
+    category: z.string().min(1),
+    severity: z.enum(["low", "medium", "high", "critical"]),
+    retryable: z.boolean(),
+    httpStatus: z.literal(401),
+  }).strict(),
+}).strict();
 
 type PayrollApprovalAction = z.infer<typeof payrollApprovalActionSchema>;
 type PayrollApprovalErrorCode = z.infer<typeof payrollApprovalErrorSchema.shape.code>;
@@ -722,6 +733,27 @@ const buildForwardedEdgeResponse = (
   });
 };
 
+const buildForwardedAuthErrorResponse = (
+  request: Request,
+  traceHeaders: Record<string, string>,
+  payload: z.infer<typeof payrollApprovalAuthErrorSchema>,
+  forwardedHeaders: Headers,
+) => {
+  const responseHeaders = new Headers({
+    ...corsHeadersForRequest(request),
+    ...traceHeaders,
+    "Content-Type": "application/json",
+  });
+  const challenge = forwardedHeaders.get("WWW-Authenticate")?.trim();
+  if (challenge) {
+    responseHeaders.set("WWW-Authenticate", challenge);
+  }
+  return new Response(JSON.stringify(payload), {
+    status: 401,
+    headers: responseHeaders,
+  });
+};
+
 const buildSuccessResponse = (
   request: Request,
   traceHeaders: Record<string, string>,
@@ -895,7 +927,22 @@ export async function payrollApprovalsHandler(request: Request): Promise<Respons
       );
     }
 
+    const parsedAuthError = payrollApprovalAuthErrorSchema.safeParse(responsePayload);
+    if (forwarded.status === 401 && parsedAuthError.success) {
+      return buildForwardedAuthErrorResponse(
+        request,
+        { ...traceHeaders, ...forwardedTraceHeaders },
+        parsedAuthError.data,
+        forwarded.headers,
+      );
+    }
     const parsedError = payrollApprovalErrorSchema.safeParse(responsePayload);
+    if (forwarded.status === 401 && !parsedError.success) {
+      return invalidForwardedEdgeResponse(
+        request,
+        { ...traceHeaders, ...forwardedTraceHeaders },
+      );
+    }
     if (parsedError.success) {
       return buildForwardedEdgeResponse(
         request,

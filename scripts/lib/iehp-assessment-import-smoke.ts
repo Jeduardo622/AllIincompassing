@@ -171,7 +171,6 @@ type IehpStructuredSectionApprovalPatch = {
   structured_section_id: string;
   status: 'approved';
   review_notes: string;
-  payload: Record<string, unknown>;
 };
 
 export type IehpRequiredFinalOutputApprovals = {
@@ -653,14 +652,25 @@ const NON_MEANINGFUL_METADATA_KEYS = new Set([
   'section_key',
   'section_index',
   'field_key',
+  'page_number',
+  'field_type',
+  'mode',
   'label',
   'status',
   'required',
+  'source',
+  'layout_json',
+  'template_placeholder',
+  'entered_value_present',
+  'options',
 ]);
 
 const hasMeaningfulValue = (value: unknown): boolean => {
   if (value === null || value === undefined) return false;
-  if (typeof value === 'string') return value.trim().length > 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim();
+    return normalized.length > 0 && normalized.toLowerCase() !== 'unknown';
+  }
   if (typeof value === 'number') return Number.isFinite(value);
   if (typeof value === 'boolean') return value;
   if (Array.isArray(value)) return value.some((entry) => hasMeaningfulValue(entry));
@@ -1057,7 +1067,13 @@ export const selectIehpRequiredFinalOutputApprovals = (args: {
     if (!isObjectRecord(section) || !isRequiredForIehpFinalOutput(section.field_key, section.required === true)) {
       continue;
     }
-    if (!isObjectRecord(section.payload) || !hasMeaningfulValue(section.payload)) {
+    if (!isObjectRecord(section.payload)) {
+      throw new Error(`IEHP smoke required structured row ${section.field_key} was blank or malformed.`);
+    }
+    const approvalPayload = section.field_key === 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS'
+      ? Object.fromEntries(Object.entries(section.payload).filter(([key]) => key !== 'skills_behaviors'))
+      : section.payload;
+    if (!hasMeaningfulValue(approvalPayload)) {
       throw new Error(`IEHP smoke required structured row ${section.field_key} was blank or malformed.`);
     }
     assertSyntheticAutoApprovalStatus(
@@ -1075,7 +1091,6 @@ export const selectIehpRequiredFinalOutputApprovals = (args: {
       structured_section_id: sectionId,
       status: 'approved',
       review_notes: 'IEHP generated DOCX parity auto-approved required structured row from synthetic smoke fixture.',
-      payload: section.payload,
     });
   }
 

@@ -799,7 +799,7 @@ describe('selectIehpRequiredFinalOutputApprovals', () => {
     ],
   };
 
-  it('selects only final-output-required checklist and structured approvals and preserves original payloads', () => {
+  it('selects only final-output-required approvals and keeps structured approvals status-only', () => {
     const result = selectIehpRequiredFinalOutputApprovals({ checklist: baseChecklist });
 
     expect(result.summary).toEqual({
@@ -820,7 +820,6 @@ describe('selectIehpRequiredFinalOutputApprovals', () => {
         structured_section_id: 'required-structured',
         status: 'approved',
         review_notes: 'IEHP generated DOCX parity auto-approved required structured row from synthetic smoke fixture.',
-        payload: baseChecklist.structured_sections[0]?.payload,
       },
     ]);
   });
@@ -846,7 +845,13 @@ describe('selectIehpRequiredFinalOutputApprovals', () => {
             section_index: 0,
             required: true,
             status: 'approved',
-            payload: { skills_behaviors: { version: 1, items: [{ name: 'Behavior One', clinical_goal_type: 'behavior', reconciliation_status: 'matched' }] } },
+            payload: {
+              targets: ['Behavior One'],
+              skills_behaviors: {
+                version: 1,
+                items: [{ name: 'Behavior One', clinical_goal_type: 'behavior', reconciliation_status: 'matched' }],
+              },
+            },
           },
         ],
       },
@@ -953,11 +958,69 @@ describe('selectIehpRequiredFinalOutputApprovals', () => {
             section_index: 0,
             required: true,
             status: 'verified',
-            payload: { field_key: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS', section_index: 0, required: true },
+            payload: {
+              field_key: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS',
+              section_index: 0,
+              required: true,
+              source: 'adobe',
+            },
           },
         ],
       },
       message: 'IEHP smoke required structured row IEHP_FBA_BEHAVIOR_SKILL_TARGETS was blank or malformed.',
+    },
+    {
+      name: 'derived-only skills behaviors payload',
+      checklist: {
+        items: [],
+        structured_sections: [
+          {
+            id: 'required-structured',
+            field_key: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS',
+            required: true,
+            status: 'verified',
+            payload: {
+              skills_behaviors: {
+                version: 1,
+                items: [{ name: 'Derived Only', clinical_goal_type: 'skill', reconciliation_status: 'matched' }],
+              },
+            },
+          },
+        ],
+      },
+      message: 'IEHP smoke required structured row IEHP_FBA_BEHAVIOR_SKILL_TARGETS was blank or malformed.',
+    },
+    {
+      name: 'approved metadata-only structured payload',
+      checklist: {
+        items: [],
+        structured_sections: [
+          {
+            id: 'required-structured',
+            field_key: 'IEHP_FBA_REASON_FOR_REFERRAL',
+            required: true,
+            status: 'approved',
+            payload: { source: 'adobe', template_placeholder: true, entered_value_present: false },
+          },
+        ],
+      },
+      message: 'IEHP smoke required structured row IEHP_FBA_REASON_FOR_REFERRAL was blank or malformed.',
+    },
+    {
+      name: 'unknown-only structured payload',
+      checklist: {
+        items: [],
+        structured_sections: [
+          {
+            id: 'required-structured',
+            field_key: 'IEHP_FBA_REASON_FOR_REFERRAL',
+            required: true,
+            status: 'verified',
+            payload: { clinical_value: 'unknown' },
+          },
+        ],
+      },
+      message: 'IEHP smoke required structured row IEHP_FBA_REASON_FOR_REFERRAL was blank or malformed.',
     },
     {
       name: 'unreviewable checklist status',

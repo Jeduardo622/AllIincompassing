@@ -128,6 +128,16 @@ const sessionPayrollContextResponseSchema = z.discriminatedUnion("state", [
   sessionPayrollContextOkResponseSchema,
 ]);
 
+const isMissingEdgeFunctionResponse = (status: number, body: string): boolean => {
+  if (status !== 404) return false;
+  try {
+    const payload = JSON.parse(body) as Record<string, unknown>;
+    return payload.code === "NOT_FOUND" && payload.message === "Requested function was not found";
+  } catch {
+    return false;
+  }
+};
+
 const payrollActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("get_day"), localDate: z.string().date() }),
   z.object({ action: z.literal("get_session_context"), sessionId: z.string().uuid() }).strict(),
@@ -456,6 +466,17 @@ export async function payrollTimeEventsHandler(request: Request): Promise<Respon
         method: "POST",
       });
       const text = await forwarded.text();
+      if (
+        parsedForwardedAction?.success &&
+        parsedForwardedAction.data.action === "get_session_context" &&
+        isMissingEdgeFunctionResponse(forwarded.status, text)
+      ) {
+        return buildSuccessResponse(request, traceHeaders, {
+          state: "feature_disabled",
+          sessionId: parsedForwardedAction.data.sessionId,
+          organizationId,
+        });
+      }
       if (
         forwarded.ok &&
         parsedForwardedAction?.success &&

@@ -179,6 +179,67 @@ describe("payrollTimeEventsHandler", () => {
     expect(response.headers.get("x-agent-operation-id")).toBe("edge-agent");
   });
 
+  it("treats an explicitly missing payroll edge function as a scoped bootstrap-disabled context", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
+    vi.mocked(proxyToEdgeAuthority).mockResolvedValue(
+      new Response(JSON.stringify({
+        code: "NOT_FOUND",
+        message: "Requested function was not found",
+      }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const response = await payrollTimeEventsHandler(
+      new Request("http://localhost/api/payroll-time-events", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken()}` },
+        body: JSON.stringify({
+          action: "get_session_context",
+          sessionId: "77777777-7777-7777-7777-777777777777",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      state: "feature_disabled",
+      sessionId: "77777777-7777-7777-7777-777777777777",
+      organizationId: "org-1",
+    });
+  });
+
+  it("does not treat an arbitrary payroll edge 404 as bootstrap-disabled", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
+    vi.mocked(proxyToEdgeAuthority).mockResolvedValue(
+      new Response(JSON.stringify({
+        code: "not_found",
+        message: "Payroll session was not found",
+      }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const response = await payrollTimeEventsHandler(
+      new Request("http://localhost/api/payroll-time-events", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${createAuthToken()}` },
+        body: JSON.stringify({
+          action: "get_session_context",
+          sessionId: "77777777-7777-7777-7777-777777777777",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      code: "not_found",
+      message: "Payroll session was not found",
+    });
+  });
+
   it("fails closed for hybrid disabled session context responses in edge mode", async () => {
     vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
     vi.mocked(proxyToEdgeAuthority).mockResolvedValue(

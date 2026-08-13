@@ -762,7 +762,7 @@ jobs:
       - name: Unit tests + coverage
         run: npm run test:ci
         env:
-          NODE_OPTIONS: "--max-old-space-size=6144"
+          NODE_OPTIONS: "--max-old-space-size=8192"
           # Required for CI-only Supabase security/integration suites.
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}

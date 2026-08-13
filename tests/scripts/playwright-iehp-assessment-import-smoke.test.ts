@@ -1017,18 +1017,21 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     const setContentIndex = script.indexOf('await generatorPage.setContent(buildIehpPdfMiniMatrixHtml(caseDefinition));');
     const pagePdfIndex = script.indexOf("const pdfBuffer = await generatorPage.pdf({ format: 'Letter', printBackground: true });");
     const scanModeIndex = script.indexOf("caseDefinition.renderMode === 'raster-scan'", setContentIndex);
-    const scanViewportIndex = script.indexOf('width: 2550, height: 3300', scanModeIndex);
+    const scanWidthIndex = script.indexOf('const scanWidth = Math.round(caseDefinition.scan.dpi * 8.5);', scanModeIndex);
+    const scanHeightIndex = script.indexOf('const scanHeight = caseDefinition.scan.dpi * 11;', scanWidthIndex);
+    const scanViewportIndex = script.indexOf('width: scanWidth, height: scanHeight', scanHeightIndex);
     const rotationIndex = script.indexOf(
       'transform: rotate(${caseDefinition.scan.rotationDegrees}deg);',
       scanViewportIndex,
     );
-    const monochromeHelperIndex = script.indexOf('const buildMonochromeScanImageDataUrl = async');
-    const scanScreenshotIndex = script.indexOf("type: 'png'", monochromeHelperIndex);
+    const rasterHelperIndex = script.indexOf('const buildRasterScanImageDataUrl = async');
+    const scanScreenshotIndex = script.indexOf("type: 'png'", rasterHelperIndex);
     const scanCanvasIndex = script.indexOf('getImageData(0, 0, canvas.width, canvas.height)', scanScreenshotIndex);
     const scanLuminanceIndex = script.indexOf('const luminance = Math.round(', scanCanvasIndex);
+    const scanColorModeIndex = script.indexOf("colorMode === 'black-and-white'", scanLuminanceIndex);
     const scanQualityIndex = script.indexOf("canvas.toDataURL('image/jpeg', quality / 100)", scanLuminanceIndex);
     const rasterPageIndex = script.indexOf('const rasterPdfPage = await context.newPage();', scanQualityIndex);
-    const imageOnlyHtmlIndex = script.indexOf('monochromeScanDataUrl', rasterPageIndex);
+    const imageOnlyHtmlIndex = script.indexOf('rasterScanDataUrl', rasterPageIndex);
     const rasterPdfIndex = script.indexOf("await rasterPdfPage.pdf({ format: 'Letter', printBackground: true })", imageOnlyHtmlIndex);
     const generatorCloseIndex = script.indexOf('await generatorPage.close();');
     const pdfFileNameIndex = script.indexOf(
@@ -1060,13 +1063,16 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     expect(setContentIndex).toBeGreaterThan(generatorPageIndex);
     expect(pagePdfIndex).toBeGreaterThan(setContentIndex);
     expect(scanModeIndex).toBeGreaterThan(setContentIndex);
-    expect(scanViewportIndex).toBeGreaterThan(scanModeIndex);
+    expect(scanWidthIndex).toBeGreaterThan(scanModeIndex);
+    expect(scanHeightIndex).toBeGreaterThan(scanWidthIndex);
+    expect(scanViewportIndex).toBeGreaterThan(scanHeightIndex);
     expect(rotationIndex).toBeGreaterThan(scanViewportIndex);
-    expect(monochromeHelperIndex).toBeLessThan(setContentIndex);
+    expect(rasterHelperIndex).toBeLessThan(setContentIndex);
     expect(script).not.toContain('const loadImage = async');
-    expect(scanScreenshotIndex).toBeGreaterThan(monochromeHelperIndex);
+    expect(scanScreenshotIndex).toBeGreaterThan(rasterHelperIndex);
     expect(scanCanvasIndex).toBeGreaterThan(scanScreenshotIndex);
     expect(scanLuminanceIndex).toBeGreaterThan(scanCanvasIndex);
+    expect(scanColorModeIndex).toBeGreaterThan(scanLuminanceIndex);
     expect(scanQualityIndex).toBeGreaterThan(scanLuminanceIndex);
     expect(rasterPageIndex).toBeGreaterThan(scanQualityIndex);
     expect(imageOnlyHtmlIndex).toBeGreaterThan(rasterPageIndex);
@@ -1099,6 +1105,8 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
       matrixCaseLoopIndex,
     );
     const matrixProofPushIndex = script.indexOf('passedCases.push(skillsBehaviorsCaseEvidence);', matrixProofCallIndex);
+    const evidenceModeIndex = script.indexOf('mode: isSkillsBehaviorsProofMode');
+    const matrixEvidenceModeIndex = script.indexOf("? 'pdf-mini-matrix-case'", evidenceModeIndex);
     const aggregateTotalIndex = script.indexOf('totalCases: IEHP_PDF_MINI_MATRIX_CASES.length + 1,');
     const computedSkillsCountIndex = script.indexOf(
       'const skillsBehaviorsVerifiedCases = passedCases.filter(',
@@ -1112,6 +1120,8 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     );
 
     expect(reusableProofRunnerIndex).toBeGreaterThanOrEqual(0);
+    expect(evidenceModeIndex).toBeGreaterThanOrEqual(0);
+    expect(matrixEvidenceModeIndex).toBeGreaterThan(evidenceModeIndex);
     expect(matrixProofCallIndex).toBeGreaterThan(matrixCaseLoopIndex);
     expect(matrixProofPushIndex).toBeGreaterThan(matrixProofCallIndex);
     expect(computedSkillsCountIndex).toBeGreaterThan(matrixProofPushIndex);

@@ -12,6 +12,11 @@ import {
   parseObserverArgs,
   sanitizeObserverFailures,
 } from '../scripts/lib/responsive-ui-observer';
+import {
+  parsePayrollApprovalReadBody,
+  parsePayrollReviewDetailsFixtureResponse,
+  parsePayrollReviewQueueFixtureResponse,
+} from '../scripts/playwright-responsive-ui-observer';
 
 const baseUrl = 'http://127.0.0.1:4173';
 const routes = ['/desk/responsive-check', '/desk/responsive-summary'];
@@ -23,6 +28,128 @@ const readOnlyPolicy = {
 } as const;
 
 describe('responsive-ui-observer contract', () => {
+  it('accepts only the exact production payroll review read request shapes', () => {
+    expect(parsePayrollApprovalReadBody(JSON.stringify({
+      action: 'review_queue',
+      selectedLocalDate: '2026-08-12',
+    }))).toEqual({ action: 'review_queue', selectedLocalDate: '2026-08-12' });
+    expect(parsePayrollApprovalReadBody(JSON.stringify({
+      action: 'review_details',
+      snapshotId: '11111111-1111-1111-1111-111111111111',
+      snapshotHash: 'a'.repeat(64),
+    }))).toEqual({
+      action: 'review_details',
+      snapshotId: '11111111-1111-1111-1111-111111111111',
+      snapshotHash: 'a'.repeat(64),
+    });
+
+    expect(parsePayrollApprovalReadBody(JSON.stringify({
+      action: 'review_details',
+      selectedLocalDate: '2026-08-12',
+      snapshot: {
+        id: '11111111-1111-1111-1111-111111111111',
+        hash: 'a'.repeat(64),
+      },
+    }))).toBeNull();
+    expect(parsePayrollApprovalReadBody(JSON.stringify({
+      action: 'review_queue',
+      selectedLocalDate: '2026-08-12',
+      leaked: true,
+    }))).toBeNull();
+  });
+
+  it('accepts only strict canonical payroll review fixture responses', () => {
+    const queueResponse = {
+      state: 'ok',
+      selectedLocalDate: '2026-08-12',
+      capabilities: {
+        canReviewAssigned: true,
+        canApproveAssigned: true,
+        canViewCompensation: false,
+        hasOrgPayrollAccess: false,
+      },
+      queue: [{
+        employeeLabel: 'Employee 1001',
+        employmentProfileId: '99999999-9999-4999-8999-999999999999',
+        payPeriodId: '88888888-8888-4888-8888-888888888888',
+        periodStart: '2026-08-10',
+        periodEnd: '2026-08-16',
+        state: 'submitted',
+        blockerCount: 0,
+        submittedAt: '2026-08-12T18:00:00.000Z',
+        snapshot: {
+          id: '11111111-1111-1111-1111-111111111111',
+          hash: 'a'.repeat(64),
+        },
+        classifiedSeconds: { regular: 14400, overtime: 0, doubleTime: 0 },
+      }],
+    };
+    const detailsResponse = {
+      state: 'ok',
+      snapshotId: '11111111-1111-1111-1111-111111111111',
+      snapshotHash: 'a'.repeat(64),
+      periodStart: '2026-08-10',
+      periodEnd: '2026-08-16',
+      punches: [{
+        id: '77777777-7777-4777-8777-777777777777',
+        eventType: 'shift_started',
+        occurredAt: '2026-08-12T15:00:00.000Z',
+        timezone: 'America/Los_Angeles',
+        workLocation: null,
+        workCategory: null,
+        createdAt: '2026-08-12T15:00:01.000Z',
+      }],
+      classifiedSeconds: { regular: 14400, overtime: 0, doubleTime: 0 },
+      approvalHistory: [{
+        action: 'submitted',
+        occurredAt: '2026-08-12T18:00:00.000Z',
+        comment: null,
+        reason: null,
+        snapshotId: '11111111-1111-1111-1111-111111111111',
+        snapshotHash: 'a'.repeat(64),
+      }],
+      blockers: [{
+        blockerType: 'timekeeping_exception',
+        blockerId: '66666666-6666-4666-8666-666666666666',
+        state: 'open',
+        createdAt: '2026-08-12T17:00:00.000Z',
+      }],
+      unresolvedBlockerCount: 1,
+      compensation: { grossEarningsCents: 123456 },
+    };
+
+    expect(parsePayrollReviewQueueFixtureResponse(queueResponse)).toEqual(queueResponse);
+    expect(parsePayrollReviewQueueFixtureResponse({
+      ...queueResponse,
+      queue: [{
+        ...queueResponse.queue[0],
+        compensation: { grossEarningsCents: 123456 },
+      }],
+    })).toBeNull();
+    expect(parsePayrollReviewDetailsFixtureResponse(detailsResponse)).toEqual(detailsResponse);
+    expect(parsePayrollReviewQueueFixtureResponse({ ...queueResponse, leaked: true })).toBeNull();
+    expect(parsePayrollReviewDetailsFixtureResponse({
+      ...detailsResponse,
+      snapshot: {
+        id: detailsResponse.snapshotId,
+        hash: detailsResponse.snapshotHash,
+      },
+    })).toBeNull();
+    expect(parsePayrollReviewDetailsFixtureResponse({
+      ...detailsResponse,
+      punches: [{ ...detailsResponse.punches[0], timezone: null }],
+    })).toBeNull();
+    expect(parsePayrollReviewDetailsFixtureResponse({
+      ...detailsResponse,
+      blockers: [{
+        blockerType: 'timekeeping_exception',
+        id: '66666666-6666-4666-8666-666666666666',
+        state: 'open',
+        createdAt: '2026-08-12T17:00:00.000Z',
+      }],
+    })).toBeNull();
+  });
+
   it('keeps the CLI isolated from env files, hosted defaults, and mutable browser state', () => {
     const source = readFileSync(
       path.join(process.cwd(), 'scripts/playwright-responsive-ui-observer.ts'),
@@ -87,6 +214,107 @@ describe('responsive-ui-observer contract', () => {
           ...invalidArgs,
         ])).toThrow();
       }
+    });
+
+    it('accepts only the fixed synthetic payroll-time scenario on /time', () => {
+      expect(parseObserverArgs([
+        'node',
+        'scripts/playwright-responsive-ui-observer.ts',
+        `--base-url=${baseUrl}`,
+        '--route=/time',
+        '--scenario=payroll-time',
+      ])).toEqual({
+        baseUrl,
+        routes: ['/time'],
+        scenario: 'payroll-time',
+      });
+
+      for (const invalidArgs of [
+        ['--route=/schedule', '--scenario=payroll-time'],
+        ['--route=/time', '--route=/desk', '--scenario=payroll-time'],
+        ['--route=/time', '--scenario=payroll-time', '--scenario=payroll-time'],
+      ]) {
+        expect(() => parseObserverArgs([
+          'node',
+          'scripts/playwright-responsive-ui-observer.ts',
+          `--base-url=${baseUrl}`,
+          ...invalidArgs,
+        ])).toThrow();
+      }
+    });
+
+    it('accepts only the fixed synthetic payroll-time-review scenario on /time/review', () => {
+      expect(parseObserverArgs([
+        'node',
+        'scripts/playwright-responsive-ui-observer.ts',
+        `--base-url=${baseUrl}`,
+        '--route=/time/review',
+        '--scenario=payroll-time-review',
+      ])).toEqual({
+        baseUrl,
+        routes: ['/time/review'],
+        scenario: 'payroll-time-review',
+      });
+
+      for (const invalidArgs of [
+        ['--route=/time', '--scenario=payroll-time-review'],
+        ['--route=/time/review', '--route=/desk', '--scenario=payroll-time-review'],
+        ['--route=/time/review', '--scenario=payroll-time-review', '--scenario=payroll-time-review'],
+      ]) {
+        expect(() => parseObserverArgs([
+          'node',
+          'scripts/playwright-responsive-ui-observer.ts',
+          `--base-url=${baseUrl}`,
+          ...invalidArgs,
+        ])).toThrow();
+      }
+    });
+
+    it('accepts a bounded artifact namespace and rejects unsafe or duplicate run IDs', () => {
+      expect(parseObserverArgs([
+        'node',
+        'scripts/playwright-responsive-ui-observer.ts',
+        `--base-url=${baseUrl}`,
+        '--route=/time/review',
+        '--scenario=payroll-time-review',
+        '--artifact-run-id=responsive-harness-contract',
+      ])).toMatchObject({ artifactRunId: 'responsive-harness-contract' });
+
+      for (const invalidArgs of [
+        ['--artifact-run-id=../shared'],
+        ['--artifact-run-id=UPPERCASE'],
+        ['--artifact-run-id=valid', '--artifact-run-id=duplicate'],
+      ]) {
+        expect(() => parseObserverArgs([
+          'node',
+          'scripts/playwright-responsive-ui-observer.ts',
+          `--base-url=${baseUrl}`,
+          '--route=/time/review',
+          '--scenario=payroll-time-review',
+          ...invalidArgs,
+        ])).toThrow(/artifact run id/i);
+      }
+    });
+
+    it('rejects payroll-administration interception and accepts /payroll only as an ordinary local route', () => {
+      expect(parseObserverArgs([
+        'node',
+        'scripts/playwright-responsive-ui-observer.ts',
+        `--base-url=${baseUrl}`,
+        '--route=/payroll',
+      ])).toEqual({
+        baseUrl,
+        routes: ['/payroll'],
+        scenario: undefined,
+      });
+
+      expect(() => parseObserverArgs([
+        'node',
+        'scripts/playwright-responsive-ui-observer.ts',
+        `--base-url=${baseUrl}`,
+        '--route=/payroll',
+        '--scenario=payroll-administration',
+      ])).toThrow(/unknown observer scenario/i);
     });
 
     it('rejects a missing route flag', () => {
@@ -278,6 +506,48 @@ describe('responsive-ui-observer contract', () => {
       expect(evidenceCard).toMatchObject({ scenarioId: 'schedule-overlap' });
       expect(JSON.stringify(evidenceCard)).not.toContain('observer-admin');
       expect(JSON.stringify(evidenceCard)).not.toContain('stub-observer');
+    });
+
+    it('records fixed payroll-time provenance without exposing payroll payload details', () => {
+      const evidenceCard = buildEvidenceCard({
+        route: '/time',
+        viewportName: 'mobile',
+        result: 'pass',
+        failures: [],
+        metrics: {
+          horizontalOverflow: false,
+          clippedFixedControls: [],
+          visibleTouchTargets: [{ width: 48, height: 48 }],
+        },
+        screenshotHash: `sha256:${'3'.repeat(64)}`,
+        evidenceHash: `sha256:${'4'.repeat(64)}`,
+        scenario: 'payroll-time',
+      } as any);
+
+      expect(evidenceCard).toMatchObject({ scenarioId: 'payroll-time' });
+      expect(JSON.stringify(evidenceCard)).not.toContain('employmentProfileId');
+      expect(JSON.stringify(evidenceCard)).not.toContain('sessionAttendance');
+    });
+
+    it('records fixed payroll-time-review provenance without exposing approval payload details', () => {
+      const evidenceCard = buildEvidenceCard({
+        route: '/time/review',
+        viewportName: 'mobile',
+        result: 'pass',
+        failures: [],
+        metrics: {
+          horizontalOverflow: false,
+          clippedFixedControls: [],
+          visibleTouchTargets: [{ width: 48, height: 48 }],
+        },
+        screenshotHash: `sha256:${'5'.repeat(64)}`,
+        evidenceHash: `sha256:${'6'.repeat(64)}`,
+        scenario: 'payroll-time-review',
+      } as any);
+
+      expect(evidenceCard).toMatchObject({ scenarioId: 'payroll-time-review' });
+      expect(JSON.stringify(evidenceCard)).not.toContain('blockerId');
+      expect(JSON.stringify(evidenceCard)).not.toContain('hourlyRateCents');
     });
 
     it('derives deterministic route slugs and paths while excluding raw payloads', () => {

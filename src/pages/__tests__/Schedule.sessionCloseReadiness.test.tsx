@@ -6,6 +6,7 @@ import { Schedule } from "../Schedule";
 let sessionStatus: Session["status"] = "in_progress";
 
 const completeSessionFromModalMock = vi.fn();
+const revalidateTerminalSessionOutcomeMock = vi.fn();
 const checkInProgressSessionCloseReadinessMock = vi.fn();
 const showErrorMock = vi.fn();
 const navigateMock = vi.fn();
@@ -150,10 +151,26 @@ vi.mock("../../components/SessionModal", () => ({
 
 vi.mock("../../features/scheduling/domain/sessionComplete", () => ({
   completeSessionFromModal: (...args: unknown[]) => completeSessionFromModalMock(...args),
+  revalidateTerminalSessionOutcome: (...args: unknown[]) =>
+    revalidateTerminalSessionOutcomeMock(...args),
   checkInProgressSessionCloseReadiness: (...args: unknown[]) =>
     checkInProgressSessionCloseReadinessMock(...args),
   IN_PROGRESS_CLOSE_NOT_READY_MESSAGE:
     "You must complete the linked session documentation with per-goal notes before closing this in-progress session. Add per-goal text on a client_session_notes row linked to this session_id (for example by saving Session capture on Schedule or Session Notes under Client Details). Unsaved modal text alone does not satisfy this requirement.",
+}));
+
+vi.mock("../../features/scheduling/domain/sessionPayrollLifecycle", () => ({
+  createSessionPayrollLifecycle: () => ({
+    prepareStart: vi.fn(async () => ({ kind: "payroll_disabled" })),
+    executeStart: vi.fn(async () => ({ kind: "payroll_disabled" })),
+    prepareCloseSession: vi.fn(async () => ({ kind: "payroll_disabled" })),
+    completePreparedClose: vi.fn(
+      async ({ runClinicalClose }: { runClinicalClose: () => Promise<void> }) => {
+        await runClinicalClose();
+        return { kind: "completed" };
+      },
+    ),
+  }),
 }));
 
 vi.mock("../../lib/toast", async () => {
@@ -184,6 +201,8 @@ describe("Schedule session-close readiness precheck", { timeout: 30_000 }, () =>
     sessionStatus = "in_progress";
     completeSessionFromModalMock.mockReset();
     completeSessionFromModalMock.mockResolvedValue(undefined);
+    revalidateTerminalSessionOutcomeMock.mockReset();
+    revalidateTerminalSessionOutcomeMock.mockResolvedValue(false);
     checkInProgressSessionCloseReadinessMock.mockReset();
     checkInProgressSessionCloseReadinessMock.mockResolvedValue({
       ready: true,

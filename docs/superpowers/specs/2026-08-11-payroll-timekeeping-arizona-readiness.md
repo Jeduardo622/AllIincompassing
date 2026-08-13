@@ -2,7 +2,8 @@
 
 ## Status
 
-- Research snapshot: 2026-08-11
+- Research snapshot: 2026-08-12
+- Last verified: 2026-08-12
 - Activation: inactive
 - Relationship: extension of `2026-08-11-payroll-grade-timekeeping-design.md`
 - Purpose: document future Arizona policy requirements and implementation gaps
@@ -23,8 +24,8 @@ This document is engineering research, not legal advice. Re-verify all sources a
 
 ### Hours and overtime
 
-- Arizona generally uses the federal FLSA overtime framework for the in-scope ordinary nonexempt population.
-- The baseline overtime rule is time and one-half after 40 hours in a fixed seven-day workweek.
+- Arizona generally uses the federal FLSA overtime framework for the ordinary nonexempt population.
+- The baseline overtime rule remains time and one-half after 40 hours in a fixed seven-day workweek.
 - Arizona does not add California-style daily overtime or double-time rules for the ordinary population.
 - Specialized federal exceptions require separate policy activation.
 
@@ -38,7 +39,7 @@ This document is engineering research, not legal advice. Re-verify all sources a
 
 - Arizona generally requires two or more fixed paydays per month, not more than 16 days apart.
 - Weekly and biweekly pay groups can be supported when payday timing is compliant.
-- A monthly pay group must be rejected for the in-scope Arizona nonexempt employee population unless a qualified reviewer confirms a specific lawful exception.
+- A monthly pay group must be rejected for the ordinary Arizona nonexempt employee population unless qualified payroll/legal review confirms a specific lawful exception.
 
 ### Recordkeeping and employee access
 
@@ -81,6 +82,12 @@ Values above are design inputs, not production configuration, until legally revi
 - add Arizona policy fixtures and golden earnings cases
 - add four-year retention and employee-access tests
 - add sick-time accrual/use tests only after the authority decision is approved
+- required implementation gates before activation:
+  - policy fixture coverage for weekly and biweekly Arizona nonexempt pay groups
+  - negative test coverage that rejects monthly pay groups for ordinary nonexempt employees
+  - recordkeeping coverage for daily hours, wages paid, earned paid sick time, and four-year retention
+  - employee-access coverage for inspect-and-copy workflows
+  - sick-time authority decision and verification-card review immediately before activation
 - run security, Supabase, payroll-domain, and legal/operations review
 
 ## Activation Gate

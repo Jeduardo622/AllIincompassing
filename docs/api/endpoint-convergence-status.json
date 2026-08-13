@@ -76,6 +76,46 @@
       "owner": "Backend Platform"
     },
     {
+      "functionFile": "admin-invite-email.ts",
+      "publicApiPath": "/.netlify/functions/admin-invite-email",
+      "edgeTarget": "admin-invite",
+      "wave": "B",
+      "status": "migrating",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "assessment-documents-extract-background.ts",
+      "publicApiPath": "/.netlify/functions/assessment-documents-extract-background",
+      "edgeTarget": "extract-assessment-fields",
+      "wave": "B",
+      "status": "migrating",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "sessions-complete.ts",
+      "publicApiPath": "/api/sessions-complete",
+      "edgeTarget": "sessions-complete",
+      "wave": "B",
+      "status": "migrating",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "sessions-week-forward.ts",
+      "publicApiPath": "/api/sessions-week-forward",
+      "edgeTarget": "legacy-server-sessions-week-forward-handler",
+      "wave": "B",
+      "status": "migrating",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "session-notes-upsert.ts",
+      "publicApiPath": "/api/session-notes/upsert",
+      "edgeTarget": "legacy-server-session-notes-upsert-handler",
+      "wave": "B",
+      "status": "migrating",
+      "owner": "Backend Platform"
+    },
+    {
       "functionFile": "programs.ts",
       "publicApiPath": "/api/programs",
       "edgeTarget": "generate-program-goals",
@@ -105,6 +145,46 @@
       "edgeTarget": "generate-session-notes-pdf + session-notes-pdf-status + session-notes-pdf-download",
       "wave": "B",
       "status": "retired",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "payroll-approvals.ts",
+      "publicApiPath": "/api/payroll-approvals",
+      "edgeTarget": "payroll-approvals",
+      "wave": "B",
+      "status": "migrating",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "payroll-administration.ts",
+      "publicApiPath": "/api/payroll-administration",
+      "edgeTarget": "payroll-administration",
+      "wave": "B",
+      "status": "migrating",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "payroll-export.ts",
+      "publicApiPath": "/api/payroll-export",
+      "edgeTarget": "payroll-export",
+      "wave": "B",
+      "status": "migrating",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "payroll-time-events.ts",
+      "publicApiPath": "/api/payroll-time-events",
+      "edgeTarget": "payroll-time-events",
+      "wave": "B",
+      "status": "migrating",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "payroll-timesheets.ts",
+      "publicApiPath": "/api/payroll-timesheets",
+      "edgeTarget": "payroll-timesheets",
+      "wave": "B",
+      "status": "migrating",
       "owner": "Backend Platform"
     }
   ]

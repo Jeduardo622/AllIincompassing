@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -7,10 +7,143 @@ import { isAiAgentBundlePath } from "../../scripts/ci/check-session-deploy-safet
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const scriptPath = path.join(repoRoot, "scripts", "ci", "check-session-deploy-safety.mjs");
+const checkedInCiWorkflow = readFileSync(
+  path.join(repoRoot, ".github", "workflows", "ci.yml"),
+  "utf8",
+);
 
 const tempDirs: string[] = [];
 const AI_AGENT_PATH_PATTERN =
   "^supabase/functions/(ai-agent-optimized/|_shared/(database|auth|org|logging|cors|supabaseEnv|requestAuthHeaders)\\.ts$|lib/http/error\\.ts$)";
+const PAYROLL_FUNCTION_SCOPE =
+  "sessions-book,sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf,session-notes-pdf-status,session-notes-pdf-download,programs,goals,goal-targets,program-notes,payroll-timesheets,payroll-administration,payroll-approvals,payroll-export";
+const MAIN_PUSH_IF = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
+const PAYROLL_APPROVAL_ACKNOWLEDGEMENT = "I_APPROVE_WIN_219_PAYROLL_ACTIVATION";
+const PAYROLL_OWNER_DISPATCH_GUARD =
+  "github.actor == github.repository_owner && github.actor_id == '129695080' && github.event.repository.owner.type == 'User' && github.event.repository.owner.login == github.repository_owner && github.event.repository.owner.id == 129695080";
+const PAYROLL_DEPLOY_NEEDS = [
+  "policy",
+  "tenant_safety",
+  "runtime_migration_parity",
+  "lint_typecheck",
+  "unit_tests",
+  "build",
+  "auth_browser_smoke",
+];
+const payrollApprovalsAttestation = (name: string) => `      - name: ${name}
+        env:
+          GH_TOKEN: \${{ github.token }}
+          EXPECTED_WORKFLOW_SHA: \${{ github.sha }}
+          GH_REPOSITORY: \${{ github.repository }}
+        run: |
+          set -euo pipefail
+          main_ref_record="$(gh api --method GET "repos/\${GH_REPOSITORY}/git/ref/heads/main" --jq '[.ref, .object.sha] | @tsv')"
+          IFS=$'\\t' read -r live_main_ref live_main_sha <<< "\${main_ref_record}"
+          if [ "\${live_main_ref}" != "refs/heads/main" ] || [ -z "\${live_main_sha}" ] || [ "\${live_main_sha}" != "\${EXPECTED_WORKFLOW_SHA}" ]; then
+            echo "::error::Refusing payroll-approvals deployment because workflow SHA is not immutable current main." >&2
+            exit 1
+          fi`;
+const PAYROLL_APPROVALS_FIRST_ATTESTATION = payrollApprovalsAttestation(
+  "Attest payroll-approvals current main before credentials",
+);
+const PAYROLL_APPROVALS_FINAL_ATTESTATION = payrollApprovalsAttestation(
+  "Re-attest payroll-approvals current main immediately before deploy",
+);
+const payrollAdministrationAttestation = (name: string) => `      - name: ${name}
+        env:
+          GH_TOKEN: \${{ github.token }}
+          EXPECTED_WORKFLOW_SHA: \${{ github.sha }}
+          GH_REPOSITORY: \${{ github.repository }}
+        run: |
+          set -euo pipefail
+          main_ref_record="$(gh api --method GET "repos/\${GH_REPOSITORY}/git/ref/heads/main" --jq '[.ref, .object.sha] | @tsv')"
+          IFS=$'\\t' read -r live_main_ref live_main_sha <<< "\${main_ref_record}"
+          if [ "\${live_main_ref}" != "refs/heads/main" ] || [ -z "\${live_main_sha}" ] || [ "\${live_main_sha}" != "\${EXPECTED_WORKFLOW_SHA}" ]; then
+            echo "::error::Refusing payroll-administration deployment because workflow SHA is not immutable current main." >&2
+            exit 1
+          fi`;
+const PAYROLL_ADMINISTRATION_FIRST_ATTESTATION = payrollAdministrationAttestation(
+  "Attest payroll-administration current main before credentials",
+);
+const PAYROLL_ADMINISTRATION_SECRET_MUTATION_ATTESTATION = payrollAdministrationAttestation(
+  "Re-attest payroll-administration current main immediately before remote secret sync",
+);
+const PAYROLL_ADMINISTRATION_FINAL_ATTESTATION = payrollAdministrationAttestation(
+  "Re-attest payroll-administration current main immediately before deploy",
+);
+const PAYROLL_ADMINISTRATION_SECRET_SYNC = `      - name: Sync payroll-administration Upstash Edge secrets
+        env:
+          SUPABASE_PROJECT_REF: \${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          UPSTASH_REDIS_REST_URL: \${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: \${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+        run: |
+          set -euo pipefail
+          : "\${SUPABASE_PROJECT_REF:?Missing SUPABASE_PROJECT_REF}"
+          : "\${SUPABASE_ACCESS_TOKEN:?Missing SUPABASE_ACCESS_TOKEN}"
+          : "\${UPSTASH_REDIS_REST_URL:?Missing UPSTASH_REDIS_REST_URL}"
+          : "\${UPSTASH_REDIS_REST_TOKEN:?Missing UPSTASH_REDIS_REST_TOKEN}"
+          supabase secrets set \\
+            "UPSTASH_REDIS_REST_URL=\${UPSTASH_REDIS_REST_URL}" \\
+            "UPSTASH_REDIS_REST_TOKEN=\${UPSTASH_REDIS_REST_TOKEN}" \\
+            --project-ref "\${SUPABASE_PROJECT_REF}"`;
+const PAYROLL_ADMINISTRATION_SECRET_VERIFY = `      - name: Verify payroll-administration remote Edge secret names
+        env:
+          SUPABASE_PROJECT_REF: \${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/ci/deploy-payroll-administration-function.mjs --verify-edge-secrets`;
+const PAYROLL_APPROVALS_INPUT = `      activate_payroll_approvals:
+        description: Explicitly activate the reviewed payroll-approvals Edge function
+        required: true
+        type: boolean
+        default: false`;
+const payrollExportAttestation = (name: string) => `      - name: ${name}
+        env:
+          GH_TOKEN: \${{ github.token }}
+          EXPECTED_WORKFLOW_SHA: \${{ github.sha }}
+          GH_REPOSITORY: \${{ github.repository }}
+        run: |
+          set -euo pipefail
+          main_ref_record="$(gh api --method GET "repos/\${GH_REPOSITORY}/git/ref/heads/main" --jq '[.ref, .object.sha] | @tsv')"
+          IFS=$'\\t' read -r live_main_ref live_main_sha <<< "\${main_ref_record}"
+          if [ "\${live_main_ref}" != "refs/heads/main" ] || [ -z "\${live_main_sha}" ] || [ "\${live_main_sha}" != "\${EXPECTED_WORKFLOW_SHA}" ]; then
+            echo "::error::Refusing payroll-export deployment because workflow SHA is not immutable current main." >&2
+            exit 1
+          fi`;
+const PAYROLL_EXPORT_FIRST_ATTESTATION = payrollExportAttestation(
+  "Attest payroll-export current main before credentials",
+);
+const PAYROLL_EXPORT_FINAL_ATTESTATION = payrollExportAttestation(
+  "Re-attest payroll-export current main immediately before deploy",
+);
+const payrollTimesheetsAttestation = (name: string) => `      - name: ${name}
+        env:
+          GH_TOKEN: \${{ github.token }}
+          EXPECTED_WORKFLOW_SHA: \${{ github.sha }}
+          GH_REPOSITORY: \${{ github.repository }}
+        run: |
+          set -euo pipefail
+          main_ref_record="$(gh api --method GET "repos/\${GH_REPOSITORY}/git/ref/heads/main" --jq '[.ref, .object.sha] | @tsv')"
+          IFS=$'\\t' read -r live_main_ref live_main_sha <<< "\${main_ref_record}"
+          if [ "\${live_main_ref}" != "refs/heads/main" ] || [ -z "\${live_main_sha}" ] || [ "\${live_main_sha}" != "\${EXPECTED_WORKFLOW_SHA}" ]; then
+            echo "::error::Refusing payroll-timesheets deployment because workflow SHA is not immutable current main." >&2
+            exit 1
+          fi`;
+const PAYROLL_TIMESHEETS_FIRST_ATTESTATION = payrollTimesheetsAttestation(
+  "Attest payroll-timesheets current main before credentials",
+);
+const PAYROLL_TIMESHEETS_FINAL_ATTESTATION = payrollTimesheetsAttestation(
+  "Re-attest payroll-timesheets current main immediately before deploy",
+);
+const PAYROLL_EXPORT_INPUT = `      activate_payroll_export:
+        description: Explicitly activate the reviewed payroll-export Edge function
+        required: true
+        type: boolean
+        default: false`;
+const PAYROLL_APPROVAL_ACKNOWLEDGEMENT_INPUT = `      approval_acknowledgement:
+        description: Exact owner approval acknowledgement
+        required: true
+        type: string`;
 
 const write = (root: string, relativePath: string, content: string) => {
   const target = path.join(root, relativePath);
@@ -19,9 +152,20 @@ const write = (root: string, relativePath: string, content: string) => {
 };
 
 const ciWorkflow = ({
+  payrollExportInput = PAYROLL_EXPORT_INPUT,
+  payrollApprovalsInput = PAYROLL_APPROVALS_INPUT,
+  payrollAdministrationInput = `      activate_payroll_administration:
+        description: Explicitly activate the reviewed payroll-administration Edge function
+        required: true
+        type: boolean
+        default: false`,
+  payrollApprovalAcknowledgementInput = PAYROLL_APPROVAL_ACKNOWLEDGEMENT_INPUT,
   mergeGroupHandling = `          elif [ "\${GITHUB_EVENT_NAME}" = "merge_group" ]; then
             base_sha="\${{ github.event.merge_group.base_sha }}"
-            head_sha="\${{ github.event.merge_group.head_sha }}"`,
+            head_sha="\${{ github.event.merge_group.head_sha }}"
+          elif [ "\${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            base_sha="\${GITHUB_SHA}^"
+            head_sha="\${GITHUB_SHA}"`,
   aiAgentPathPattern = AI_AGENT_PATH_PATTERN,
   unavailableAiAgentChanged = "true",
   aiAgentDiffHandling = `          if [ -z "\${base_sha}" ] || [ "\${base_sha}" = "0000000000000000000000000000000000000000" ]; then
@@ -43,7 +187,8 @@ const ciWorkflow = ({
           done <<< "\${changed_files}"
           echo "ai_agent_changed=\${ai_agent_changed}" >> "\${GITHUB_OUTPUT}"`,
   policyExtra = "",
-  runtimeParityRestriction = "github.event_name == 'push' && github.ref == 'refs/heads/main'",
+  parityScope = PAYROLL_FUNCTION_SCOPE,
+  runtimeParityRestriction = `(${MAIN_PUSH_IF}) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && ${PAYROLL_OWNER_DISPATCH_GUARD} && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && (inputs.activate_payroll_timesheets == true || inputs.activate_payroll_administration == true || inputs.activate_payroll_approvals == true || inputs.activate_payroll_export == true))`,
   deployRestriction = "github.event_name == 'push' && github.ref == 'refs/heads/main'",
   deployNeeds = [
     "policy",
@@ -62,6 +207,45 @@ const ciWorkflow = ({
   deployAiAgentNeeds = ["deploy_session_edge", "change_scope"],
   deployAiAgentPrereqRun = "node scripts/ci/check-edge-deploy-prerequisites.mjs ai-agent-optimized",
   deployAiAgentRun = "npm run ci:deploy:ai-agent-function",
+  deployPayrollRestriction = `github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && ${PAYROLL_OWNER_DISPATCH_GUARD} && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && inputs.activate_payroll_timesheets == true`,
+  deployPayrollNeeds = PAYROLL_DEPLOY_NEEDS,
+  deployPayrollBeforeFirstAttestation = "",
+  deployPayrollFirstAttestation = PAYROLL_TIMESHEETS_FIRST_ATTESTATION,
+  deployPayrollAfterFirstAttestation = "",
+  deployPayrollPrereqRun = "node scripts/ci/check-edge-deploy-prerequisites.mjs payroll-timesheets",
+  deployPayrollFinalAttestation = PAYROLL_TIMESHEETS_FINAL_ATTESTATION,
+  deployPayrollBeforeDeploy = "",
+  deployPayrollRun = "node scripts/ci/deploy-payroll-timesheets-function.mjs",
+  deployPayrollExportRestriction = `github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && ${PAYROLL_OWNER_DISPATCH_GUARD} && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && inputs.activate_payroll_export == true`,
+  deployPayrollExportNeeds = PAYROLL_DEPLOY_NEEDS,
+  deployPayrollExportBeforeFirstAttestation = "",
+  deployPayrollExportFirstAttestation = PAYROLL_EXPORT_FIRST_ATTESTATION,
+  deployPayrollExportAfterFirstAttestation = "",
+  deployPayrollExportPrereqRun = "node scripts/ci/check-edge-deploy-prerequisites.mjs payroll-export",
+  deployPayrollExportFinalAttestation = PAYROLL_EXPORT_FINAL_ATTESTATION,
+  deployPayrollExportBeforeDeploy = "",
+  deployPayrollExportRun = "node scripts/ci/deploy-payroll-export-function.mjs",
+  deployPayrollApprovalsRestriction = `github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && ${PAYROLL_OWNER_DISPATCH_GUARD} && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && inputs.activate_payroll_approvals == true`,
+  deployPayrollApprovalsNeeds = PAYROLL_DEPLOY_NEEDS,
+  deployPayrollAdministrationNeeds = PAYROLL_DEPLOY_NEEDS,
+  deployPayrollApprovalsBeforeFirstAttestation = "",
+  deployPayrollApprovalsFirstAttestation = PAYROLL_APPROVALS_FIRST_ATTESTATION,
+  deployPayrollApprovalsAfterFirstAttestation = "",
+  deployPayrollApprovalsPrereqRun = "node scripts/ci/check-edge-deploy-prerequisites.mjs payroll-approvals",
+  deployPayrollApprovalsFinalAttestation = PAYROLL_APPROVALS_FINAL_ATTESTATION,
+  deployPayrollApprovalsBeforeDeploy = "",
+  deployPayrollApprovalsRun = "node scripts/ci/deploy-payroll-approvals-function.mjs",
+  deployPayrollAdministrationRestriction = `github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && ${PAYROLL_OWNER_DISPATCH_GUARD} && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && inputs.activate_payroll_administration == true`,
+  deployPayrollAdministrationBeforeFirstAttestation = "",
+  deployPayrollAdministrationFirstAttestation = PAYROLL_ADMINISTRATION_FIRST_ATTESTATION,
+  deployPayrollAdministrationAfterFirstAttestation = "",
+  deployPayrollAdministrationSecretMutationAttestation = PAYROLL_ADMINISTRATION_SECRET_MUTATION_ATTESTATION,
+  deployPayrollAdministrationSecretSync = PAYROLL_ADMINISTRATION_SECRET_SYNC,
+  deployPayrollAdministrationPrereqRun = "node scripts/ci/check-edge-deploy-prerequisites.mjs payroll-administration",
+  deployPayrollAdministrationSecretVerify = PAYROLL_ADMINISTRATION_SECRET_VERIFY,
+  deployPayrollAdministrationFinalAttestation = PAYROLL_ADMINISTRATION_FINAL_ATTESTATION,
+  deployPayrollAdministrationBeforeDeploy = "",
+  deployPayrollAdministrationRun = "node scripts/ci/deploy-payroll-administration-function.mjs",
   authNeeds = ["policy", "change_scope", "deploy_session_edge"],
   authIf = "always() && needs.change_scope.outputs.docs_only != 'true' && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.deploy_session_edge.result == 'success')",
   authExtra = "",
@@ -75,6 +259,10 @@ const ciWorkflow = ({
     "start_session_runtime_contract",
     "deploy_session_edge",
     "deploy_ai_agent_edge",
+    "deploy_payroll_timesheets",
+    "deploy_payroll_export",
+    "deploy_payroll_approvals",
+    "deploy_payroll_administration",
     "lint_typecheck",
     "unit_tests",
     "build",
@@ -85,8 +273,8 @@ const ciWorkflow = ({
   ],
   ciGateChecks = [
     "[ \"${TENANT_SAFETY_RESULT}\" = \"success\" ] || failed+=(\"tenant-safety=${TENANT_SAFETY_RESULT}\")",
-    "if [ \"${GITHUB_EVENT_NAME}\" = \"push\" ] && [ \"${GITHUB_REF}\" = \"refs/heads/main\" ] && [ \"${RUNTIME_PARITY_RESULT}\" != \"success\" ]; then",
-    "failed+=(\"runtime-migration-parity=${RUNTIME_PARITY_RESULT}\")",
+    "if { [ \"${GITHUB_EVENT_NAME}\" = \"push\" ] && [ \"${GITHUB_REF}\" = \"refs/heads/main\" ]; } || { [ \"${GITHUB_EVENT_NAME}\" = \"workflow_dispatch\" ] && { [ \"${ACTIVATE_PAYROLL_TIMESHEETS}\" = \"true\" ] || [ \"${ACTIVATE_PAYROLL_ADMINISTRATION}\" = \"true\" ] || [ \"${ACTIVATE_PAYROLL_APPROVALS}\" = \"true\" ] || [ \"${ACTIVATE_PAYROLL_EXPORT}\" = \"true\" ]; }; }; then",
+    "[ \"${RUNTIME_PARITY_RESULT}\" = \"success\" ] || failed+=(\"runtime-migration-parity=${RUNTIME_PARITY_RESULT}\")",
     "fi",
     "[ \"${START_SESSION_RUNTIME_CONTRACT_RESULT}\" = \"success\" ] || failed+=(\"start-session-runtime-contract=${START_SESSION_RUNTIME_CONTRACT_RESULT}\")",
     "if [ \"${GITHUB_EVENT_NAME}\" = \"push\" ] && [ \"${GITHUB_REF}\" = \"refs/heads/main\" ] && [ \"${DEPLOY_SESSION_EDGE_RESULT}\" != \"success\" ]; then",
@@ -95,6 +283,18 @@ const ciWorkflow = ({
     "if [ \"${GITHUB_EVENT_NAME}\" = \"push\" ] && [ \"${GITHUB_REF}\" = \"refs/heads/main\" ] && [ \"${AI_AGENT_CHANGED}\" = \"true\" ] && [ \"${DEPLOY_AI_AGENT_EDGE_RESULT}\" != \"success\" ]; then",
     "failed+=(\"deploy-ai-agent-edge=${DEPLOY_AI_AGENT_EDGE_RESULT}\")",
     "fi",
+    "if [ \"${GITHUB_EVENT_NAME}\" = \"workflow_dispatch\" ] && [ \"${ACTIVATE_PAYROLL_TIMESHEETS}\" = \"true\" ] && [ \"${DEPLOY_PAYROLL_TIMESHEETS_RESULT}\" != \"success\" ]; then",
+    "failed+=(\"deploy-payroll-timesheets=${DEPLOY_PAYROLL_TIMESHEETS_RESULT}\")",
+    "fi",
+    "if [ \"${GITHUB_EVENT_NAME}\" = \"workflow_dispatch\" ] && [ \"${ACTIVATE_PAYROLL_EXPORT}\" = \"true\" ] && [ \"${DEPLOY_PAYROLL_EXPORT_RESULT}\" != \"success\" ]; then",
+    "failed+=(\"deploy-payroll-export=${DEPLOY_PAYROLL_EXPORT_RESULT}\")",
+    "fi",
+    "if [ \"${GITHUB_EVENT_NAME}\" = \"workflow_dispatch\" ] && [ \"${ACTIVATE_PAYROLL_APPROVALS}\" = \"true\" ] && [ \"${DEPLOY_PAYROLL_APPROVALS_RESULT}\" != \"success\" ]; then",
+    "failed+=(\"deploy-payroll-approvals=${DEPLOY_PAYROLL_APPROVALS_RESULT}\")",
+    "fi",
+    "if [ \"${GITHUB_EVENT_NAME}\" = \"workflow_dispatch\" ] && [ \"${ACTIVATE_PAYROLL_ADMINISTRATION}\" = \"true\" ] && [ \"${DEPLOY_PAYROLL_ADMINISTRATION_RESULT}\" != \"success\" ]; then",
+    "failed+=(\"deploy-payroll-administration=${DEPLOY_PAYROLL_ADMINISTRATION_RESULT}\")",
+    "fi",
   ],
   ciGateInertText = "",
 } = {}) => `name: CI
@@ -102,6 +302,17 @@ const ciWorkflow = ({
 ${workflowComment}
 
 on:
+  workflow_dispatch:
+    inputs:
+      activate_payroll_timesheets:
+        description: Explicitly activate the reviewed payroll-timesheets Edge function
+        required: true
+        type: boolean
+        default: false
+${payrollExportInput}
+${payrollApprovalsInput}
+${payrollAdministrationInput}
+${payrollApprovalAcknowledgementInput}
   pull_request:
     branches: [main, develop]
   push:
@@ -146,6 +357,8 @@ ${aiAgentDiffHandling}
     steps:
       - run: npm run ci:secrets
       - run: npm run ci:check-focused
+        env:
+          SUPABASE_FUNCTION_PARITY_SCOPE: "${parityScope}"
 ${policyExtra}
 
   tenant_safety:
@@ -163,6 +376,11 @@ ${runtimeParityRestriction ? `    if: ${runtimeParityRestriction}
       - env:
           MIGRATION_PARITY_BASE_SHA: \${{ needs.change_scope.outputs.base_sha }}
           MIGRATION_PARITY_HEAD_SHA: \${{ needs.change_scope.outputs.head_sha }}
+          MIGRATION_PARITY_REQUIRED_MIGRATIONS: "20260811214856|payroll_timekeeping_capture_read_model,20260812060529|payroll_timesheet_snapshots,20260812103000|payroll_session_lifecycle_context,20260812113000|payroll_session_lifecycle_context_disabled_state,20260812122436|payroll_approval_workflow,20260812141324|payroll_review_read_models,20260812153628|payroll_administration,20260812185531|payroll_approval_workflow_repair,20260812212854|payroll_timesheet_period_contract_repair,20260812230837|payroll_export_ledger,20260813013000|payroll_approval_codex_review_fixes,20260813103000|payroll_security_repair"
+          ACTIVATE_PAYROLL_TIMESHEETS: \${{ inputs.activate_payroll_timesheets || false }}
+          ACTIVATE_PAYROLL_EXPORT: \${{ inputs.activate_payroll_export || false }}
+          ACTIVATE_PAYROLL_APPROVALS: \${{ inputs.activate_payroll_approvals || false }}
+          ACTIVATE_PAYROLL_ADMINISTRATION: \${{ inputs.activate_payroll_administration || false }}
           SUPABASE_DB_URL: \${{ secrets.SUPABASE_DB_URL }}
         run: node scripts/ci/check-runtime-migration-parity.mjs
 
@@ -197,6 +415,97 @@ ${deployAiAgentNeeds.map((need) => `      - ${need}`).join("\n")}
       - name: Deploy ai-agent-optimized edge function
         run: ${deployAiAgentRun}
 
+  deploy_payroll_timesheets:
+    needs:
+${deployPayrollNeeds.map((need) => `      - ${need}`).join("\n")}
+    if: ${deployPayrollRestriction}
+    steps:
+${deployPayrollBeforeFirstAttestation}
+${deployPayrollFirstAttestation}
+${deployPayrollAfterFirstAttestation}
+      - name: Validate payroll-timesheets deploy prerequisites
+        env:
+          SUPABASE_URL: \${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: \${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: ${deployPayrollPrereqRun}
+${deployPayrollFinalAttestation}
+${deployPayrollBeforeDeploy}
+      - name: Deploy payroll-timesheets edge function
+        env:
+          SUPABASE_URL: \${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: \${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: ${deployPayrollRun}
+
+  deploy_payroll_export:
+    needs:
+${deployPayrollExportNeeds.map((need) => `      - ${need}`).join("\n")}
+    if: ${deployPayrollExportRestriction}
+    steps:
+${deployPayrollExportBeforeFirstAttestation}
+${deployPayrollExportFirstAttestation}
+${deployPayrollExportAfterFirstAttestation}
+      - name: Validate payroll-export deploy prerequisites
+        env:
+          SUPABASE_URL: \${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: \${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: ${deployPayrollExportPrereqRun}
+${deployPayrollExportFinalAttestation}
+${deployPayrollExportBeforeDeploy}
+      - name: Deploy payroll-export edge function
+        env:
+          SUPABASE_URL: \${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: \${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: ${deployPayrollExportRun}
+
+  deploy_payroll_approvals:
+    needs:
+${deployPayrollApprovalsNeeds.map((need) => `      - ${need}`).join("\n")}
+    if: ${deployPayrollApprovalsRestriction}
+    steps:
+${deployPayrollApprovalsBeforeFirstAttestation}
+${deployPayrollApprovalsFirstAttestation}
+${deployPayrollApprovalsAfterFirstAttestation}
+      - name: Validate payroll-approvals deploy prerequisites
+        env:
+          SUPABASE_URL: \${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: \${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: ${deployPayrollApprovalsPrereqRun}
+${deployPayrollApprovalsFinalAttestation}
+${deployPayrollApprovalsBeforeDeploy}
+      - name: Deploy payroll-approvals edge function
+        env:
+          SUPABASE_URL: \${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: \${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: ${deployPayrollApprovalsRun}
+
+  deploy_payroll_administration:
+    needs:
+${deployPayrollAdministrationNeeds.map((need) => `      - ${need}`).join("\n")}
+    if: ${deployPayrollAdministrationRestriction}
+    steps:
+${deployPayrollAdministrationBeforeFirstAttestation}
+${deployPayrollAdministrationFirstAttestation}
+${deployPayrollAdministrationAfterFirstAttestation}
+      - name: Validate payroll-administration deploy prerequisites
+        env:
+          SUPABASE_URL: \${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: \${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: ${deployPayrollAdministrationPrereqRun}
+${deployPayrollAdministrationSecretMutationAttestation}
+${deployPayrollAdministrationSecretSync}
+${deployPayrollAdministrationSecretVerify}
+${deployPayrollAdministrationFinalAttestation}
+${deployPayrollAdministrationBeforeDeploy}
+      - name: Deploy payroll-administration edge function
+        run: ${deployPayrollAdministrationRun}
+
   lint_typecheck:
     needs: policy
     steps:
@@ -227,7 +536,50 @@ ${deployAiAgentNeeds.map((need) => `      - ${need}`).join("\n")}
 ${authNeeds.map((need) => `      - ${need}`).join("\n")}
     if: ${authIf}
     steps:
-      - run: npm run playwright:auth
+      - name: Auth browser smoke gate
+        run: npm run playwright:auth
+      - name: Session browser smoke gate
+        env:
+          PW_BASE_URL: \${{ github.event_name == 'pull_request' && format('https://deploy-preview-{0}--velvety-cendol-dae4d6.netlify.app', github.event.pull_request.number) || secrets.PW_BASE_URL }}
+          PW_ADMIN_EMAIL: \${{ secrets.PW_ADMIN_EMAIL }}
+          PW_ADMIN_PASSWORD: \${{ secrets.PW_ADMIN_PASSWORD }}
+          PW_THERAPIST_EMAIL: \${{ secrets.PW_THERAPIST_EMAIL }}
+          PW_THERAPIST_PASSWORD: \${{ secrets.PW_THERAPIST_PASSWORD }}
+          PW_SCHEDULE_EMAIL: \${{ secrets.PW_SCHEDULE_EMAIL }}
+          PW_SCHEDULE_PASSWORD: \${{ secrets.PW_SCHEDULE_PASSWORD }}
+          PW_FOREIGN_CLIENT_ID: \${{ secrets.PW_FOREIGN_CLIENT_ID }}
+          PW_FOREIGN_THERAPIST_ID: \${{ secrets.PW_FOREIGN_THERAPIST_ID }}
+          VITE_SUPABASE_URL: \${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: \${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: \${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_ANON_KEY: \${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SECRET_KEY: \${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: \${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          required=(
+            PW_BASE_URL
+            PW_ADMIN_EMAIL
+            PW_ADMIN_PASSWORD
+            PW_THERAPIST_EMAIL
+            PW_THERAPIST_PASSWORD
+            PW_SCHEDULE_EMAIL
+            PW_SCHEDULE_PASSWORD
+            PW_FOREIGN_CLIENT_ID
+            PW_FOREIGN_THERAPIST_ID
+            VITE_SUPABASE_URL
+            VITE_SUPABASE_ANON_KEY
+            SUPABASE_SERVICE_ROLE_KEY
+          )
+          missing=()
+          for key in "\${required[@]}"; do
+            if [ -z "\${!key}" ]; then
+              missing+=("$key")
+            fi
+          done
+          if [ "\${#missing[@]}" -gt 0 ]; then
+            exit 1
+          fi
+          npm run ci:playwright
 ${authExtra}
 
   playwright_env_readiness:
@@ -252,6 +604,10 @@ ${ciGateNeeds.map((need) => `      - ${need}`).join("\n")}
       - env:
           GITHUB_EVENT_NAME: \${{ github.event_name }}
           GITHUB_REF: \${{ github.ref }}
+          ACTIVATE_PAYROLL_TIMESHEETS: \${{ inputs.activate_payroll_timesheets || false }}
+          ACTIVATE_PAYROLL_EXPORT: \${{ inputs.activate_payroll_export || false }}
+          ACTIVATE_PAYROLL_APPROVALS: \${{ inputs.activate_payroll_approvals || false }}
+          ACTIVATE_PAYROLL_ADMINISTRATION: \${{ inputs.activate_payroll_administration || false }}
           DOCS_ONLY: \${{ needs.change_scope.outputs.docs_only }}
           AI_AGENT_CHANGED: \${{ needs.change_scope.outputs.ai_agent_changed }}
           DOCS_GUARD_RESULT: \${{ needs.docs_guard.result }}
@@ -261,6 +617,10 @@ ${ciGateNeeds.map((need) => `      - ${need}`).join("\n")}
           START_SESSION_RUNTIME_CONTRACT_RESULT: \${{ needs.start_session_runtime_contract.result }}
           DEPLOY_SESSION_EDGE_RESULT: \${{ needs.deploy_session_edge.result }}
           DEPLOY_AI_AGENT_EDGE_RESULT: \${{ needs.deploy_ai_agent_edge.result }}
+          DEPLOY_PAYROLL_TIMESHEETS_RESULT: \${{ needs.deploy_payroll_timesheets.result }}
+          DEPLOY_PAYROLL_EXPORT_RESULT: \${{ needs.deploy_payroll_export.result }}
+          DEPLOY_PAYROLL_APPROVALS_RESULT: \${{ needs.deploy_payroll_approvals.result }}
+          DEPLOY_PAYROLL_ADMINISTRATION_RESULT: \${{ needs.deploy_payroll_administration.result }}
           LINT_RESULT: \${{ needs.lint_typecheck.result }}
           UNIT_RESULT: \${{ needs.unit_tests.result }}
           BUILD_RESULT: \${{ needs.build.result }}
@@ -551,7 +911,7 @@ describe("check-session-deploy-safety", () => {
     );
   });
 
-  test("rejects runtime migration parity outside main pushes", () => {
+  test("rejects runtime migration parity outside main pushes and explicit payroll activation", () => {
     const fixtureRoot = makeFixture({
       ci: {
         runtimeParityRestriction: "",
@@ -561,7 +921,7 @@ describe("check-session-deploy-safety", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
-      "runtime_migration_parity must be restricted to push on refs/heads/main",
+      "runtime_migration_parity must be restricted to main pushes or explicit payroll activation",
     );
   });
 
@@ -585,7 +945,7 @@ describe("check-session-deploy-safety", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
-      "ci_gate must enforce runtime_migration_parity success only on main pushes",
+      "ci_gate must enforce runtime_migration_parity success on main pushes and explicit payroll activation",
     );
   });
 
@@ -939,7 +1299,7 @@ describe("check-session-deploy-safety", () => {
     const result = runCheck(fixtureRoot);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("ci_gate must include tenant_safety, runtime_migration_parity, start_session_runtime_contract, deploy_session_edge, and deploy_ai_agent_edge");
+    expect(result.stderr).toContain("ci_gate must include tenant_safety, runtime_migration_parity, start_session_runtime_contract, deploy_session_edge, deploy_ai_agent_edge, deploy_payroll_timesheets, deploy_payroll_export, deploy_payroll_approvals, and deploy_payroll_administration");
   });
 
   test("does not accept commented or echoed ci-gate result checks", () => {
@@ -995,5 +1355,976 @@ describe("check-session-deploy-safety", () => {
     expect(result.stderr).toContain(
       "tenant-safety workflow must map the required Supabase test environment",
     );
+  });
+
+  test("rejects policy parity scope when payroll-timesheets is missing", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        parityScope:
+          "sessions-book,sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf,session-notes-pdf-status,session-notes-pdf-download,programs,goals,goal-targets,program-notes",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("SUPABASE_FUNCTION_PARITY_SCOPE must include payroll-timesheets");
+  });
+
+  test("rejects deploy_payroll_timesheets when it can run automatically on pushes to refs/heads/main", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollRestriction: "github.event_name == 'push' && github.ref == 'refs/heads/main'",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_timesheets must require explicit manual activation");
+  });
+
+  test.each([
+    `github.event_name == 'workflow_dispatch' && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && inputs.activate_payroll_timesheets == true`,
+    `github.event_name == 'workflow_dispatch' && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && inputs.activate_payroll_timesheets == true && github.ref != 'refs/heads/main'`,
+  ])("rejects payroll-timesheets activation from a branch or tag dispatch", (deployPayrollRestriction) => {
+    const fixtureRoot = makeFixture({ ci: { deployPayrollRestriction } });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_timesheets must require immutable current-main manual activation");
+  });
+
+  test("rejects payroll-timesheets activation without the exact protected approval acknowledgement", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollRestriction:
+          `github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && ${PAYROLL_OWNER_DISPATCH_GUARD} && inputs.activate_payroll_timesheets == true`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "deploy_payroll_timesheets must require the exact protected payroll approval acknowledgement",
+    );
+  });
+
+  test.each([
+    `github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.actor_id == '129695080' && github.event.repository.owner.type == 'User' && github.event.repository.owner.login == github.repository_owner && github.event.repository.owner.id == 129695080 && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && inputs.activate_payroll_timesheets == true`,
+    `github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.actor == github.repository_owner && github.event.repository.owner.type == 'User' && github.event.repository.owner.login == github.repository_owner && github.event.repository.owner.id == 129695080 && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && inputs.activate_payroll_timesheets == true`,
+    `github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.actor == github.repository_owner && github.actor_id == '129695080' && github.event.repository.owner.login == github.repository_owner && github.event.repository.owner.id == 129695080 && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && inputs.activate_payroll_timesheets == true`,
+  ])(
+    "rejects payroll-timesheets activation without the exact owner-dispatch guard",
+    (deployPayrollRestriction) => {
+      const fixtureRoot = makeFixture({ ci: { deployPayrollRestriction } });
+      const result = runCheck(fixtureRoot);
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "deploy_payroll_timesheets must require immutable current-main manual activation",
+      );
+    },
+  );
+
+  test("rejects deploy_payroll_timesheets when the prereq helper is not the shared fail-closed target validator", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollPrereqRun: "echo checked env vars only",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "deploy_payroll_timesheets must run the shared edge deploy prerequisite helper",
+    );
+  });
+
+  test.each([
+    ["deployPayrollNeeds", "deploy_payroll_timesheets needs must exactly equal"],
+    ["deployPayrollExportNeeds", "deploy_payroll_export needs must exactly equal"],
+    ["deployPayrollApprovalsNeeds", "deploy_payroll_approvals needs must exactly equal"],
+    ["deployPayrollAdministrationNeeds", "deploy_payroll_administration needs must exactly equal"],
+  ] as const)(
+    "rejects manual payroll deploy jobs when auth_browser_smoke is missing from needs",
+    (needsKey, expectedMessage) => {
+      const fixtureRoot = makeFixture({
+        ci: {
+          [needsKey]: PAYROLL_DEPLOY_NEEDS.filter((need) => need !== "auth_browser_smoke"),
+        },
+      });
+      const result = runCheck(fixtureRoot);
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(expectedMessage);
+      expect(result.stderr).toContain("auth_browser_smoke");
+    },
+  );
+
+  test("rejects payroll-timesheets credentials before the first current-main attestation", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollBeforeFirstAttestation: `      - name: Premature credential use
+        env:
+          SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: echo blocked`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "deploy_payroll_timesheets must attest current main before every deploy credential binding",
+    );
+  });
+
+  test("rejects payroll-timesheets main lookup failure fallbacks", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollFinalAttestation: `      - name: Re-attest payroll-timesheets current main immediately before deploy
+        env:
+          GH_TOKEN: \${{ github.token }}
+          EXPECTED_WORKFLOW_SHA: \${{ github.sha }}
+          GH_REPOSITORY: \${{ github.repository }}
+        run: |
+          set -euo pipefail
+          live_main_sha="$(gh api --method GET "repos/\${GH_REPOSITORY}/git/ref/heads/main" --jq '.object.sha' || printf '%s' "\${EXPECTED_WORKFLOW_SHA}")"
+          test "\${live_main_sha}" = "\${EXPECTED_WORKFLOW_SHA}"`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "deploy_payroll_timesheets must verify github.sha equals live origin/main immediately before deploy",
+    );
+  });
+
+  test("rejects any step between payroll-timesheets final current-main attestation and deploy", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollBeforeDeploy: `      - name: Break immediate attestation
+        run: echo blocked`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "deploy_payroll_timesheets must verify github.sha equals live origin/main immediately before deploy",
+    );
+  });
+
+  test("keeps the checked-in deploy_payroll_timesheets job locked to immutable current-main manual activation", () => {
+    const deployPayrollTimesheetsJob =
+      checkedInCiWorkflow.match(
+        /deploy_payroll_timesheets:[\s\S]*?(?=\n  deploy_payroll_export:)/,
+      )?.[0] ?? "";
+
+    expect(deployPayrollTimesheetsJob).toContain(
+      `if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && ${PAYROLL_OWNER_DISPATCH_GUARD} && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && inputs.activate_payroll_timesheets == true`,
+    );
+    expect(deployPayrollTimesheetsJob).toContain(
+      "Attest payroll-timesheets current main before credentials",
+    );
+    expect(deployPayrollTimesheetsJob).toContain(
+      "Re-attest payroll-timesheets current main immediately before deploy",
+    );
+    expect(deployPayrollTimesheetsJob).toContain(
+      "Refusing payroll-timesheets deployment because workflow SHA is not immutable current main.",
+    );
+  });
+
+  test("rejects ci_gate when payroll deploy success is not enforced for explicit manual activation", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        ciGateChecks: [
+          "[ \"${TENANT_SAFETY_RESULT}\" = \"success\" ] || failed+=(\"tenant-safety=${TENANT_SAFETY_RESULT}\")",
+          "if [ \"${GITHUB_EVENT_NAME}\" = \"push\" ] && [ \"${GITHUB_REF}\" = \"refs/heads/main\" ] && [ \"${RUNTIME_PARITY_RESULT}\" != \"success\" ]; then",
+          "failed+=(\"runtime-migration-parity=${RUNTIME_PARITY_RESULT}\")",
+          "fi",
+          "[ \"${START_SESSION_RUNTIME_CONTRACT_RESULT}\" = \"success\" ] || failed+=(\"start-session-runtime-contract=${START_SESSION_RUNTIME_CONTRACT_RESULT}\")",
+          "if [ \"${GITHUB_EVENT_NAME}\" = \"push\" ] && [ \"${GITHUB_REF}\" = \"refs/heads/main\" ] && [ \"${DEPLOY_SESSION_EDGE_RESULT}\" != \"success\" ]; then",
+          "failed+=(\"deploy-session-edge=${DEPLOY_SESSION_EDGE_RESULT}\")",
+          "fi",
+          "if [ \"${GITHUB_EVENT_NAME}\" = \"push\" ] && [ \"${GITHUB_REF}\" = \"refs/heads/main\" ] && [ \"${AI_AGENT_CHANGED}\" = \"true\" ] && [ \"${DEPLOY_AI_AGENT_EDGE_RESULT}\" != \"success\" ]; then",
+          "failed+=(\"deploy-ai-agent-edge=${DEPLOY_AI_AGENT_EDGE_RESULT}\")",
+          "fi",
+        ],
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "ci_gate must enforce deploy_payroll_timesheets success for explicit manual activation",
+    );
+  });
+
+  test("rejects policy parity scope when payroll-administration is missing", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        parityScope:
+          "sessions-book,sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf,session-notes-pdf-status,session-notes-pdf-download,programs,goals,goal-targets,program-notes,payroll-timesheets",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("SUPABASE_FUNCTION_PARITY_SCOPE must include payroll-administration");
+  });
+
+  test("rejects policy parity scope when payroll-approvals is missing", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        parityScope:
+          "sessions-book,sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf,session-notes-pdf-status,session-notes-pdf-download,programs,goals,goal-targets,program-notes,payroll-timesheets,payroll-administration",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("SUPABASE_FUNCTION_PARITY_SCOPE must include payroll-approvals");
+  });
+
+  test("rejects policy parity scope when payroll-export is missing", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        parityScope:
+          "sessions-book,sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf,session-notes-pdf-status,session-notes-pdf-download,programs,goals,goal-targets,program-notes,payroll-timesheets,payroll-administration,payroll-approvals",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("SUPABASE_FUNCTION_PARITY_SCOPE must include payroll-export");
+  });
+
+  test("rejects a missing default-false payroll-approvals workflow dispatch input", () => {
+    const fixtureRoot = makeFixture({ ci: { payrollApprovalsInput: "" } });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("workflow_dispatch must define a required default-false boolean activate_payroll_approvals input");
+  });
+
+  test("rejects a missing default-false payroll-export workflow dispatch input", () => {
+    const fixtureRoot = makeFixture({ ci: { payrollExportInput: "" } });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("workflow_dispatch must define a required default-false boolean activate_payroll_export input");
+  });
+
+  test("rejects a missing default-false payroll-administration workflow dispatch input", () => {
+    const fixtureRoot = makeFixture({ ci: { payrollAdministrationInput: "" } });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("workflow_dispatch must define a required default-false boolean activate_payroll_administration input");
+  });
+
+  test("rejects a missing payroll approval acknowledgement workflow dispatch input", () => {
+    const fixtureRoot = makeFixture({ ci: { payrollApprovalAcknowledgementInput: "" } });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "workflow_dispatch must define a required string approval_acknowledgement input for protected payroll activation",
+    );
+  });
+
+  test("rejects deploy_payroll_administration when it can run automatically on pushes", () => {
+    const fixtureRoot = makeFixture({
+      ci: { deployPayrollAdministrationRestriction: "github.event_name == 'push' && github.ref == 'refs/heads/main'" },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_administration must require explicit manual activation");
+  });
+
+  test("rejects deploy_payroll_approvals when it can run automatically on pushes", () => {
+    const fixtureRoot = makeFixture({
+      ci: { deployPayrollApprovalsRestriction: "github.event_name == 'push' && github.ref == 'refs/heads/main'" },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_approvals must require explicit manual activation");
+  });
+
+  test("rejects deploy_payroll_export when it can run automatically on pushes", () => {
+    const fixtureRoot = makeFixture({
+      ci: { deployPayrollExportRestriction: "github.event_name == 'push' && github.ref == 'refs/heads/main'" },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_export must require explicit manual activation");
+  });
+
+  test("rejects deploy_payroll_export when the prereq helper is not the shared fail-closed target validator", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollExportPrereqRun: "echo checked env vars only",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "deploy_payroll_export must run the shared edge deploy prerequisite helper",
+    );
+  });
+
+  test.each([
+    `github.event_name == 'workflow_dispatch' && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && inputs.activate_payroll_export == true`,
+    `github.event_name == 'workflow_dispatch' && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && inputs.activate_payroll_export == true && github.ref != 'refs/heads/main'`,
+  ])("rejects payroll-export activation from a branch or tag dispatch", (deployPayrollExportRestriction) => {
+    const fixtureRoot = makeFixture({ ci: { deployPayrollExportRestriction } });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_export must require immutable current-main manual activation");
+  });
+
+  test("rejects payroll-export deployment without a live main SHA comparison", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollExportFinalAttestation: `      - name: Re-attest payroll-export current main immediately before deploy
+        env:
+          GH_TOKEN: \${{ github.token }}
+          EXPECTED_WORKFLOW_SHA: \${{ github.sha }}
+          GH_REPOSITORY: \${{ github.repository }}
+        run: |
+          set -euo pipefail
+          live_main_sha="\${EXPECTED_WORKFLOW_SHA}"
+          test -n "\${live_main_sha}"`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_export must verify github.sha equals live origin/main immediately before deploy");
+  });
+
+  test("rejects payroll-export main lookup failure fallbacks", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollExportFinalAttestation: `      - name: Re-attest payroll-export current main immediately before deploy
+        env:
+          GH_TOKEN: \${{ github.token }}
+          EXPECTED_WORKFLOW_SHA: \${{ github.sha }}
+          GH_REPOSITORY: \${{ github.repository }}
+        run: |
+          set -euo pipefail
+          live_main_sha="$(gh api --method GET "repos/\${GH_REPOSITORY}/git/ref/heads/main" --jq '.object.sha' || printf '%s' "\${EXPECTED_WORKFLOW_SHA}")"
+          test "\${live_main_sha}" = "\${EXPECTED_WORKFLOW_SHA}"`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_export must verify github.sha equals live origin/main immediately before deploy");
+  });
+
+  test("rejects payroll-export credentials before the first current-main attestation", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollExportBeforeFirstAttestation: `      - name: Premature credential use
+        env:
+          SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: echo blocked`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_export must attest current main before every deploy credential binding");
+  });
+
+  test("rejects any step between payroll-export final current-main attestation and deploy", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollExportBeforeDeploy: `      - name: Break immediate attestation
+        run: echo blocked`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_export must verify github.sha equals live origin/main immediately before deploy");
+  });
+
+  test("rejects deploy_payroll_approvals when the prereq helper is not the shared fail-closed target validator", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollApprovalsPrereqRun: "echo checked env vars only",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "deploy_payroll_approvals must run the shared edge deploy prerequisite helper",
+    );
+  });
+
+  test.each([
+    `github.event_name == 'workflow_dispatch' && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && inputs.activate_payroll_approvals == true`,
+    `github.event_name == 'workflow_dispatch' && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && inputs.activate_payroll_approvals == true && github.ref != 'refs/heads/main'`,
+  ])("rejects payroll-approvals activation from a branch or tag dispatch", (deployPayrollApprovalsRestriction) => {
+    const fixtureRoot = makeFixture({ ci: { deployPayrollApprovalsRestriction } });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_approvals must require immutable current-main manual activation");
+  });
+
+  test("rejects payroll-approvals deployment without a live main SHA comparison", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollApprovalsFinalAttestation: `      - name: Re-attest payroll-approvals current main immediately before deploy
+        env:
+          GH_TOKEN: \${{ github.token }}
+          EXPECTED_WORKFLOW_SHA: \${{ github.sha }}
+          GH_REPOSITORY: \${{ github.repository }}
+        run: |
+          set -euo pipefail
+          live_main_sha="\${EXPECTED_WORKFLOW_SHA}"
+          test -n "\${live_main_sha}"`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_approvals must verify github.sha equals live origin/main immediately before deploy");
+  });
+
+  test("rejects payroll-approvals main lookup failure fallbacks", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollApprovalsFinalAttestation: `      - name: Re-attest payroll-approvals current main immediately before deploy
+        env:
+          GH_TOKEN: \${{ github.token }}
+          EXPECTED_WORKFLOW_SHA: \${{ github.sha }}
+          GH_REPOSITORY: \${{ github.repository }}
+        run: |
+          set -euo pipefail
+          live_main_sha="$(gh api --method GET "repos/\${GH_REPOSITORY}/git/ref/heads/main" --jq '.object.sha' || printf '%s' "\${EXPECTED_WORKFLOW_SHA}")"
+          test "\${live_main_sha}" = "\${EXPECTED_WORKFLOW_SHA}"`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_approvals must verify github.sha equals live origin/main immediately before deploy");
+  });
+
+  test("rejects payroll-approvals credentials before the first current-main attestation", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollApprovalsBeforeFirstAttestation: `      - name: Premature credential use
+        env:
+          SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: echo blocked`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_approvals must attest current main before every deploy credential binding");
+  });
+
+  test("rejects any step between payroll-approvals final current-main attestation and deploy", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollApprovalsBeforeDeploy: `      - name: Break immediate attestation
+        run: echo blocked`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_approvals must verify github.sha equals live origin/main immediately before deploy");
+  });
+
+  test.each([
+    `github.event_name == 'workflow_dispatch' && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && inputs.activate_payroll_administration == true`,
+    `github.event_name == 'workflow_dispatch' && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && inputs.activate_payroll_administration == true && github.ref != 'refs/heads/main'`,
+  ])("rejects payroll-administration activation from a branch or tag dispatch", (deployPayrollAdministrationRestriction) => {
+    const fixtureRoot = makeFixture({ ci: { deployPayrollAdministrationRestriction } });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_administration must require immutable current-main manual activation");
+  });
+
+  test("rejects runtime_migration_parity when payroll-approvals activation is omitted", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        runtimeParityRestriction:
+          "(github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.activate_payroll_timesheets == true || inputs.activate_payroll_administration == true))",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "runtime_migration_parity must be restricted to main pushes or explicit payroll activation",
+    );
+  });
+
+  test("rejects runtime_migration_parity when payroll-export activation is omitted", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        runtimeParityRestriction:
+          "(github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.activate_payroll_timesheets == true || inputs.activate_payroll_administration == true || inputs.activate_payroll_approvals == true))",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "runtime_migration_parity must be restricted to main pushes or explicit payroll activation",
+    );
+  });
+
+  test.each([
+    `(${MAIN_PUSH_IF}) || (github.event_name == 'workflow_dispatch' && ${PAYROLL_OWNER_DISPATCH_GUARD} && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && (inputs.activate_payroll_timesheets == true || inputs.activate_payroll_administration == true || inputs.activate_payroll_approvals == true || inputs.activate_payroll_export == true))`,
+    `(${MAIN_PUSH_IF}) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.actor_id == '129695080' && github.event.repository.owner.type == 'User' && github.event.repository.owner.login == github.repository_owner && github.event.repository.owner.id == 129695080 && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && (inputs.activate_payroll_timesheets == true || inputs.activate_payroll_administration == true || inputs.activate_payroll_approvals == true || inputs.activate_payroll_export == true))`,
+    `(${MAIN_PUSH_IF}) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.actor == github.repository_owner && github.event.repository.owner.type == 'User' && github.event.repository.owner.login == github.repository_owner && github.event.repository.owner.id == 129695080 && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && (inputs.activate_payroll_timesheets == true || inputs.activate_payroll_administration == true || inputs.activate_payroll_approvals == true || inputs.activate_payroll_export == true))`,
+    `(${MAIN_PUSH_IF}) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.actor == github.repository_owner && github.actor_id == '129695080' && github.event.repository.owner.login == github.repository_owner && github.event.repository.owner.id == 129695080 && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && (inputs.activate_payroll_timesheets == true || inputs.activate_payroll_administration == true || inputs.activate_payroll_approvals == true || inputs.activate_payroll_export == true))`,
+  ])("rejects runtime_migration_parity without the exact protected manual-dispatch guard", (runtimeParityRestriction) => {
+    const fixtureRoot = makeFixture({ ci: { runtimeParityRestriction } });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "runtime_migration_parity must be restricted to main pushes or explicit payroll activation",
+    );
+  });
+
+  test("rejects runtime_migration_parity when the explicit contract omits payroll_security_repair", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        workflowComment:
+          "# runtime parity contract regression fixture",
+      },
+    });
+    const workflowPath = path.join(fixtureRoot, ".github", "workflows", "ci.yml");
+    const current = readFileSync(workflowPath, "utf8");
+    writeFileSync(
+      workflowPath,
+      current.replace(",20260813103000|payroll_security_repair", ""),
+      "utf8",
+    );
+
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "runtime_migration_parity must run the merge-range checker with change_scope SHAs, the explicit WIN-219 payroll migration contract, activation flags, and SUPABASE_DB_URL",
+    );
+  });
+
+  test("rejects payroll-administration deployment without a live main SHA comparison", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollAdministrationFinalAttestation: `      - name: Re-attest payroll-administration current main immediately before deploy
+        env:
+          GH_TOKEN: \${{ github.token }}
+          EXPECTED_WORKFLOW_SHA: \${{ github.sha }}
+          GH_REPOSITORY: \${{ github.repository }}
+        run: |
+          set -euo pipefail
+          live_main_sha="\${EXPECTED_WORKFLOW_SHA}"
+          test -n "\${live_main_sha}"`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_administration must verify github.sha equals live origin/main immediately before deploy");
+  });
+
+  test("rejects payroll-administration main lookup failure fallbacks", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollAdministrationFinalAttestation: `      - name: Re-attest payroll-administration current main immediately before deploy
+        env:
+          GH_TOKEN: \${{ github.token }}
+          EXPECTED_WORKFLOW_SHA: \${{ github.sha }}
+          GH_REPOSITORY: \${{ github.repository }}
+        run: |
+          set -euo pipefail
+          live_main_sha="$(gh api --method GET "repos/\${GH_REPOSITORY}/git/ref/heads/main" --jq '.object.sha' || printf '%s' "\${EXPECTED_WORKFLOW_SHA}")"
+          test "\${live_main_sha}" = "\${EXPECTED_WORKFLOW_SHA}"`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_administration must verify github.sha equals live origin/main immediately before deploy");
+  });
+
+  test.each([
+    "UPSTASH_REDIS_REST_URL",
+    "UPSTASH_REDIS_REST_TOKEN",
+  ])("rejects payroll-administration secret sync missing %s", (missingName) => {
+    const deployPayrollAdministrationSecretSync = PAYROLL_ADMINISTRATION_SECRET_SYNC
+      .split("\n")
+      .filter((line) => !line.includes(`${missingName}: \${{ secrets.${missingName} }}`))
+      .join("\n");
+    const fixtureRoot = makeFixture({ ci: { deployPayrollAdministrationSecretSync } });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Upstash GitHub secrets may be referenced only by the exact approved payroll-administration sync bindings");
+  });
+
+  test("rejects payroll-administration Upstash secrets outside the approved sync step", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        policyExtra: `      - run: echo policy
+        env:
+          UPSTASH_REDIS_REST_URL: \${{ secrets.UPSTASH_REDIS_REST_URL }}`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Upstash GitHub secrets may be referenced only by the exact approved payroll-administration sync bindings");
+  });
+
+  test("rejects payroll-administration credentials before the first current-main attestation", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollAdministrationBeforeFirstAttestation: `      - name: Premature credential use
+        env:
+          SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: echo blocked`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_administration must attest current main before every deploy credential binding");
+  });
+
+  test("rejects any step between final current-main attestation and deploy", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollAdministrationBeforeDeploy: `      - name: Break immediate attestation
+        run: echo blocked`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_administration must verify github.sha equals live origin/main immediately before deploy");
+  });
+
+  test.each([
+    `      - run: echo "\${{ secrets.UPSTASH_REDIS_REST_URL }}"`,
+    `      - run: curl -d "\${{ secrets.UPSTASH_REDIS_REST_TOKEN }}" https://example.invalid`,
+    `      - uses: example/action@immutable
+        with:
+          token: \${{ secrets.UPSTASH_REDIS_REST_TOKEN }}`,
+    `      - run: echo blocked
+        if: secrets.UPSTASH_REDIS_REST_URL != ''`,
+  ])("rejects direct Upstash secret interpolation", (policyExtra) => {
+    const fixtureRoot = makeFixture({ ci: { policyExtra } });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Upstash GitHub secrets may be referenced only by the exact approved payroll-administration sync bindings");
+  });
+
+  test.each([
+    `      - run: echo "\${{ secrets }}"`,
+    `      - run: echo "\${{ toJSON(secrets) }}"`,
+    `      - run: echo "\${{ toJson(secrets) }}"`,
+    `      - run: echo "\${{ fromJSON(toJSON(secrets)) }}"`,
+    `      - run: echo "\${{ secrets['UPSTASH_REDIS_REST_TOKEN'] }}"`,
+    `      - run: echo "\${{ secrets.* }}"`,
+    `      - run: echo blocked
+        if: secrets != ''`,
+  ])("rejects whole GitHub secrets context access patterns", (policyExtra) => {
+    const fixtureRoot = makeFixture({ ci: { policyExtra } });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("CI workflow must not reference the whole GitHub secrets context");
+  });
+
+  test("rejects folded multiline toJSON(secrets) access", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        policyExtra: `      - run: >-
+          echo "\${{ toJSON(
+            secrets
+          ) }}"`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("CI workflow must not reference the whole GitHub secrets context");
+  });
+
+  test("rejects whole-secrets access after a hash inside a folded block scalar", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        policyExtra: `      - run: >-
+          echo prefix
+          # \${{ toJSON(secrets) }}`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("CI workflow must not reference the whole GitHub secrets context");
+  });
+
+  test("rejects literal multiline fromJSON(toJSON(secrets)) access", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        policyExtra: `      - run: |-
+          echo "\${{ fromJSON(
+            toJSON(
+              secrets
+            )
+          ) }}"`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("CI workflow must not reference the whole GitHub secrets context");
+  });
+
+  test("rejects bracket-index secrets access split across lines", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        policyExtra: `      - run: >-
+          echo "\${{ secrets[
+            'UPSTASH_REDIS_REST_TOKEN'
+          ] }}"`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("CI workflow must not reference the whole GitHub secrets context");
+  });
+
+  test("rejects wildcard secrets access split across lines", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        policyExtra: `      - run: >-
+          echo "\${{ secrets.
+            * }}"`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("CI workflow must not reference the whole GitHub secrets context");
+  });
+
+  test("allows the approved payroll-administration Upstash sync env bindings", () => {
+    const fixtureRoot = makeFixture();
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+  });
+
+  test("rejects duplicate Upstash secret bindings", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        policyExtra: `      - run: echo duplicate
+        env:
+          UPSTASH_REDIS_REST_URL: \${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: \${{ secrets.UPSTASH_REDIS_REST_TOKEN }}`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Upstash GitHub secrets may be referenced only by the exact approved payroll-administration sync bindings");
+  });
+
+  test("rejects payroll-administration workflows without exact remote secret sync and list verification", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollAdministrationSecretSync: "",
+        deployPayrollAdministrationSecretVerify: "",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_administration must validate target consistency before remote secret sync, then sync and verify the two required remote Edge secrets before deploy");
+  });
+
+  test("rejects payroll-administration remote secret sync before target validation", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        deployPayrollAdministrationAfterFirstAttestation: `${PAYROLL_ADMINISTRATION_SECRET_SYNC}
+`,
+        deployPayrollAdministrationSecretSync: "",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_administration must validate target consistency before remote secret sync, then sync and verify the two required remote Edge secrets before deploy");
+  });
+
+  test("rejects payroll-administration remote secret sync without a fresh current-main re-attestation immediately before mutation", () => {
+    const fixtureRoot = makeFixture();
+    const workflowPath = path.join(fixtureRoot, ".github", "workflows", "ci.yml");
+    const current = readFileSync(workflowPath, "utf8");
+    const withoutImmediateReattestation = current.replace(
+      `${PAYROLL_ADMINISTRATION_SECRET_MUTATION_ATTESTATION}
+${PAYROLL_ADMINISTRATION_SECRET_SYNC}
+${PAYROLL_ADMINISTRATION_SECRET_VERIFY}
+${PAYROLL_ADMINISTRATION_FINAL_ATTESTATION}`,
+      `${PAYROLL_ADMINISTRATION_SECRET_SYNC}
+${PAYROLL_ADMINISTRATION_SECRET_VERIFY}
+${PAYROLL_ADMINISTRATION_FINAL_ATTESTATION}`,
+    );
+    writeFileSync(workflowPath, withoutImmediateReattestation, "utf8");
+
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_administration must re-attest immutable current main immediately before remote secret mutation");
+  });
+
+  test("rejects any step between payroll-administration remote secret re-attestation and mutation", () => {
+    const fixtureRoot = makeFixture();
+    const workflowPath = path.join(fixtureRoot, ".github", "workflows", "ci.yml");
+    const current = readFileSync(workflowPath, "utf8");
+    const withBrokenAdjacency = current.replace(
+      `${PAYROLL_ADMINISTRATION_SECRET_MUTATION_ATTESTATION}
+${PAYROLL_ADMINISTRATION_SECRET_SYNC}`,
+      `${PAYROLL_ADMINISTRATION_SECRET_MUTATION_ATTESTATION}
+      - name: Break secret-sync adjacency
+        run: echo blocked
+${PAYROLL_ADMINISTRATION_SECRET_SYNC}`,
+    );
+    writeFileSync(workflowPath, withBrokenAdjacency, "utf8");
+
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy_payroll_administration must re-attest immutable current main immediately before remote secret mutation");
+  });
+
+  test("rejects auth_browser_smoke when the required exact-head Playwright gate remains the narrower session smoke suite", () => {
+    const fixtureRoot = makeFixture();
+    const workflowPath = path.join(fixtureRoot, ".github", "workflows", "ci.yml");
+    const current = readFileSync(workflowPath, "utf8");
+    writeFileSync(
+      workflowPath,
+      current.replace("npm run ci:playwright", "npm run ci:playwright:session-smoke"),
+      "utf8",
+    );
+
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "auth_browser_smoke must run npm run ci:playwright with the complete required auth/session secret contract",
+    );
+  });
+
+  test("rejects extra payroll-administration deploy and prerequisite commands", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        policyExtra: `      - run: node scripts/ci/check-edge-deploy-prerequisites.mjs payroll-administration
+      - run: node scripts/ci/deploy-payroll-administration-function.mjs`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("CI workflow must contain exactly one payroll-administration deploy prerequisite command");
+    expect(result.stderr).toContain("CI workflow must contain exactly one payroll-administration deploy command");
+  });
+
+  test("rejects ci_gate when payroll-administration deploy success is not aggregated", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        ciGateChecks: [
+          "[ \"${TENANT_SAFETY_RESULT}\" = \"success\" ] || failed+=(\"tenant-safety=${TENANT_SAFETY_RESULT}\")",
+          "if { [ \"${GITHUB_EVENT_NAME}\" = \"push\" ] && [ \"${GITHUB_REF}\" = \"refs/heads/main\" ]; } || { [ \"${GITHUB_EVENT_NAME}\" = \"workflow_dispatch\" ] && [ \"${ACTIVATE_PAYROLL_TIMESHEETS}\" = \"true\" ]; }; then",
+          "[ \"${RUNTIME_PARITY_RESULT}\" = \"success\" ] || failed+=(\"runtime-migration-parity=${RUNTIME_PARITY_RESULT}\")",
+          "fi",
+          "[ \"${START_SESSION_RUNTIME_CONTRACT_RESULT}\" = \"success\" ] || failed+=(\"start-session-runtime-contract=${START_SESSION_RUNTIME_CONTRACT_RESULT}\")",
+          "if [ \"${GITHUB_EVENT_NAME}\" = \"workflow_dispatch\" ] && [ \"${ACTIVATE_PAYROLL_TIMESHEETS}\" = \"true\" ] && [ \"${DEPLOY_PAYROLL_TIMESHEETS_RESULT}\" != \"success\" ]; then",
+          "failed+=(\"deploy-payroll-timesheets=${DEPLOY_PAYROLL_TIMESHEETS_RESULT}\")",
+          "fi",
+        ],
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("ci_gate must enforce deploy_payroll_administration success for explicit manual activation");
+  });
+
+  test("rejects ci_gate when payroll-export deploy success is not aggregated", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        ciGateChecks: [
+          "[ \"${TENANT_SAFETY_RESULT}\" = \"success\" ] || failed+=(\"tenant-safety=${TENANT_SAFETY_RESULT}\")",
+          "if { [ \"${GITHUB_EVENT_NAME}\" = \"push\" ] && [ \"${GITHUB_REF}\" = \"refs/heads/main\" ]; } || { [ \"${GITHUB_EVENT_NAME}\" = \"workflow_dispatch\" ] && { [ \"${ACTIVATE_PAYROLL_TIMESHEETS}\" = \"true\" ] || [ \"${ACTIVATE_PAYROLL_ADMINISTRATION}\" = \"true\" ] || [ \"${ACTIVATE_PAYROLL_APPROVALS}\" = \"true\" ] || [ \"${ACTIVATE_PAYROLL_EXPORT}\" = \"true\" ]; }; }; then",
+          "[ \"${RUNTIME_PARITY_RESULT}\" = \"success\" ] || failed+=(\"runtime-migration-parity=${RUNTIME_PARITY_RESULT}\")",
+          "fi",
+          "[ \"${START_SESSION_RUNTIME_CONTRACT_RESULT}\" = \"success\" ] || failed+=(\"start-session-runtime-contract=${START_SESSION_RUNTIME_CONTRACT_RESULT}\")",
+          "if [ \"${GITHUB_EVENT_NAME}\" = \"workflow_dispatch\" ] && [ \"${ACTIVATE_PAYROLL_TIMESHEETS}\" = \"true\" ] && [ \"${DEPLOY_PAYROLL_TIMESHEETS_RESULT}\" != \"success\" ]; then",
+          "failed+=(\"deploy-payroll-timesheets=${DEPLOY_PAYROLL_TIMESHEETS_RESULT}\")",
+          "fi",
+          "if [ \"${GITHUB_EVENT_NAME}\" = \"workflow_dispatch\" ] && [ \"${ACTIVATE_PAYROLL_APPROVALS}\" = \"true\" ] && [ \"${DEPLOY_PAYROLL_APPROVALS_RESULT}\" != \"success\" ]; then",
+          "failed+=(\"deploy-payroll-approvals=${DEPLOY_PAYROLL_APPROVALS_RESULT}\")",
+          "fi",
+          "if [ \"${GITHUB_EVENT_NAME}\" = \"workflow_dispatch\" ] && [ \"${ACTIVATE_PAYROLL_ADMINISTRATION}\" = \"true\" ] && [ \"${DEPLOY_PAYROLL_ADMINISTRATION_RESULT}\" != \"success\" ]; then",
+          "failed+=(\"deploy-payroll-administration=${DEPLOY_PAYROLL_ADMINISTRATION_RESULT}\")",
+          "fi",
+        ],
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("ci_gate must enforce deploy_payroll_export success for explicit manual activation");
+  });
+
+  test("rejects ci_gate when payroll-approvals deploy success is not aggregated", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        ciGateChecks: [
+          "[ \"${TENANT_SAFETY_RESULT}\" = \"success\" ] || failed+=(\"tenant-safety=${TENANT_SAFETY_RESULT}\")",
+          "if { [ \"${GITHUB_EVENT_NAME}\" = \"push\" ] && [ \"${GITHUB_REF}\" = \"refs/heads/main\" ]; } || { [ \"${GITHUB_EVENT_NAME}\" = \"workflow_dispatch\" ] && { [ \"${ACTIVATE_PAYROLL_TIMESHEETS}\" = \"true\" ] || [ \"${ACTIVATE_PAYROLL_ADMINISTRATION}\" = \"true\" ]; }; }; then",
+          "[ \"${RUNTIME_PARITY_RESULT}\" = \"success\" ] || failed+=(\"runtime-migration-parity=${RUNTIME_PARITY_RESULT}\")",
+          "fi",
+          "[ \"${START_SESSION_RUNTIME_CONTRACT_RESULT}\" = \"success\" ] || failed+=(\"start-session-runtime-contract=${START_SESSION_RUNTIME_CONTRACT_RESULT}\")",
+          "if [ \"${GITHUB_EVENT_NAME}\" = \"workflow_dispatch\" ] && [ \"${ACTIVATE_PAYROLL_TIMESHEETS}\" = \"true\" ] && [ \"${DEPLOY_PAYROLL_TIMESHEETS_RESULT}\" != \"success\" ]; then",
+          "failed+=(\"deploy-payroll-timesheets=${DEPLOY_PAYROLL_TIMESHEETS_RESULT}\")",
+          "fi",
+          "if [ \"${GITHUB_EVENT_NAME}\" = \"workflow_dispatch\" ] && [ \"${ACTIVATE_PAYROLL_ADMINISTRATION}\" = \"true\" ] && [ \"${DEPLOY_PAYROLL_ADMINISTRATION_RESULT}\" != \"success\" ]; then",
+          "failed+=(\"deploy-payroll-administration=${DEPLOY_PAYROLL_ADMINISTRATION_RESULT}\")",
+          "fi",
+        ],
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("ci_gate must enforce deploy_payroll_approvals success for explicit manual activation");
   });
 });

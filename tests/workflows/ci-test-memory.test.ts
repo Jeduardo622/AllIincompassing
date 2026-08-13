@@ -18,16 +18,21 @@ const loadWorkflow = (filename: string): Workflow => {
   return parse(readFileSync(workflowPath, "utf8")) as Workflow;
 };
 
-const expectStepHeap = (workflow: Workflow, jobName: string, stepName: string) => {
+const expectStepHeap = (
+  workflow: Workflow,
+  jobName: string,
+  stepName: string,
+  expectedHeapMb: number,
+) => {
   const step = workflow.jobs?.[jobName]?.steps?.find((candidate) => candidate.name === stepName);
   expect(step, `${jobName}/${stepName} must exist`).toBeDefined();
-  expect(step?.env?.NODE_OPTIONS).toBe("--max-old-space-size=6144");
+  expect(step?.env?.NODE_OPTIONS).toBe(`--max-old-space-size=${expectedHeapMb}`);
 };
 
 describe("CI test memory contract", () => {
   it("gives both full-suite test jobs enough heap for the schedule suite", () => {
-    expectStepHeap(loadWorkflow("ci.yml"), "unit_tests", "Unit tests + coverage");
-    expectStepHeap(loadWorkflow("supabase-validate.yml"), "test-main", "Run unit tests");
-    expectStepHeap(loadWorkflow("tenant-safety.yml"), "tenant-safety", "Run tests");
+    expectStepHeap(loadWorkflow("ci.yml"), "unit_tests", "Unit tests + coverage", 6144);
+    expectStepHeap(loadWorkflow("supabase-validate.yml"), "test-main", "Run unit tests", 6144);
+    expectStepHeap(loadWorkflow("tenant-safety.yml"), "tenant-safety", "Run tests", 8192);
   });
 });

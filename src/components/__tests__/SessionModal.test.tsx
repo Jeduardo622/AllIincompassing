@@ -1230,6 +1230,16 @@ describe('SessionModal', () => {
     timeZone: "America/New_York",
   };
 
+  const createDeferred = <T,>() => {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  };
+
   const setReducedMotionPreference = (matches: boolean) => {
     vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
       matches: query === '(prefers-reduced-motion: reduce)' ? matches : false,
@@ -2116,6 +2126,290 @@ describe('SessionModal', () => {
       }));
     });
     confirmSpy.mockRestore();
+  });
+
+  it('renders clock-choice actions after callback-driven start requests one and forwards clock_in exactly', async () => {
+    const onStartSessionOrchestration = vi
+      .fn()
+      .mockResolvedValueOnce({ kind: 'clock_choice_required' })
+      .mockResolvedValueOnce({ kind: 'started' });
+    const onSessionStarted = vi.fn();
+    const onClose = vi.fn();
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onClose={onClose}
+        onSessionStarted={onSessionStarted}
+        onStartSessionOrchestration={onStartSessionOrchestration}
+        session={validScheduledSession}
+      />,
+    );
+
+    const startButton = await screen.findByRole('button', { name: /Start Session/i });
+    await waitFor(() => expect(startButton).not.toBeDisabled());
+    await userEvent.click(startButton);
+
+    await waitFor(() => {
+      expect(onStartSessionOrchestration).toHaveBeenCalledWith({
+        sessionId: validScheduledSession.id,
+        programId: validScheduledSession.program_id,
+        goalId: validScheduledSession.goal_id,
+        goalIds: validScheduledSession.goal_ids,
+      });
+    });
+    expect(onSessionStarted).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(toastMocks.showSuccess).not.toHaveBeenCalledWith('Session started');
+    expect(await screen.findByRole('button', { name: 'Clock in and start' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue session without clocking in' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clock in and start' }));
+
+    await waitFor(() => {
+      expect(onStartSessionOrchestration).toHaveBeenNthCalledWith(2, {
+        sessionId: validScheduledSession.id,
+        programId: validScheduledSession.program_id,
+        goalId: validScheduledSession.goal_id,
+        goalIds: validScheduledSession.goal_ids,
+      }, 'clock_in');
+      expect(onSessionStarted).toHaveBeenCalledOnce();
+      expect(onClose).toHaveBeenCalledOnce();
+      expect(toastMocks.showSuccess).toHaveBeenCalledWith('Session started');
+    });
+  });
+
+  it('forwards continue_without_clock_in exactly and only closes once the callback reports started', async () => {
+    const onStartSessionOrchestration = vi
+      .fn()
+      .mockResolvedValueOnce({ kind: 'clock_choice_required' })
+      .mockResolvedValueOnce({ kind: 'clock_choice_required' })
+      .mockResolvedValueOnce({ kind: 'started' });
+    const onSessionStarted = vi.fn();
+    const onClose = vi.fn();
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onClose={onClose}
+        onSessionStarted={onSessionStarted}
+        onStartSessionOrchestration={onStartSessionOrchestration}
+        session={validScheduledSession}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /Start Session/i }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Continue session without clocking in' }));
+
+    await waitFor(() => {
+      expect(onStartSessionOrchestration).toHaveBeenNthCalledWith(2, {
+        sessionId: validScheduledSession.id,
+        programId: validScheduledSession.program_id,
+        goalId: validScheduledSession.goal_id,
+        goalIds: validScheduledSession.goal_ids,
+      }, 'continue_without_clock_in');
+    });
+    expect(onSessionStarted).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Continue session without clocking in' }));
+
+    await waitFor(() => {
+      expect(onStartSessionOrchestration).toHaveBeenNthCalledWith(3, {
+        sessionId: validScheduledSession.id,
+        programId: validScheduledSession.program_id,
+        goalId: validScheduledSession.goal_id,
+        goalIds: validScheduledSession.goal_ids,
+      }, 'continue_without_clock_in');
+      expect(onSessionStarted).toHaveBeenCalledOnce();
+      expect(onClose).toHaveBeenCalledOnce();
+    });
+  });
+
+  it('suppresses duplicate start and choice clicks while orchestration is busy', async () => {
+    const firstAttempt = createDeferred<{ kind: 'clock_choice_required' }>();
+    const secondAttempt = createDeferred<{ kind: 'started' }>();
+    const onStartSessionOrchestration = vi
+      .fn()
+      .mockImplementationOnce(() => firstAttempt.promise)
+      .mockImplementationOnce(() => secondAttempt.promise);
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onStartSessionOrchestration={onStartSessionOrchestration}
+        session={validScheduledSession}
+      />,
+    );
+
+    const startButton = await screen.findByRole('button', { name: /Start Session/i });
+    await waitFor(() => expect(startButton).not.toBeDisabled());
+    fireEvent.click(startButton);
+    fireEvent.click(startButton);
+    expect(onStartSessionOrchestration).toHaveBeenCalledTimes(1);
+    expect(startButton).toBeDisabled();
+
+    firstAttempt.resolve({ kind: 'clock_choice_required' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Clock in and start' })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Clock in and start' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Clock in and start' }));
+    expect(onStartSessionOrchestration).toHaveBeenCalledTimes(2);
+
+    secondAttempt.resolve({ kind: 'started' });
+    await waitFor(() => expect(defaultProps.onClose).toHaveBeenCalled());
+  });
+
+  it('awaits close preparation before regular completion submit and blocks submission on failure', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const closePreparation = createDeferred<void>();
+    const onPrepareSessionClose = vi.fn(() => closePreparation.promise);
+
+    const firstRender = renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        onPrepareSessionClose={onPrepareSessionClose}
+        session={btInProgressSession}
+      />,
+    );
+
+    const closeButton = await screen.findByRole('button', { name: /^Close Session$/i });
+    await waitFor(() => expect(closeButton).not.toBeDisabled());
+    fireEvent.click(closeButton);
+    fireEvent.click(closeButton);
+    await waitFor(() => {
+      expect(onPrepareSessionClose).toHaveBeenCalledWith(btInProgressSession.id);
+      expect(onPrepareSessionClose).toHaveBeenCalledTimes(1);
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    closePreparation.resolve();
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }));
+    });
+    firstRender.unmount();
+
+    onSubmit.mockClear();
+    onPrepareSessionClose.mockReset().mockRejectedValueOnce(new Error('Reconnect and retry.'));
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        onPrepareSessionClose={onPrepareSessionClose}
+        session={{ ...btInProgressSession, id: 'session-close-prep-failure' }}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Close Session$/i }));
+    await waitFor(() => {
+      expect(onPrepareSessionClose).toHaveBeenCalledWith('session-close-prep-failure');
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(toastMocks.showError).toHaveBeenCalledWith('Attendance could not be confirmed. Reconnect and retry.');
+    });
+  });
+
+  it('awaits BT close preparation before opening closeout and blocks legacy BT closeout on failure', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const closePreparation = createDeferred<void>();
+    const onPrepareSessionClose = vi.fn(() => closePreparation.promise);
+
+    const firstRender = renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        onPrepareSessionClose={onPrepareSessionClose}
+        dataCollectionOnly
+        session={btInProgressSession}
+      />,
+    );
+
+    const btCloseButton = await screen.findByRole('button', { name: /^Close Session$/i });
+    await waitFor(() => expect(btCloseButton).not.toBeDisabled());
+    fireEvent.click(btCloseButton);
+    fireEvent.click(btCloseButton);
+    await waitFor(() => {
+      expect(onPrepareSessionClose).toHaveBeenCalledWith(btInProgressSession.id);
+      expect(onPrepareSessionClose).toHaveBeenCalledTimes(1);
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.queryByRole('heading', { name: 'ABA Session Note' })).not.toBeInTheDocument();
+
+    closePreparation.resolve();
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ status: 'in_progress' }));
+    });
+    expect(await screen.findByRole('heading', { name: 'ABA Session Note' })).toBeInTheDocument();
+    firstRender.unmount();
+
+    onSubmit.mockClear();
+    onPrepareSessionClose.mockReset().mockRejectedValueOnce(new Error('Prepare close failed'));
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onSubmit={onSubmit}
+        onPrepareSessionClose={onPrepareSessionClose}
+        dataCollectionOnly
+        session={{ ...btInProgressSession, id: 'session-bt-close-failure' }}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Close Session$/i }));
+    await waitFor(() => {
+      expect(onPrepareSessionClose).toHaveBeenCalledWith('session-bt-close-failure');
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(screen.queryByRole('heading', { name: 'ABA Session Note' })).not.toBeInTheDocument();
+      expect(toastMocks.showError).toHaveBeenCalledWith('Attendance could not be confirmed. Reconnect and retry.');
+    });
+  });
+
+  it('wraps BT finalization with the optional callback and keeps retrying when the wrapper rejects', async () => {
+    vi.mocked(getBtAbaSessionNote).mockResolvedValue({
+      noteId: 'note-wrapper',
+      templateId: 'template-wrapper',
+      responses: validBtAbaResponses as unknown as Record<string, unknown>,
+      status: 'draft',
+    });
+    vi.mocked(saveBtAbaSessionNoteDraft).mockResolvedValue({ status: 'draft', noteId: 'note-wrapper' });
+    vi.mocked(finalizeBtAbaSessionNote).mockResolvedValue({
+      status: 'completed',
+      noteId: 'note-wrapper',
+      progressionResults: [],
+    });
+    const onBtAbaSessionFinalized = vi.fn().mockResolvedValue(undefined);
+    const onFinalizeBtAbaSession = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Wrapper failed'))
+      .mockImplementationOnce(async (_sessionId, finalize) => finalize());
+
+    renderWithProviders(
+      <SessionModal
+        {...defaultProps}
+        onFinalizeBtAbaSession={onFinalizeBtAbaSession}
+        onBtAbaSessionFinalized={onBtAbaSessionFinalized}
+        dataCollectionOnly
+        session={btInProgressSession}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Close Session$/i }));
+    expect(await screen.findByRole('heading', { name: 'ABA Session Note' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Finalize ABA Session' }));
+    await waitFor(() => {
+      expect(onFinalizeBtAbaSession).toHaveBeenCalledTimes(1);
+      expect(finalizeBtAbaSessionNote).not.toHaveBeenCalled();
+      expect(onBtAbaSessionFinalized).not.toHaveBeenCalled();
+      expect(toastMocks.showError).toHaveBeenCalledWith('Attendance could not be confirmed. Reconnect and retry.');
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Finalize ABA Session' }));
+    await waitFor(() => {
+      expect(onFinalizeBtAbaSession).toHaveBeenCalledTimes(2);
+      expect(finalizeBtAbaSessionNote).toHaveBeenCalledTimes(1);
+      expect(onBtAbaSessionFinalized).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('saves BT capture before opening closeout without submitting completed status', async () => {

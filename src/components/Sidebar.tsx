@@ -19,6 +19,12 @@ import { useTheme } from '../lib/theme';
 import { preloadRouteModule } from '../lib/routeModulePrefetch';
 import { canAccessDashboardRoute } from '../lib/dashboardAccess';
 import type { AppRole } from '../lib/roles';
+import { usePayrollDayReadOnly } from "../features/payroll/usePayrollTime";
+import { usePayrollApprovals } from "../features/payroll/usePayrollApprovals";
+import {
+  hasAnyPayrollAdministrationCapability,
+} from "../features/payroll/administrationApi";
+import { usePayrollAdministration } from "../features/payroll/usePayrollAdministration";
 // Theme is toggled directly via context; no hidden proxy button
 import { logger } from '../lib/logger/logger';
 
@@ -39,6 +45,13 @@ const ChatAssistantFallback = () => (
 const isBtCorrectionDashboardRole = (role: AppRole | null | undefined) =>
   role === 'bt';
 
+const resolveBrowserLocalDate = (): string =>
+  new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+
 export function Sidebar() {
   const { signOut, hasRole, user, profile, isGuardian, effectiveRole, hasCapability } = useAuth();
   const organizationId = useActiveOrganizationId();
@@ -53,6 +66,52 @@ export function Sidebar() {
   // `therapist` is a legacy role value; Behavioral Therapist is the product label.
   const isBehavioralTherapist = effectiveRole === 'bt' || effectiveRole === 'therapist' || hasRole('therapist') || Boolean(user?.user_metadata?.therapist_id);
   const therapistId = user?.user_metadata?.therapist_id;
+  const canAttemptPayrollBootstrap = Boolean(
+    organizationId
+    && user?.id
+    && ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'].includes(effectiveRole),
+  );
+  const payrollDayQuery = usePayrollDayReadOnly(
+    {
+      organizationId: organizationId ?? 'NO_ORG',
+      userId: user?.id ?? 'NO_USER',
+      localDate: resolveBrowserLocalDate(),
+    },
+    { enabled: canAttemptPayrollBootstrap },
+  );
+  const canShowTimeNavigation = payrollDayQuery.data?.state === 'ok'
+    && payrollDayQuery.data.bootstrap?.capabilities.canViewSelf === true;
+  const payrollApprovals = usePayrollApprovals(
+    {
+      organizationId: organizationId ?? 'NO_ORG',
+      userId: user?.id ?? 'NO_USER',
+      localDate: resolveBrowserLocalDate(),
+    },
+    {
+      selfEnabled: false,
+      queueEnabled: canAttemptPayrollBootstrap,
+      details: null,
+    },
+  );
+  const canShowTimeReviewNavigation = payrollApprovals.payrollReviewQueueQuery.data?.state === 'ok'
+    && (
+      payrollApprovals.payrollReviewQueueQuery.data.capabilities.canReviewAssigned
+      || payrollApprovals.payrollReviewQueueQuery.data.capabilities.canApproveAssigned
+    );
+  const payrollAdministration = usePayrollAdministration(
+    {
+      organizationId: organizationId ?? 'NO_ORG',
+      userId: user?.id ?? 'NO_USER',
+      localDate: resolveBrowserLocalDate(),
+    },
+    {
+      enabled: Boolean(organizationId && user?.id && ['admin', 'super_admin'].includes(effectiveRole)),
+      queueEnabled: false,
+      selectedReview: null,
+    },
+  );
+  const canShowPayrollNavigation = payrollAdministration.administrationQuery.data?.state === 'ok'
+    && hasAnyPayrollAdministrationCapability(payrollAdministration.administrationQuery.data.capabilities);
 
   const handleSignOut = async () => {
     if (isSigningOut) return;
@@ -128,6 +187,30 @@ export function Sidebar() {
       path: '/schedule',
       roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
+    },
+    {
+      icon: Calendar,
+      label: 'Time',
+      path: '/time',
+      roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
+      requiresGuardian: false,
+      hidden: !canShowTimeNavigation,
+    },
+    {
+      icon: Calendar,
+      label: 'Time Review',
+      path: '/time/review',
+      roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'] as AppRole[],
+      requiresGuardian: false,
+      hidden: !canShowTimeReviewNavigation,
+    },
+    {
+      icon: Calendar,
+      label: 'Payroll',
+      path: '/payroll',
+      roles: ['admin', 'super_admin'] as AppRole[],
+      requiresGuardian: false,
+      hidden: !canShowPayrollNavigation,
     },
     {
       icon: Mail,
@@ -330,7 +413,10 @@ export function Sidebar() {
         )}
         
         <nav className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-1 px-4 py-4">
-          {navItems.map(({ icon: Icon, label, path, roles, requiresGuardian }) => {
+          {navItems.map(({ icon: Icon, label, path, roles, requiresGuardian, hidden }) => {
+            if (hidden) {
+              return null;
+            }
             if (requiresGuardian && !isGuardian) {
               return null;
             }

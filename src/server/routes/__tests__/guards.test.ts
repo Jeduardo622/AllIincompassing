@@ -11,6 +11,9 @@ import {
 const expectedPaths = [
   '/',
   '/schedule',
+  '/time',
+  '/time/review',
+  '/payroll',
   '/clients',
   '/clients/new',
   '/clients/:clientId',
@@ -110,6 +113,41 @@ describe('route guard access controls', () => {
     expect(hasRoleAccess('/schedule', 'midtier')).toBe(true);
     expect(hasRoleAccess('/schedule', 'admin_schedule')).toBe(true);
     expect(hasRoleAccess('/schedule', 'admin')).toBe(true);
+  });
+
+  it('permits the time route shell for the broad staff role set only', () => {
+    expect(hasRoleAccess('/time', 'client')).toBe(false);
+    expect(hasRoleAccess('/time', 'bt')).toBe(true);
+    expect(hasRoleAccess('/time', 'therapist')).toBe(true);
+    expect(hasRoleAccess('/time', 'midtier')).toBe(true);
+    expect(hasRoleAccess('/time', 'admin_schedule')).toBe(true);
+    expect(hasRoleAccess('/time', 'admin')).toBe(true);
+    expect(hasRoleAccess('/time', 'bcba')).toBe(true);
+    expect(hasRoleAccess('/time', 'super_admin')).toBe(true);
+  });
+
+  it('permits time review to the assigned-review role set only', () => {
+    expect(hasRoleAccess('/time/review', 'client')).toBe(false);
+    expect(hasRoleAccess('/time/review', 'bt')).toBe(true);
+    expect(hasRoleAccess('/time/review', 'admin')).toBe(true);
+    expect(hasRoleAccess('/time/review', 'super_admin')).toBe(true);
+  });
+
+  it('restricts payroll administration to admin and super admin only', () => {
+    expect(hasRoleAccess('/payroll', 'admin')).toBe(true);
+    expect(hasRoleAccess('/payroll', 'super_admin')).toBe(true);
+    expect(hasRoleAccess('/payroll', 'bcba')).toBe(false);
+    expect(hasRoleAccess('/payroll', 'therapist')).toBe(false);
+  });
+
+  it('declares both payroll administration read and execute surfaces for /payroll', () => {
+    expect(findGuardForPath('/payroll')?.supabasePolicies).toEqual([
+      'public.get_payroll_administration: authenticated_execute',
+      'public.execute_payroll_administration: authenticated_execute',
+      'public.get_payroll_review_queue: authenticated_execute',
+      'public.get_payroll_review_details: authenticated_execute',
+      'public.transition_timesheet_approval: authenticated_execute',
+    ]);
   });
 
   it('allows canonical BT users to access fill-docs after therapist role normalization', () => {

@@ -2,7 +2,8 @@
 
 ## Status
 
-- Research snapshot: 2026-08-11
+- Research snapshot: 2026-08-12
+- Last verified: 2026-08-12
 - Activation: inactive
 - Relationship: extension of `2026-08-11-payroll-grade-timekeeping-design.md`
 - Purpose: document future Texas policy requirements and implementation gaps
@@ -23,14 +24,14 @@ This document is engineering research, not legal advice. Re-verify all sources a
 
 ### Hours and overtime
 
-- Texas generally uses the federal FLSA hours-worked and overtime framework for the in-scope ordinary nonexempt population.
-- The baseline overtime rule is time and one-half after 40 hours in a fixed seven-day workweek.
+- Texas generally uses the federal FLSA hours-worked and overtime framework for the ordinary nonexempt population.
+- The baseline overtime rule remains time and one-half after 40 hours in a fixed seven-day workweek.
 - Texas does not add California-style daily overtime or double-time rules for the ordinary population.
 - Specialized federal exceptions, including a valid health-care 8/80 arrangement, are outside the baseline and require separate activation.
 
 ### Breaks
 
-- Texas does not generally require adult meal or rest breaks.
+- Texas does not generally require adult meal or rest breaks in the reviewed sources.
 - When short breaks are provided, federal compensability rules apply.
 - A bona fide unpaid meal requires the employee to be fully relieved of duty.
 - The product should retain manual meal punches and never auto-deduct, even though the California timing/premium policy would be inactive.
@@ -39,13 +40,13 @@ This document is engineering research, not legal advice. Re-verify all sources a
 
 - Nonexempt employees must generally be paid at least twice per month on scheduled paydays.
 - Weekly and biweekly pay groups can be supported when payday timing is compliant.
-- A monthly pay group must be rejected for the in-scope Texas nonexempt employee population unless a qualified reviewer confirms a specific lawful exception.
+- A monthly pay group must be rejected for the ordinary Texas nonexempt employee population unless qualified payroll/legal review confirms a specific lawful exception.
 - Pay-period cadence remains separate from the fixed FLSA workweek used for overtime.
 
 ### Recordkeeping
 
-- Preserve employee identity, pay basis/rate, workweek, daily and weekly hours, straight-time earnings, overtime, additions/deductions, wages, pay periods, and payment dates as applicable.
-- Texas unemployment-tax guidance requires covered employers to retain specified employment/payroll records for four years.
+- Preserve employee identity, work basis/rate, workweek, hours worked each day and each workweek, straight-time earnings, overtime, additions/deductions, total wages, pay periods, payment dates, and back-pay data as applicable.
+- Texas unemployment-tax guidance makes a four-year payroll-record retention period the conservative baseline, subject to qualified payroll/legal review immediately before activation.
 - The shared four-year minimum retention design is suitable as a baseline, subject to longer organizational or litigation-hold requirements.
 
 ### Wage payment and corrections
@@ -78,6 +79,11 @@ Values above are design inputs, not production configuration, until legally revi
 - add Texas policy fixtures and golden earnings cases
 - add pay-group validation tests for at-least-twice-monthly payment
 - verify employee record-access and wage-statement requirements for the intended export/provider workflow
+- required implementation gates before activation:
+  - policy fixture coverage for weekly and biweekly Texas nonexempt pay groups
+  - negative test coverage that rejects monthly pay groups for ordinary nonexempt employees
+  - recordkeeping coverage for daily hours, workweek hours, pay periods, payment dates, and four-year retention
+  - verification-card review with fresh Texas legal/payroll operations sign-off immediately before activation
 - run security, Supabase, payroll-domain, and legal/operations review
 
 ## Activation Gate

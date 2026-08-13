@@ -3,6 +3,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { z } from 'zod';
 
 import {
   OBSERVER_VIEWPORTS,
@@ -66,6 +67,215 @@ const SYNTHETIC_AUTH_STORAGE_PAYLOAD = {
   },
 };
 
+type PayrollTimeFixtureMode = 'get_day' | 'mutation-action';
+
+const PAYROLL_TIME_FIXTURE_ENV_KEY = 'RESPONSIVE_UI_OBSERVER_PAYROLL_TIME_FIXTURE';
+
+const getPayrollTimeFixtureMode = (): PayrollTimeFixtureMode =>
+  process.env[PAYROLL_TIME_FIXTURE_ENV_KEY] === 'mutation-action'
+    ? 'mutation-action'
+    : 'get_day';
+
+const buildPayrollTimeScenarioHtml = (fixtureMode: PayrollTimeFixtureMode): string => `<!doctype html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>*{box-sizing:border-box}body{margin:0;max-width:100vw;overflow-x:hidden;background:#f5f7fb;font-family:ui-sans-serif,system-ui,sans-serif}.shell{padding:16px;display:grid;gap:16px}.stats{display:grid;gap:12px}.stat{background:#fff;border:1px solid #d7deea;border-radius:16px;padding:16px}.actions{display:flex;flex-wrap:wrap;gap:12px}.actions button{width:48px;height:48px;border-radius:12px;border:0;background:#1d4ed8;color:#fff}.history{background:#fff;border:1px solid #d7deea;border-radius:16px;padding:16px}.history ul{margin:0;padding-left:20px}</style>
+</head><body>
+<main class="shell" id="root" data-scenario="payroll-time"><p>Loading payroll time.</p></main>
+<script>
+Promise.all([
+  fetch('/api/runtime-config').then((response) => response.json()),
+  fetch('/api/payroll-time-events', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: ${fixtureMode === 'mutation-action'
+      ? "JSON.stringify({ action: 'record_time_event', event: { occurredAt: '2026-08-12T16:00:00.000Z' } })"
+      : "JSON.stringify({ action: 'get_day', localDate: '2026-08-12' })"},
+  }).then((response) => response.json()),
+]).then(async ([runtimeConfig, payload]) => {
+  if (!runtimeConfig || payload?.state !== 'ok') {
+    throw new Error('payroll-time bootstrap failed');
+  }
+  const root = document.getElementById('root');
+  root.innerHTML = '<section class="stats"><div class="stat"><strong>Active shift</strong><p>42 minutes</p></div><div class="stat"><strong>Current work category</strong><p>administration</p></div></section><section class="actions"><button aria-label="Start shift">S</button><button aria-label="End shift">E</button><button aria-label="Start meal">M</button><button aria-label="Correction">C</button></section><section class="history"><h1>Payroll time</h1><ul><li>shift started</li><li>pending confirmation</li></ul></section>';
+});
+</script></body></html>`;
+
+const parsePayrollTimeReadBody = (
+  requestBody: string | null,
+): { action: 'get_day'; localDate: string } | null => {
+  if (typeof requestBody !== 'string') {
+    return null;
+  }
+
+  let parsedBody: unknown;
+  try {
+    parsedBody = JSON.parse(requestBody);
+  } catch {
+    return null;
+  }
+
+  if (!parsedBody || typeof parsedBody !== 'object' || Array.isArray(parsedBody)) {
+    return null;
+  }
+
+  const entries = Object.entries(parsedBody);
+  if (entries.length !== 2) {
+    return null;
+  }
+
+  const { action, localDate } = parsedBody as {
+    action?: unknown;
+    localDate?: unknown;
+  };
+  if (action !== 'get_day' || typeof localDate !== 'string' || localDate.length === 0) {
+    return null;
+  }
+
+  if (!entries.every(([key]) => key === 'action' || key === 'localDate')) {
+    return null;
+  }
+
+  return { action: 'get_day', localDate };
+};
+
+const payrollSnapshotHashSchema = z.string().regex(/^[a-f0-9]{64}$/);
+const payrollReviewCapabilitiesSchema = z.object({
+  canReviewAssigned: z.boolean(),
+  canApproveAssigned: z.boolean(),
+  canViewCompensation: z.boolean(),
+  hasOrgPayrollAccess: z.boolean(),
+}).strict();
+const payrollReviewClassifiedSecondsSchema = z.object({
+  regular: z.number().int(),
+  overtime: z.number().int(),
+  doubleTime: z.number().int(),
+}).strict();
+const payrollReviewQueueFixtureResponseSchema = z.object({
+  state: z.literal('ok'),
+  selectedLocalDate: z.string().date(),
+  capabilities: payrollReviewCapabilitiesSchema,
+  queue: z.array(z.object({
+    employeeLabel: z.string().min(1),
+    employmentProfileId: z.string().uuid(),
+    payPeriodId: z.string().uuid(),
+    periodStart: z.string().date(),
+    periodEnd: z.string().date(),
+    state: z.string().min(1),
+    blockerCount: z.number().int(),
+    submittedAt: z.string().min(1).nullable(),
+    snapshot: z.object({
+      id: z.string().uuid().nullable(),
+      hash: payrollSnapshotHashSchema.nullable(),
+    }).strict(),
+    classifiedSeconds: payrollReviewClassifiedSecondsSchema,
+    compensation: z.object({
+      grossEarningsCents: z.number().int(),
+    }).strict().optional(),
+  }).strict()),
+}).strict().superRefine((value, ctx) => {
+  if (!value.capabilities.canViewCompensation) {
+    value.queue.forEach((item, index) => {
+      if (item.compensation) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Compensation requires payroll.view_compensation.',
+          path: ['queue', index, 'compensation'],
+        });
+      }
+    });
+  }
+});
+const payrollReviewDetailsFixtureResponseSchema = z.object({
+  state: z.literal('ok'),
+  snapshotId: z.string().uuid(),
+  snapshotHash: payrollSnapshotHashSchema,
+  periodStart: z.string().date(),
+  periodEnd: z.string().date(),
+  punches: z.array(z.object({
+    id: z.string().uuid(),
+    eventType: z.string().min(1),
+    occurredAt: z.string().min(1),
+    timezone: z.string().min(1),
+    workLocation: z.string().nullable(),
+    workCategory: z.string().nullable(),
+    createdAt: z.string().min(1),
+  }).strict()),
+  classifiedSeconds: payrollReviewClassifiedSecondsSchema,
+  approvalHistory: z.array(z.object({
+    action: z.string().min(1),
+    occurredAt: z.string().min(1),
+    comment: z.string().nullable(),
+    reason: z.string().nullable(),
+    snapshotId: z.string().uuid(),
+    snapshotHash: payrollSnapshotHashSchema,
+  }).strict()),
+  blockers: z.array(z.object({
+    blockerType: z.enum([
+      'time_correction_request',
+      'session_attendance_correction_request',
+      'timekeeping_exception',
+    ]),
+    blockerId: z.string().uuid(),
+    state: z.string().min(1),
+    createdAt: z.string().min(1),
+  }).strict()),
+  unresolvedBlockerCount: z.number().int(),
+  compensation: z.object({
+    grossEarningsCents: z.number().int(),
+  }).strict().optional(),
+}).strict();
+
+export const parsePayrollApprovalReadBody = (
+  requestBody: string | null,
+):
+  | { action: 'review_queue'; selectedLocalDate: string }
+  | { action: 'review_details'; snapshotId: string; snapshotHash: string }
+  | null => {
+  if (typeof requestBody !== 'string') {
+    return null;
+  }
+
+  let parsedBody: unknown;
+  try {
+    parsedBody = JSON.parse(requestBody);
+  } catch {
+    return null;
+  }
+
+  if (!parsedBody || typeof parsedBody !== 'object' || Array.isArray(parsedBody)) {
+    return null;
+  }
+
+  const queueRequest = z.object({
+    action: z.literal('review_queue'),
+    selectedLocalDate: z.string().date(),
+  }).strict().safeParse(parsedBody);
+  if (queueRequest.success) {
+    return queueRequest.data;
+  }
+
+  const detailsRequest = z.object({
+    action: z.literal('review_details'),
+    snapshotId: z.string().uuid(),
+    snapshotHash: payrollSnapshotHashSchema,
+  }).strict().safeParse(parsedBody);
+  if (detailsRequest.success) {
+    return detailsRequest.data;
+  }
+
+  return null;
+};
+
+export const parsePayrollReviewQueueFixtureResponse = (payload: unknown) => {
+  const parsed = payrollReviewQueueFixtureResponseSchema.safeParse(payload);
+  return parsed.success ? parsed.data : null;
+};
+
+export const parsePayrollReviewDetailsFixtureResponse = (payload: unknown) => {
+  const parsed = payrollReviewDetailsFixtureResponseSchema.safeParse(payload);
+  return parsed.success ? parsed.data : null;
+};
+
 export const RESPONSIVE_CAPTURE_REDACTION_CSS = `
   *, *::before, *::after {
     color: transparent !important;
@@ -124,6 +334,19 @@ const defaultDependencies: ObserverDependencies = {
 
 const artifactAbsolutePath = (relativePath: string): string => path.resolve(relativePath);
 
+const artifactPathForRun = (relativePath: string, artifactRunId?: string): string => {
+  if (!artifactRunId) {
+    return relativePath;
+  }
+  if (relativePath === 'artifacts/responsive-ui-observer') {
+    return `${relativePath}/${artifactRunId}`;
+  }
+  return relativePath.replace(
+    'artifacts/responsive-ui-observer/',
+    `artifacts/responsive-ui-observer/${artifactRunId}/`,
+  );
+};
+
 const isSameOrigin = (value: string, origin: string): boolean => {
   try {
     return new URL(value).origin === origin;
@@ -136,6 +359,18 @@ const isAllowedScenarioShellRequest = (
   parsedArgs: ObserverArgs,
   requestUrl: URL,
 ): boolean => {
+  if (parsedArgs.scenario === 'payroll-time') {
+    return requestUrl.pathname === parsedArgs.routes[0];
+  }
+
+  if (parsedArgs.scenario === 'payroll-time-review') {
+    const { pathname } = requestUrl;
+    return pathname === parsedArgs.routes[0]
+      || pathname === '/@react-refresh'
+      || SCHEDULE_SCENARIO_SHELL_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+      || SCHEDULE_SCENARIO_STATIC_PATH_PATTERN.test(pathname);
+  }
+
   if (parsedArgs.scenario !== 'schedule-overlap') {
     return true;
   }
@@ -225,6 +460,84 @@ const maybeFulfillScenarioRequest = async (
   routeHandler: Parameters<BrowserContext['route']>[1] extends (arg: infer T) => unknown ? T : never,
 ): Promise<boolean> => {
   if (parsedArgs.scenario !== 'schedule-overlap') {
+    if (parsedArgs.scenario !== 'payroll-time') {
+      return false;
+    }
+
+    const request = routeHandler.request();
+    const requestUrl = new URL(request.url());
+    if (requestUrl.origin !== new URL(parsedArgs.baseUrl).origin) {
+      return false;
+    }
+
+    if (
+      parsedArgs.scenario === 'payroll-time'
+      && request.method().toUpperCase() === 'GET'
+      && requestUrl.pathname === parsedArgs.routes[0]
+    ) {
+      await routeHandler.fulfill({
+        status: 200,
+        contentType: 'text/html; charset=utf-8',
+        body: buildPayrollTimeScenarioHtml(getPayrollTimeFixtureMode()),
+      });
+      return true;
+    }
+
+    if (
+      parsedArgs.scenario === 'payroll-time'
+      && request.method().toUpperCase() === 'GET'
+      && requestUrl.pathname === '/api/runtime-config'
+    ) {
+      await routeHandler.fulfill({
+        status: 200,
+        contentType: 'application/json; charset=utf-8',
+        body: JSON.stringify(buildSyntheticRuntimeConfig(requestUrl.origin)),
+      });
+      return true;
+    }
+
+    if (
+      parsedArgs.scenario === 'payroll-time'
+      && request.method().toUpperCase() === 'POST'
+      && requestUrl.pathname === '/api/payroll-time-events'
+    ) {
+      const parsedBody = parsePayrollTimeReadBody(request.postData());
+      if (!parsedBody) {
+        return false;
+      }
+
+      await routeHandler.fulfill({
+        status: 200,
+        contentType: 'application/json; charset=utf-8',
+        body: JSON.stringify({
+          state: 'ok',
+          bootstrap: {
+            organizationId: 'observer-local-org',
+            employmentProfileId: 'observer-employment-1',
+            localDate: parsedBody.localDate,
+            employmentTimezone: 'America/Los_Angeles',
+            workdayStartsAt: '05:00:00',
+            capabilities: {
+              canViewSelf: true,
+              canClockSelf: true,
+              canRequestCorrectionSelf: true,
+            },
+          },
+          day: {
+            employeeTimeEvents: [],
+            sessionAttendanceEvents: [],
+            timeCorrectionRequests: [],
+            sessionAttendanceCorrectionRequests: [],
+            exceptions: [],
+          },
+          totals: {
+            label: 'Calculation pending',
+          },
+        }),
+      });
+      return true;
+    }
+
     return false;
   }
 
@@ -251,6 +564,24 @@ const maybeFulfillScenarioRequest = async (
       status: 200,
       contentType: 'application/json; charset=utf-8',
       body: '[]',
+    });
+    return true;
+  }
+
+  if (
+    request.method().toUpperCase() === 'POST'
+    && requestUrl.pathname === '/api/payroll-time-events'
+  ) {
+    if (!parsePayrollTimeReadBody(request.postData())) {
+      return false;
+    }
+
+    await routeHandler.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify({
+        state: 'feature_disabled',
+      }),
     });
     return true;
   }
@@ -299,6 +630,12 @@ const maybeOpenScenarioDialog = async (
   scenario: ObserverScenario | undefined,
 ): Promise<{ dialogId?: string; failure?: string }> => {
   if (scenario !== 'schedule-overlap') {
+    if (scenario === 'payroll-time') {
+      return {};
+    }
+    if (scenario === 'payroll-time-review') {
+      return {};
+    }
     return {};
   }
 
@@ -428,6 +765,63 @@ export const collectLayoutMetrics = async (
     };
   }, { interactiveControlSelector: INTERACTIVE_CONTROL_SELECTOR, interactiveRootId });
 
+const PAYROLL_TAB_NAMES = ['Employment', 'Pay Groups', 'Periods', 'Exceptions', 'Approvals'] as const;
+
+const collectPayrollRouteMetrics = async (page: Page): Promise<{ metrics: LayoutMetrics; failure?: string }> => {
+  const aggregate: LayoutMetrics = {
+    horizontalOverflow: false,
+    clippedFixedControls: [],
+    visibleTouchTargets: [],
+  };
+
+  for (const tabName of PAYROLL_TAB_NAMES) {
+    const tab = page.getByRole('button', { name: tabName, exact: true });
+    try {
+      await tab.waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS });
+      await tab.click();
+      await page.waitForTimeout(50);
+    } catch {
+      return { metrics: aggregate, failure: 'route-surface-missing' };
+    }
+
+    const tabMetrics = await collectLayoutMetrics(page);
+    aggregate.horizontalOverflow ||= tabMetrics.horizontalOverflow;
+    aggregate.clippedFixedControls.push(...tabMetrics.clippedFixedControls);
+    aggregate.visibleTouchTargets.push(...tabMetrics.visibleTouchTargets);
+  }
+
+  aggregate.clippedFixedControls = [...new Set(aggregate.clippedFixedControls)];
+  return { metrics: aggregate };
+};
+
+const collectPayrollTimeReviewMetrics = async (page: Page): Promise<{ metrics: LayoutMetrics; failure?: string }> => {
+  try {
+    await Promise.all([
+      page.getByRole('heading', { name: 'Time Review', exact: true, level: 1 })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('heading', { name: 'Assigned queue', exact: true, level: 2 })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByText('Employee 1001', { exact: true })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('heading', { name: 'Immutable snapshot details', exact: true, level: 2 })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('heading', { name: 'Blockers', exact: true, level: 3 })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('button', { name: 'Approve', exact: true })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('button', { name: 'Return', exact: true })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+    ]);
+  } catch {
+    return {
+      metrics: await collectLayoutMetrics(page),
+      failure: 'route-surface-missing',
+    };
+  }
+
+  return { metrics: await collectLayoutMetrics(page) };
+};
+
 export const redactPageForCapture = async (page: Page): Promise<void> => {
   await page.addStyleTag({ content: RESPONSIVE_CAPTURE_REDACTION_CSS });
 };
@@ -523,7 +917,21 @@ const observeRouteAtViewport = async (
       failures.push(scenarioResult.failure);
     }
     try {
-      metrics = await collectLayoutMetrics(page, scenarioResult.dialogId);
+      if (!parsedArgs.scenario && route === '/payroll') {
+        const payrollInspection = await collectPayrollRouteMetrics(page);
+        metrics = payrollInspection.metrics;
+        if (payrollInspection.failure) {
+          failures.push(payrollInspection.failure);
+        }
+      } else if (parsedArgs.scenario === 'payroll-time-review') {
+        const reviewInspection = await collectPayrollTimeReviewMetrics(page);
+        metrics = reviewInspection.metrics;
+        if (reviewInspection.failure) {
+          failures.push(reviewInspection.failure);
+        }
+      } else {
+        metrics = await collectLayoutMetrics(page, scenarioResult.dialogId);
+      }
       failures.push(...classifyLayout(metrics, viewport.name));
     } catch {
       failures.push('layout evaluation failed');
@@ -536,7 +944,7 @@ const observeRouteAtViewport = async (
     });
     const screenshotHash = sha256(screenshotBuffer);
 
-    const evidenceSeed = buildEvidenceCard({
+    const baseEvidenceSeed = buildEvidenceCard({
       route,
       viewportName: viewport.name,
       result: failures.length > 0 ? 'fail' : 'pass',
@@ -546,20 +954,30 @@ const observeRouteAtViewport = async (
       evidenceHash: 'sha256:pending',
       scenario: parsedArgs.scenario,
     });
+    const evidenceSeed = {
+      ...baseEvidenceSeed,
+      screenshotPath: artifactPathForRun(
+        baseEvidenceSeed.screenshotPath,
+        parsedArgs.artifactRunId,
+      ),
+      evidencePath: artifactPathForRun(
+        baseEvidenceSeed.evidencePath,
+        parsedArgs.artifactRunId,
+      ),
+    };
     const evidenceHash = sha256(JSON.stringify(evidenceSeed));
-    const evidenceCard = buildEvidenceCard({
-      route,
-      viewportName: viewport.name,
-      result: failures.length > 0 ? 'fail' : 'pass',
-      failures,
-      metrics,
-      screenshotHash,
-      evidenceHash,
-      scenario: parsedArgs.scenario,
-    });
+    const evidenceCard = {
+      ...evidenceSeed,
+      hashes: {
+        ...evidenceSeed.hashes,
+        evidence: evidenceHash,
+      },
+    };
 
-    const screenshotPath = artifactAbsolutePath(evidenceCard.screenshotPath);
-    const evidencePath = artifactAbsolutePath(evidenceCard.evidencePath);
+    const screenshotRelativePath = evidenceCard.screenshotPath;
+    const evidenceRelativePath = evidenceCard.evidencePath;
+    const screenshotPath = artifactAbsolutePath(screenshotRelativePath);
+    const evidencePath = artifactAbsolutePath(evidenceRelativePath);
     try {
       await deps.writeBinary(screenshotPath, screenshotBuffer);
       await deps.writeText(evidencePath, `${JSON.stringify(evidenceCard, null, 2)}\n`);
@@ -576,8 +994,8 @@ const observeRouteAtViewport = async (
       viewportName: viewport.name,
       result: failures.length > 0 ? 'fail' : 'pass',
       failureCodes: sanitizeObserverFailures(failures),
-      screenshotPath: evidenceCard.screenshotPath,
-      evidencePath: evidenceCard.evidencePath,
+      screenshotPath: screenshotRelativePath,
+      evidencePath: evidenceRelativePath,
     };
   } finally {
     await context.close();
@@ -589,7 +1007,10 @@ export const runResponsiveUiObserver = async (
   deps: ObserverDependencies = defaultDependencies,
 ): Promise<ObserverRunSummary> => {
   const parsedArgs = parseObserverArgs(argv);
-  await deps.ensureDir(artifactAbsolutePath('artifacts/responsive-ui-observer'));
+  await deps.ensureDir(artifactAbsolutePath(artifactPathForRun(
+    'artifacts/responsive-ui-observer',
+    parsedArgs.artifactRunId,
+  )));
 
   const browser = await deps.launchBrowser();
   const results: RouteObservation[] = [];

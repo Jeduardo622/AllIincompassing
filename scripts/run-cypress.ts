@@ -34,6 +34,7 @@ const run = async (): Promise<void> => {
     'cypress/e2e/routes_client.cy.ts',
     'cypress/e2e/preauth_workflow.cy.ts',
     'cypress/e2e/routes_schedule.cy.ts',
+    'cypress/e2e/routes_time.cy.ts',
     'cypress/e2e/routes_messages.cy.ts',
     'cypress/e2e/routes_admin.cy.ts',
     'cypress/e2e/routes_auth.cy.ts',

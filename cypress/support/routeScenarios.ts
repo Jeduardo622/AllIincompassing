@@ -61,12 +61,17 @@ export const routeGroups = {
   schedule: [
     { path: "/schedule", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
   ],
+  time: [
+    { path: "/time", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
+    { path: "/time/review", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
+  ],
   messages: [
     { path: "/messages", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
     { path: "/messages/new", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
     { path: "/messages/thread-1", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
   ],
   admin: [
+    { path: "/payroll", roles: ["admin", "super_admin"] },
     { path: "/therapists", roles: ["admin_schedule", "admin", "bcba", "super_admin"] },
     { path: "/therapists/therapist-1", roles: ["bt", "therapist", "midtier", "admin_schedule", "admin", "bcba", "super_admin"] },
     { path: "/therapists/new", roles: ["admin_schedule", "admin", "bcba", "super_admin"] },
@@ -167,6 +172,93 @@ export const installRouteDataStubs = (): void => {
   cy.intercept("GET", "**/__supabase/rest/v1/message_threads**", emptyJson);
   cy.intercept("GET", "**/__supabase/rest/v1/message_thread_participants**", emptyJson);
   cy.intercept("GET", "**/__supabase/rest/v1/messages**", emptyJson);
+  cy.intercept("POST", "**/api/payroll-time-events", {
+    statusCode: 200,
+    body: {
+      state: "no_employment_profile",
+      bootstrap: {
+        organizationId: "org-1",
+        employmentProfileId: null,
+        localDate: "2026-08-11",
+        employmentTimezone: null,
+        workdayStartsAt: null,
+        capabilities: {
+          canViewSelf: false,
+          canClockSelf: false,
+          canRequestCorrectionSelf: false,
+        },
+      },
+      day: {
+        employeeTimeEvents: [],
+        sessionAttendanceEvents: [],
+        timeCorrectionRequests: [],
+        sessionAttendanceCorrectionRequests: [],
+        exceptions: [],
+      },
+      totals: {
+        label: "Calculation pending",
+      },
+    },
+    headers: { "content-type": "application/json" },
+  });
+  cy.intercept("POST", "**/api/payroll-administration", (req) => {
+    if (req.body?.action !== "get_administration") {
+      req.reply({ statusCode: 405, body: { error: "route_fixture_read_only" } });
+      return;
+    }
+    req.reply({
+      statusCode: 200,
+      body: {
+        state: "ok",
+        selectedLocalDate: "2026-08-11",
+        capabilities: {
+          canConfigureEmployment: true,
+          canResolveExceptions: false,
+          canLockPeriod: false,
+          canReopenPeriod: false,
+          canGeneratePeriods: false,
+          canViewCompensation: false,
+          canManagePolicyMutations: false,
+        },
+        orgSettings: [],
+        policies: [],
+        employments: [],
+        payGroups: [],
+        generationVersions: [],
+        payPeriods: [],
+        bounds: {
+          orgSettings: 50,
+          policies: 20,
+          employments: 50,
+          payGroups: 50,
+          generationVersions: 50,
+          payPeriods: 50,
+        },
+      },
+      headers: { "content-type": "application/json" },
+    });
+  });
+  cy.intercept("POST", "**/api/payroll-approvals", (req) => {
+    if (req.body?.action !== "review_queue") {
+      req.reply({ statusCode: 405, body: { error: "route_fixture_read_only" } });
+      return;
+    }
+    req.reply({
+      statusCode: 200,
+      body: {
+        state: "feature_disabled",
+        selectedLocalDate: "2026-08-11",
+        capabilities: {
+          canReviewAssigned: false,
+          canApproveAssigned: false,
+          canViewCompensation: false,
+          hasOrgPayrollAccess: false,
+        },
+        queue: [],
+      },
+      headers: { "content-type": "application/json" },
+    });
+  });
   cy.intercept("POST", "**/__supabase/rest/v1/rpc/create_staff_message_thread**", {
     statusCode: 200,
     body: "thread-1",

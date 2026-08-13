@@ -62,6 +62,76 @@
       "reason": "The route can proxy to edge `sessions-start`, but it still retains local authority-path execution plus the compatibility shim for `/api/sessions-start`; re-review for full transport-only retirement in the next policy pass.",
       "owner": "Backend Platform",
       "expiresAt": "2026-09-01T23:59:59.999Z"
+    },
+    {
+      "functionFile": "admin-invite-email.ts",
+      "publicApiPath": "/.netlify/functions/admin-invite-email",
+      "reason": "The signed Netlify SMTP delivery adapter remains active because the `admin-invite` Edge authority delegates outbound email delivery to this boundary; re-review for replacement or retirement in the next policy pass.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-09-01T23:59:59.999Z"
+    },
+    {
+      "functionFile": "assessment-documents-extract-background.ts",
+      "publicApiPath": "/.netlify/functions/assessment-documents-extract-background",
+      "reason": "The Netlify background adapter still claims and coordinates assessment extraction work before invoking edge `extract-assessment-fields`; re-review for direct Edge convergence or retirement in the next policy pass.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-09-01T23:59:59.999Z"
+    },
+    {
+      "functionFile": "sessions-complete.ts",
+      "publicApiPath": "/api/sessions-complete",
+      "reason": "The public API adapter remains for same-origin contract stability while completion authority is forwarded to edge `sessions-complete`; re-review for direct Edge convergence or retirement in the next policy pass.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-09-01T23:59:59.999Z"
+    },
+    {
+      "functionFile": "sessions-week-forward.ts",
+      "publicApiPath": "/api/sessions-week-forward",
+      "reason": "Week-forward scheduling still executes in the legacy server authority handler behind the public API adapter; re-review for Edge convergence or retirement in the next policy pass.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-09-01T23:59:59.999Z"
+    },
+    {
+      "functionFile": "session-notes-upsert.ts",
+      "publicApiPath": "/api/session-notes/upsert",
+      "reason": "Session-note upsert authority still executes in the legacy server handler behind the public API adapter; re-review for Edge convergence or retirement in the next policy pass.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-09-01T23:59:59.999Z"
+    },
+    {
+      "functionFile": "payroll-approvals.ts",
+      "publicApiPath": "/api/payroll-approvals",
+      "reason": "The public API adapter remains for contract stability while payroll approval transitions converge on the reviewed Edge boundary.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-09-01T23:59:59.999Z"
+    },
+    {
+      "functionFile": "payroll-administration.ts",
+      "publicApiPath": "/api/payroll-administration",
+      "reason": "The public API adapter remains for contract stability while payroll administration authority converges on the reviewed Edge boundary; retire this exception after the Netlify shim, redirect, and compatibility transport are removed and the public route targets Edge directly.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-09-01T23:59:59.999Z"
+    },
+    {
+      "functionFile": "payroll-export.ts",
+      "publicApiPath": "/api/payroll-export",
+      "reason": "The public API adapter remains for same-origin contract stability while provider-neutral payroll export creation and download authority converge on the reviewed Edge boundary.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-09-01T23:59:59.999Z"
+    },
+    {
+      "functionFile": "payroll-time-events.ts",
+      "publicApiPath": "/api/payroll-time-events",
+      "reason": "The public API adapter remains for contract stability while direct Edge convergence is reviewed.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-09-01T23:59:59.999Z"
+    },
+    {
+      "functionFile": "payroll-timesheets.ts",
+      "publicApiPath": "/api/payroll-timesheets",
+      "reason": "The public API adapter remains for contract stability while payroll timesheet derivation and snapshot transport converge on the reviewed Edge boundary.",
+      "owner": "Backend Platform",
+      "expiresAt": "2026-09-01T23:59:59.999Z"
     }
   ]
 }

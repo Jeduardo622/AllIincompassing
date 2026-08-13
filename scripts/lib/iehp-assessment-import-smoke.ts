@@ -8,19 +8,27 @@ type IehpPdfMiniMatrixBaseCase = {
 };
 
 type IehpDigitalPdfMiniMatrixCase = IehpPdfMiniMatrixBaseCase & {
-  id: 'clean-single-page' | 'multi-page-target-content' | 'alternate-document-phone-format';
+  id:
+    | 'clean-single-page'
+    | 'multi-page-target-content'
+    | 'alternate-document-phone-format'
+    | 'table-structured-fields';
   renderMode: 'digital-pdf';
+  documentLayout: 'plain' | 'table';
 };
 
 type IehpRasterPdfMiniMatrixCase = IehpPdfMiniMatrixBaseCase & {
-  id: 'scan-300dpi-monochrome' | 'scan-300dpi-monochrome-rotated-2deg';
+  id:
+    | 'scan-300dpi-monochrome'
+    | 'scan-300dpi-monochrome-rotated-2deg'
+    | 'scan-150dpi-grayscale-low-quality';
   renderMode: 'raster-scan';
   scan: {
-    dpi: 300;
-    colorMode: 'black-and-white';
+    dpi: 150 | 300;
+    colorMode: 'black-and-white' | 'grayscale';
     rotationDegrees: 0 | 2;
     compression: 'jpeg';
-    jpegQuality: 85;
+    jpegQuality: 45 | 85;
   };
 };
 
@@ -207,6 +215,7 @@ export const IEHP_PDF_MINI_MATRIX_CASES: readonly IehpPdfMiniMatrixCase[] = [
     documentPhone: '(909) 555-0101',
     pageBreakBeforeTarget: false,
     renderMode: 'digital-pdf',
+    documentLayout: 'plain',
   },
   {
     id: 'multi-page-target-content',
@@ -214,6 +223,7 @@ export const IEHP_PDF_MINI_MATRIX_CASES: readonly IehpPdfMiniMatrixCase[] = [
     documentPhone: '909-555-0102',
     pageBreakBeforeTarget: true,
     renderMode: 'digital-pdf',
+    documentLayout: 'plain',
   },
   {
     id: 'alternate-document-phone-format',
@@ -221,6 +231,7 @@ export const IEHP_PDF_MINI_MATRIX_CASES: readonly IehpPdfMiniMatrixCase[] = [
     documentPhone: '+1 909 555 0103',
     pageBreakBeforeTarget: false,
     renderMode: 'digital-pdf',
+    documentLayout: 'plain',
   },
   {
     id: 'scan-300dpi-monochrome',
@@ -249,6 +260,28 @@ export const IEHP_PDF_MINI_MATRIX_CASES: readonly IehpPdfMiniMatrixCase[] = [
       compression: 'jpeg',
       jpegQuality: 85,
     },
+  },
+  {
+    id: 'scan-150dpi-grayscale-low-quality',
+    referralDate: '07/05/2026',
+    documentPhone: '(909) 555-0106',
+    pageBreakBeforeTarget: false,
+    renderMode: 'raster-scan',
+    scan: {
+      dpi: 150,
+      colorMode: 'grayscale',
+      rotationDegrees: 0,
+      compression: 'jpeg',
+      jpegQuality: 45,
+    },
+  },
+  {
+    id: 'table-structured-fields',
+    referralDate: '07/06/2026',
+    documentPhone: '909-555-0107',
+    pageBreakBeforeTarget: false,
+    renderMode: 'digital-pdf',
+    documentLayout: 'table',
   },
 ] as const;
 
@@ -383,12 +416,29 @@ export const buildIehpPdfMiniMatrixHtml = (caseDefinition: IehpPdfMiniMatrixCase
   <head>
     <meta charset="utf-8" />
     <title>${caseDefinition.id}</title>
+    <style>
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border: 1px solid #111; padding: 8px; text-align: left; }
+    </style>
   </head>
   <body>
     <section>
       ${caseDefinition.pageBreakBeforeTarget ? '<p>IEHP FBA PDF mini-matrix page one</p><div style="page-break-before: always;"></div>' : ''}
-      <p>Referral Date: ${caseDefinition.referralDate}</p>
-      <p>Assessor's phone number: ${caseDefinition.documentPhone}</p>
+      ${caseDefinition.renderMode === 'digital-pdf' && caseDefinition.documentLayout === 'table'
+        ? `<table>
+      <tbody>
+        <tr>
+          <th scope="row">Referral Date:</th>
+          <td>${caseDefinition.referralDate}</td>
+        </tr>
+        <tr>
+          <th scope="row">Assessor's phone number:</th>
+          <td>${caseDefinition.documentPhone}</td>
+        </tr>
+      </tbody>
+    </table>`
+        : `<p>Referral Date: ${caseDefinition.referralDate}</p>
+      <p>Assessor's phone number: ${caseDefinition.documentPhone}</p>`}
     </section>
   </body>
 </html>`;

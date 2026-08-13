@@ -83,6 +83,8 @@ describe('IEHP assessment import smoke helpers', () => {
       'alternate-document-phone-format',
       'scan-300dpi-monochrome',
       'scan-300dpi-monochrome-rotated-2deg',
+      'scan-150dpi-grayscale-low-quality',
+      'table-structured-fields',
     ]);
 
     expect(new Set(IEHP_PDF_MINI_MATRIX_CASES.map((caseDefinition) => caseDefinition.referralDate)).size).toBe(
@@ -97,6 +99,8 @@ describe('IEHP assessment import smoke helpers', () => {
       '+1 909 555 0103',
       '909.555.0104',
       '909 555 0105',
+      '(909) 555-0106',
+      '909-555-0107',
     ]);
   });
 
@@ -107,6 +111,8 @@ describe('IEHP assessment import smoke helpers', () => {
       '+1 909 555 0103',
       '909.555.0104',
       '909 555 0105',
+      '(909) 555-0106',
+      '909-555-0107',
     ]);
 
     for (const caseDefinition of IEHP_PDF_MINI_MATRIX_CASES) {
@@ -152,12 +158,61 @@ describe('IEHP assessment import smoke helpers', () => {
     });
   });
 
+  it('defines one deterministic degraded 150 DPI grayscale JPEG scan', () => {
+    expect(
+      IEHP_PDF_MINI_MATRIX_CASES.find(
+        (caseDefinition) => caseDefinition.id === 'scan-150dpi-grayscale-low-quality',
+      ),
+    ).toMatchObject({
+      referralDate: '07/05/2026',
+      documentPhone: '(909) 555-0106',
+      pageBreakBeforeTarget: false,
+      renderMode: 'raster-scan',
+      scan: {
+        dpi: 150,
+        colorMode: 'grayscale',
+        rotationDegrees: 0,
+        compression: 'jpeg',
+        jpegQuality: 45,
+      },
+    });
+  });
+
+  it('renders the table-structured case as semantic table cells instead of paragraph labels', () => {
+    const tableCase = IEHP_PDF_MINI_MATRIX_CASES.find(
+      (caseDefinition) => caseDefinition.id === 'table-structured-fields',
+    )!;
+    const html = buildIehpPdfMiniMatrixHtml(tableCase);
+
+    expect(tableCase).toMatchObject({
+      referralDate: '07/06/2026',
+      documentPhone: '909-555-0107',
+      renderMode: 'digital-pdf',
+      documentLayout: 'table',
+    });
+    expect(html).toContain('<table>');
+    expect(html).toContain('table { border-collapse: collapse; width: 100%; }');
+    expect(html).toContain('th, td { border: 1px solid #111; padding: 8px; text-align: left; }');
+    expect(html).toContain('<th scope="row">Referral Date:</th>');
+    expect(html).toContain('<th scope="row">Assessor\'s phone number:</th>');
+    expect(html).toContain(`<td>${tableCase.referralDate}</td>`);
+    expect(html).toContain(`<td>${tableCase.documentPhone}</td>`);
+    expect(html).not.toContain(`Referral Date: ${tableCase.referralDate}`);
+  });
+
   it('renders the referral label and document phone into selectable HTML with a page break only for the multi-page case', () => {
     for (const caseDefinition of IEHP_PDF_MINI_MATRIX_CASES) {
       const html = buildIehpPdfMiniMatrixHtml(caseDefinition);
 
-      expect(html).toContain(`Referral Date: ${caseDefinition.referralDate}`);
-      expect(html).toContain(`Assessor's phone number: ${caseDefinition.documentPhone}`);
+      if (caseDefinition.renderMode === 'digital-pdf' && caseDefinition.documentLayout === 'table') {
+        expect(html).toContain('<th scope="row">Referral Date:</th>');
+        expect(html).toContain(`<td>${caseDefinition.referralDate}</td>`);
+        expect(html).toContain('<th scope="row">Assessor\'s phone number:</th>');
+        expect(html).toContain(`<td>${caseDefinition.documentPhone}</td>`);
+      } else {
+        expect(html).toContain(`Referral Date: ${caseDefinition.referralDate}`);
+        expect(html).toContain(`Assessor's phone number: ${caseDefinition.documentPhone}`);
+      }
 
       if (caseDefinition.pageBreakBeforeTarget) {
         expect(html).toContain('page-break-before: always;');
@@ -189,7 +244,7 @@ describe('IEHP assessment import smoke helpers', () => {
   });
 
   it('defines one dedicated opt-in skills behaviors proof case without changing the existing mini matrix cases', () => {
-    expect(IEHP_PDF_MINI_MATRIX_CASES).toHaveLength(5);
+    expect(IEHP_PDF_MINI_MATRIX_CASES).toHaveLength(7);
     expect(IEHP_SKILLS_BEHAVIORS_PROOF_CASE).toMatchObject({
       id: 'skills-behaviors-proof',
       expectedSectionKey: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS',

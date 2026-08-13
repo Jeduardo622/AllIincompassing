@@ -4,6 +4,8 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
+import { IEHP_PDF_MINI_MATRIX_CASES } from '../../scripts/lib/iehp-assessment-import-smoke';
+
 type WorkflowStep = {
   name?: string;
   if?: string;
@@ -124,6 +126,7 @@ describe('protected hosted IEHP PDF mini-matrix workflow', () => {
     const cleanup = findStep(proof, 'Clean synthetic smoke admin');
     const finalize = findStep(proof, 'Finalize redacted run evidence');
     const upload = findStep(proof, 'Upload redacted matrix evidence');
+    const expectedEvidenceCount = IEHP_PDF_MINI_MATRIX_CASES.length + 1;
 
     const provision = findStep(proof, 'Provision synthetic smoke admin');
     expect(provision?.env).toMatchObject({
@@ -153,10 +156,13 @@ describe('protected hosted IEHP PDF mini-matrix workflow', () => {
     expect(finalize?.run).toContain('rmSync(publicDir, { recursive: true, force: true })');
     expect(finalize?.run).toContain("'scan-300dpi-monochrome'");
     expect(finalize?.run).toContain("'scan-300dpi-monochrome-rotated-2deg'");
-    expect(finalize?.run).toContain('matrixCases.length !== 6');
-    expect(finalize?.run).toContain('aggregate.totalCases !== 6');
-    expect(finalize?.run).toContain('aggregate.passedCases !== 6');
-    expect(finalize?.run).toContain('aggregate.cleanupVerifiedCases !== 6');
+    expect(finalize?.run).toContain("'scan-150dpi-grayscale-low-quality'");
+    expect(finalize?.run).toContain("'table-structured-fields'");
+    expect(expectedEvidenceCount).toBe(8);
+    expect(finalize?.run).toContain(`matrixCases.length !== ${expectedEvidenceCount}`);
+    expect(finalize?.run).toContain(`aggregate.totalCases !== ${expectedEvidenceCount}`);
+    expect(finalize?.run).toContain(`aggregate.passedCases !== ${expectedEvidenceCount}`);
+    expect(finalize?.run).toContain(`aggregate.cleanupVerifiedCases !== ${expectedEvidenceCount}`);
     expect(finalize?.run).toContain('redactedPhonePattern');
     expect(finalize?.run).toContain('rawPhonePattern');
     expect(finalize?.run).toContain("'cases.json'");

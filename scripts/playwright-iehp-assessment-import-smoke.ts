@@ -119,6 +119,16 @@ type IehpSmokeCaseEvidence = {
   screenshot: string;
 };
 
+type IehpSmokeCaseFailureEvidence = {
+  ok: false;
+  mode: 'pdf-mini-matrix-case-failure';
+  caseId: string;
+  templateType: 'iehp_fba';
+  cleanupVerified: false;
+  failureCategory: 'case_execution_failed';
+  errorCategory: 'matrix_failures_detected';
+};
+
 type AssessmentPlanPdfBlocker = {
   code?: unknown;
 };
@@ -151,7 +161,7 @@ type ParsedAssessmentPlanPdfPreflight = {
 
 const DEFAULT_BASE_URL = 'https://app.allincompassing.ai';
 const DEFAULT_ASSESSMENT_BUCKET_ID = 'client-documents';
-const EXTRACTION_TIMEOUT_MS = 120_000;
+const EXTRACTION_TIMEOUT_MS = 360_000;
 const IEHP_REFERRAL_DATE_FIELD_KEY = 'IEHP_FBA_REFERRAL_DATE';
 
 type SupabaseClientFactory = typeof createClient;
@@ -178,6 +188,105 @@ const resolveSupabaseAnonKey = (): string =>
 
 const pause = async (ms: number): Promise<void> => {
   await new Promise((resolve) => setTimeout(resolve, ms));
+};
+
+const buildPublicMatrixCaseFailureEvidence = (caseId: string): IehpSmokeCaseFailureEvidence => ({
+  ok: false,
+  mode: 'pdf-mini-matrix-case-failure',
+  caseId,
+  templateType: 'iehp_fba',
+  cleanupVerified: false,
+  failureCategory: 'case_execution_failed',
+  errorCategory: 'matrix_failures_detected',
+});
+
+export const assertIehpPdfMiniMatrixPreflight = (args: {
+  cases: Array<{ id: string; documentPhone: string }>;
+  expectedAssessorPhone: string;
+}): void => {
+  for (const caseDefinition of args.cases) {
+    if (
+      canonicalizeUsPhoneForComparison(caseDefinition.documentPhone) ===
+      canonicalizeUsPhoneForComparison(args.expectedAssessorPhone)
+    ) {
+      throw new Error(
+        `IEHP PDF mini matrix case ${caseDefinition.id} normalized document phone matched the configured snapshot phone, so precedence proof would be ambiguous.`,
+      );
+    }
+  }
+};
+
+const sanitizePublicMatrixCaseEvidence = (
+  caseEvidence: IehpSmokeCaseEvidence | Record<string, unknown>,
+): Record<string, unknown> => {
+  const {
+    screenshot,
+    errorMessage,
+    assessorPhoneAssertion,
+    ...rest
+  } = caseEvidence as IehpSmokeCaseEvidence & {
+    errorMessage?: unknown;
+  };
+
+  const sanitizedAssessorPhoneAssertion = assessorPhoneAssertion && typeof assessorPhoneAssertion === 'object'
+    ? {
+        fieldKey: assessorPhoneAssertion.fieldKey,
+        rowCount: assessorPhoneAssertion.rowCount,
+        nonEmpty: assessorPhoneAssertion.nonEmpty,
+        validFormat: assessorPhoneAssertion.validFormat,
+        precedenceMatchedExpectedPhone: assessorPhoneAssertion.precedenceMatchedExpectedPhone,
+        provenanceRowCount: assessorPhoneAssertion.provenanceRowCount,
+        provenanceVerified: assessorPhoneAssertion.provenanceVerified,
+        sourceMethod: assessorPhoneAssertion.sourceMethod,
+        sourceField: assessorPhoneAssertion.sourceField,
+        expectedPhoneRedacted: assessorPhoneAssertion.expectedPhoneRedacted,
+        actualPhoneRedacted: assessorPhoneAssertion.actualPhoneRedacted,
+      }
+    : undefined;
+
+  return {
+    ...rest,
+    ...(sanitizedAssessorPhoneAssertion ? { assessorPhoneAssertion: sanitizedAssessorPhoneAssertion } : {}),
+  };
+};
+
+type IehpPdfMiniMatrixTask<T> = {
+  caseId: string;
+  run: () => Promise<T>;
+};
+
+export const runIehpPdfMiniMatrixTasks = async <T>(args: {
+  tasks: Array<IehpPdfMiniMatrixTask<T>>;
+  onSuccess: (evidence: T, caseId: string) => void | Promise<void>;
+  onFailure: (evidence: IehpSmokeCaseFailureEvidence) => void | Promise<void>;
+}): Promise<{ passedCases: T[]; failedCases: IehpSmokeCaseFailureEvidence[] }> => {
+  const passedCases: T[] = [];
+  const failedCases: IehpSmokeCaseFailureEvidence[] = [];
+
+  for (const task of args.tasks) {
+    let evidence: T;
+    try {
+      evidence = await task.run();
+    } catch {
+      const failureEvidence = buildPublicMatrixCaseFailureEvidence(task.caseId);
+      failedCases.push(failureEvidence);
+      await args.onFailure(failureEvidence);
+      continue;
+    }
+
+    passedCases.push(evidence);
+    await args.onSuccess(evidence, task.caseId);
+  }
+
+  return { passedCases, failedCases };
+};
+
+export const assertIehpPdfMiniMatrixTasksSucceeded = (
+  failedCases: IehpSmokeCaseFailureEvidence[],
+): void => {
+  if (failedCases.length > 0) {
+    throw new Error('IEHP PDF mini matrix encountered one or more case-local failures.');
+  }
 };
 
 const buildRasterScanImageDataUrl = async (args: {
@@ -1370,155 +1479,166 @@ async function run() {
     };
 
     if (isPdfMiniMatrixMode) {
-      const passedCases: IehpSmokeCaseEvidence[] = [];
-      for (const caseDefinition of IEHP_PDF_MINI_MATRIX_CASES) {
-        if (
-          canonicalizeUsPhoneForComparison(caseDefinition.documentPhone) ===
-          canonicalizeUsPhoneForComparison(expectedAssessorPhone)
-        ) {
-          throw new Error(
-            `IEHP PDF mini matrix case ${caseDefinition.id} normalized document phone matched the configured snapshot phone, so precedence proof would be ambiguous.`,
-          );
-        }
-        const generatorPage = await context.newPage();
-        try {
-          await generatorPage.setContent(buildIehpPdfMiniMatrixHtml(caseDefinition));
-          let uploadPdfBuffer: Buffer;
-          if (caseDefinition.renderMode === 'raster-scan') {
-            const scanWidth = Math.round(caseDefinition.scan.dpi * 8.5);
-            const scanHeight = caseDefinition.scan.dpi * 11;
-            const scanFontSize = Math.round(54 * (caseDefinition.scan.dpi / 300));
-            const scanPaddingTop = Math.round(240 * (caseDefinition.scan.dpi / 300));
-            const scanPaddingSides = Math.round(220 * (caseDefinition.scan.dpi / 300));
-            await generatorPage.setViewportSize({ width: scanWidth, height: scanHeight });
-            await generatorPage.setContent(`
-              <!doctype html>
-              <html lang="en">
-                <head>
-                  <meta charset="utf-8" />
-                  <title>${caseDefinition.id}</title>
-                  <style>
-                    html, body {
-                      margin: 0;
-                      padding: 0;
-                      width: ${scanWidth}px;
-                      height: ${scanHeight}px;
-                      background: white;
-                    }
-
-                    body {
-                      color: black;
-                      font-family: Arial, sans-serif;
-                      font-size: ${scanFontSize}px;
-                      line-height: 1.4;
-                    }
-
-                    main {
-                      box-sizing: border-box;
-                      width: 100%;
-                      min-height: 100%;
-                      padding: ${scanPaddingTop}px ${scanPaddingSides}px;
-                      transform: rotate(${caseDefinition.scan.rotationDegrees}deg);
-                      transform-origin: center center;
-                    }
-                  </style>
-                </head>
-                <body>
-                  <main>
-                    <p>Referral Date: ${caseDefinition.referralDate}</p>
-                    <p>Assessor's phone number: ${caseDefinition.documentPhone}</p>
-                  </main>
-                </body>
-              </html>
-            `);
-            const rasterScanDataUrl = await buildRasterScanImageDataUrl({
-              page: generatorPage,
-              colorMode: caseDefinition.scan.colorMode,
-              jpegQuality: caseDefinition.scan.jpegQuality,
-            });
-            const rasterPdfPage = await context.newPage();
-            try {
-              await rasterPdfPage.setContent(`
+      assertIehpPdfMiniMatrixPreflight({
+        cases: IEHP_PDF_MINI_MATRIX_CASES,
+        expectedAssessorPhone,
+      });
+      const matrixTasks = IEHP_PDF_MINI_MATRIX_CASES.map((caseDefinition) => ({
+        caseId: caseDefinition.id,
+        run: async (): Promise<IehpSmokeCaseEvidence> => {
+          const generatorPage = await context.newPage();
+          try {
+            await generatorPage.setContent(buildIehpPdfMiniMatrixHtml(caseDefinition));
+            let uploadPdfBuffer: Buffer;
+            if (caseDefinition.renderMode === 'raster-scan') {
+              const scanWidth = Math.round(caseDefinition.scan.dpi * 8.5);
+              const scanHeight = caseDefinition.scan.dpi * 11;
+              const scanFontSize = Math.round(54 * (caseDefinition.scan.dpi / 300));
+              const scanPaddingTop = Math.round(240 * (caseDefinition.scan.dpi / 300));
+              const scanPaddingSides = Math.round(220 * (caseDefinition.scan.dpi / 300));
+              await generatorPage.setViewportSize({ width: scanWidth, height: scanHeight });
+              await generatorPage.setContent(`
                 <!doctype html>
                 <html lang="en">
                   <head>
                     <meta charset="utf-8" />
                     <title>${caseDefinition.id}</title>
                     <style>
-                      @page {
-                        size: Letter;
-                        margin: 0;
-                      }
-
                       html, body {
                         margin: 0;
                         padding: 0;
-                        width: 8.5in;
-                        height: 11in;
+                        width: ${scanWidth}px;
+                        height: ${scanHeight}px;
                         background: white;
                       }
 
-                      img {
-                        display: block;
-                        width: 8.5in;
-                        height: 11in;
+                      body {
+                        color: black;
+                        font-family: Arial, sans-serif;
+                        font-size: ${scanFontSize}px;
+                        line-height: 1.4;
+                      }
+
+                      main {
+                        box-sizing: border-box;
+                        width: 100%;
+                        min-height: 100%;
+                        padding: ${scanPaddingTop}px ${scanPaddingSides}px;
+                        transform: rotate(${caseDefinition.scan.rotationDegrees}deg);
+                        transform-origin: center center;
                       }
                     </style>
                   </head>
                   <body>
-                    <img alt="${caseDefinition.id}" src="${rasterScanDataUrl}" />
+                    <main>
+                      <p>Referral Date: ${caseDefinition.referralDate}</p>
+                      <p>Assessor's phone number: ${caseDefinition.documentPhone}</p>
+                    </main>
                   </body>
                 </html>
               `);
-              uploadPdfBuffer = await rasterPdfPage.pdf({ format: 'Letter', printBackground: true });
-            } finally {
-              if (!rasterPdfPage.isClosed()) {
-                await rasterPdfPage.close().then(() => undefined);
+              const rasterScanDataUrl = await buildRasterScanImageDataUrl({
+                page: generatorPage,
+                colorMode: caseDefinition.scan.colorMode,
+                jpegQuality: caseDefinition.scan.jpegQuality,
+              });
+              const rasterPdfPage = await context.newPage();
+              try {
+                await rasterPdfPage.setContent(`
+                  <!doctype html>
+                  <html lang="en">
+                    <head>
+                      <meta charset="utf-8" />
+                      <title>${caseDefinition.id}</title>
+                      <style>
+                        @page {
+                          size: Letter;
+                          margin: 0;
+                        }
+
+                        html, body {
+                          margin: 0;
+                          padding: 0;
+                          width: 8.5in;
+                          height: 11in;
+                          background: white;
+                        }
+
+                        img {
+                          display: block;
+                          width: 8.5in;
+                          height: 11in;
+                        }
+                      </style>
+                    </head>
+                    <body>
+                      <img alt="${caseDefinition.id}" src="${rasterScanDataUrl}" />
+                    </body>
+                  </html>
+                `);
+                uploadPdfBuffer = await rasterPdfPage.pdf({ format: 'Letter', printBackground: true });
+              } finally {
+                if (!rasterPdfPage.isClosed()) {
+                  await rasterPdfPage.close().then(() => undefined);
+                }
               }
+            } else {
+              const pdfBuffer = await generatorPage.pdf({ format: 'Letter', printBackground: true });
+              uploadPdfBuffer = pdfBuffer;
             }
-          } else {
-            const pdfBuffer = await generatorPage.pdf({ format: 'Letter', printBackground: true });
-            uploadPdfBuffer = pdfBuffer;
+            await generatorPage.close();
+            return await runSmokeCase({
+              caseId: caseDefinition.id,
+              uploadFileName: buildIehpSmokeUploadFileName(Date.now(), 'pdf'),
+              mimeType: 'application/pdf',
+              sourceFileBuffer: uploadPdfBuffer,
+              expectedReferralDate: caseDefinition.referralDate,
+            });
+          } finally {
+            if (!generatorPage.isClosed()) {
+              await generatorPage.close().then(() => undefined);
+            }
           }
-          await generatorPage.close();
-          const caseEvidence = await runSmokeCase({
-            caseId: caseDefinition.id,
-            uploadFileName: buildIehpSmokeUploadFileName(Date.now(), 'pdf'),
-            mimeType: 'application/pdf',
-            sourceFileBuffer: uploadPdfBuffer,
-            expectedReferralDate: caseDefinition.referralDate,
-          });
-          console.log(JSON.stringify(caseEvidence, null, 2));
-          passedCases.push(caseEvidence);
-        } finally {
-          if (!generatorPage.isClosed()) {
-            await generatorPage.close().then(() => undefined);
-          }
-        }
-      }
+        },
+      }));
+      matrixTasks.push({
+        caseId: 'skills-behaviors-proof',
+        run: runSkillsBehaviorsProofCase,
+      });
 
-      const skillsBehaviorsCaseEvidence = await runSkillsBehaviorsProofCase();
-      console.log(JSON.stringify(skillsBehaviorsCaseEvidence, null, 2));
-      passedCases.push(skillsBehaviorsCaseEvidence);
-
-      const skillsBehaviorsVerifiedCases = passedCases.filter(
-        (caseEvidence) => caseEvidence.skillsBehaviorsProofResult !== null,
+      const { passedCases, failedCases } = await runIehpPdfMiniMatrixTasks({
+        tasks: matrixTasks,
+        onSuccess: (caseEvidence) => {
+          console.log(JSON.stringify(sanitizePublicMatrixCaseEvidence(caseEvidence), null, 2));
+        },
+        onFailure: (caseFailureEvidence) => {
+          console.log(JSON.stringify(caseFailureEvidence, null, 2));
+        },
+      });
+      const cleanupVerifiedCases = passedCases.filter(
+        (caseEvidence) => caseEvidence.cleanupVerified === true,
       ).length;
-      if (skillsBehaviorsVerifiedCases !== 1) {
-        throw new Error(
-          `IEHP PDF mini matrix expected exactly one Skills & Behaviors verified case but found ${skillsBehaviorsVerifiedCases}.`,
-        );
-      }
-
+      const skillsBehaviorsVerifiedCases = passedCases.filter(
+        (caseEvidence) => caseEvidence.cleanupVerified === true
+          && caseEvidence.skillsBehaviorsProofResult != null,
+      ).length;
+      const totalCases = IEHP_PDF_MINI_MATRIX_CASES.length + 1;
       const aggregateEvidence = {
-        ok: true,
+        ok: failedCases.length === 0
+          && passedCases.length === totalCases
+          && cleanupVerifiedCases === totalCases
+          && skillsBehaviorsVerifiedCases === 1,
         mode: 'pdf-mini-matrix',
         totalCases: IEHP_PDF_MINI_MATRIX_CASES.length + 1,
-        passedCases: passedCases.length,
-        cleanupVerifiedCases: passedCases.length,
+        passedCases: cleanupVerifiedCases,
+        cleanupVerifiedCases,
         skillsBehaviorsVerifiedCases,
       };
       console.log(JSON.stringify(aggregateEvidence, null, 2));
+      assertIehpPdfMiniMatrixTasksSucceeded(failedCases);
+      if (!aggregateEvidence.ok) {
+        throw new Error('IEHP PDF mini matrix did not satisfy the exact successful evidence contract.');
+      }
       return;
     }
 

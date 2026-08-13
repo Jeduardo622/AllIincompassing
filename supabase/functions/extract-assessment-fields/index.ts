@@ -3021,9 +3021,14 @@ const handler = async (req: Request): Promise<Response> => {
       console.error("extract-assessment-fields adobe extraction error", {
         code: error.code,
         status: error.status,
+        ...error.toPublicDiagnostics(),
         message: error.message,
       });
-      return json(req, { error: error.publicMessage, code: error.code }, error.status);
+      return json(req, {
+        error: error.publicMessage,
+        code: error.code,
+        ...error.toPublicDiagnostics(),
+      }, error.status);
     }
     console.error("extract-assessment-fields error", error);
     return json(req, { error: "Failed to extract assessment fields." }, 500);

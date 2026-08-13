@@ -28,7 +28,7 @@ const zipStructuredData = async (
 const successfulFetchForDownloadUri = (
   downloadUri: string,
   zipBytes: Uint8Array,
-): ((input: RequestInfo | URL) => Promise<Response>) => {
+): (input: RequestInfo | URL) => Promise<Response> => {
   return async (input: RequestInfo | URL): Promise<Response> => {
     const url = String(input);
     if (url.endsWith("/token")) {
@@ -94,6 +94,223 @@ Deno.test("getAdobePdfExtractCredentials fails closed when Adobe credentials are
   expect(() => getAdobePdfExtractCredentials(envFrom({}))).toThrow(
     AdobePdfExtractError,
   );
+});
+
+Deno.test("extractPdfWithAdobe reports a sanitized token failure stage", async () => {
+  const upstreamBody = "provider-response-must-not-leak";
+
+  try {
+    await extractPdfWithAdobe(new Uint8Array([1, 2, 3]), {
+      env: envFrom({
+        PDF_SERVICES_CLIENT_ID: "client-id",
+        PDF_SERVICES_CLIENT_SECRET: "client-secret",
+      }),
+      fetchImpl: () =>
+        Promise.resolve(new Response(upstreamBody, { status: 401 })),
+    });
+    throw new Error("Expected Adobe extraction to fail.");
+  } catch (error) {
+    expect(error).toBeInstanceOf(AdobePdfExtractError);
+    const adobeError = error as AdobePdfExtractError & {
+      stage?: string;
+      upstreamStatus?: number | null;
+    };
+    expect(adobeError.stage).toBe("token");
+    expect(adobeError.upstreamStatus).toBe(401);
+    expect(adobeError.message).not.toContain(upstreamBody);
+  }
+});
+
+Deno.test("extractPdfWithAdobe sanitizes transport failures before logging", async () => {
+  const sensitiveTransportDetail =
+    "https://storage.example.test/upload?X-Amz-Signature=must-not-leak";
+
+  try {
+    await extractPdfWithAdobe(new Uint8Array([1, 2, 3]), {
+      env: envFrom({
+        PDF_SERVICES_CLIENT_ID: "client-id",
+        PDF_SERVICES_CLIENT_SECRET: "client-secret",
+      }),
+      fetchImpl: () => Promise.reject(new Error(sensitiveTransportDetail)),
+    });
+    throw new Error("Expected Adobe extraction to fail.");
+  } catch (error) {
+    expect(error).toBeInstanceOf(AdobePdfExtractError);
+    const adobeError = error as AdobePdfExtractError & {
+      stage?: string;
+      upstreamStatus?: number | null;
+    };
+    expect(adobeError.stage).toBe("token");
+    expect(adobeError.upstreamStatus).toBeNull();
+    expect(adobeError.message).not.toContain(sensitiveTransportDetail);
+  }
+});
+
+Deno.test("AdobePdfExtractError exposes only allowlisted public diagnostics", () => {
+  const sensitiveInternalDetail = "provider-body-must-not-leak";
+  const error = new AdobePdfExtractError(
+    "adobe_pdf_extract_failed",
+    sensitiveInternalDetail,
+    502,
+    "token",
+    401,
+  );
+  const diagnostics = (error as AdobePdfExtractError & {
+    toPublicDiagnostics?: () => Record<string, unknown>;
+  }).toPublicDiagnostics?.();
+
+  expect(diagnostics).toEqual({
+    stage: "token",
+    upstream_status: 401,
+  });
+  expect(JSON.stringify(diagnostics)).not.toContain(sensitiveInternalDetail);
+});
+
+Deno.test("extractPdfWithAdobe sanitizes JSON body read failures", async () => {
+  const sensitiveReadDetail = "token-stream-detail-must-not-leak";
+  const response = Response.json({ access_token: "unused" });
+  Object.defineProperty(response, "text", {
+    value: () => Promise.reject(new Error(sensitiveReadDetail)),
+  });
+
+  try {
+    await extractPdfWithAdobe(new Uint8Array([1, 2, 3]), {
+      env: envFrom({
+        PDF_SERVICES_CLIENT_ID: "client-id",
+        PDF_SERVICES_CLIENT_SECRET: "client-secret",
+      }),
+      fetchImpl: () => Promise.resolve(response),
+    });
+    throw new Error("Expected Adobe extraction to fail.");
+  } catch (error) {
+    expect(error).toBeInstanceOf(AdobePdfExtractError);
+    const adobeError = error as AdobePdfExtractError;
+    expect(adobeError.stage).toBe("token");
+    expect(adobeError.upstreamStatus).toBe(200);
+    expect(adobeError.message).not.toContain(sensitiveReadDetail);
+  }
+});
+
+Deno.test("extractPdfWithAdobe sanitizes result download body read failures", async () => {
+  const sensitiveReadDetail = "download-stream-detail-must-not-leak";
+  const downloadUri =
+    "https://dcplatformstorageservice-prod-us-east-1.s3-accelerate.amazonaws.com/result.zip?X-Amz-Signature=test";
+  const fetchImpl = async (input: RequestInfo | URL): Promise<Response> => {
+    const url = String(input);
+    if (url.endsWith("/token")) {
+      return Response.json({ access_token: "token-1" });
+    }
+    if (url.endsWith("/assets")) {
+      return Response.json({
+        uploadUri: ADOBE_US_STORAGE_URL,
+        assetID: "asset-1",
+      });
+    }
+    if (url === ADOBE_US_STORAGE_URL) {
+      return new Response(null, { status: 200 });
+    }
+    if (url.endsWith("/operation/extractpdf")) {
+      return new Response(null, {
+        status: 201,
+        headers: {
+          location:
+            "https://pdf-services.adobe.io/operation/extractpdf/job-1/status",
+        },
+      });
+    }
+    if (url.endsWith("/job-1/status")) {
+      return Response.json({ status: "done", downloadUri });
+    }
+    if (url === downloadUri) {
+      const response = new Response(new Uint8Array([1, 2, 3]), {
+        status: 200,
+      });
+      Object.defineProperty(response, "arrayBuffer", {
+        value: () => Promise.reject(new Error(sensitiveReadDetail)),
+      });
+      return response;
+    }
+    return new Response("unexpected", { status: 500 });
+  };
+
+  try {
+    await extractPdfWithAdobe(new Uint8Array([1, 2, 3]), {
+      env: envFrom({
+        PDF_SERVICES_CLIENT_ID: "client-id",
+        PDF_SERVICES_CLIENT_SECRET: "client-secret",
+      }),
+      fetchImpl,
+      sleep: () => Promise.resolve(),
+      maxPollAttempts: 1,
+    });
+    throw new Error("Expected Adobe extraction to fail.");
+  } catch (error) {
+    expect(error).toBeInstanceOf(AdobePdfExtractError);
+    const adobeError = error as AdobePdfExtractError;
+    expect(adobeError.stage).toBe("result_download");
+    expect(adobeError.upstreamStatus).toBe(200);
+    expect(adobeError.message).not.toContain(sensitiveReadDetail);
+  }
+});
+
+Deno.test("extractPdfWithAdobe does not label semantic job failures as HTTP failures", async () => {
+  const fetchImpl = async (input: RequestInfo | URL): Promise<Response> => {
+    const url = String(input);
+    if (url.endsWith("/token")) {
+      return Response.json({ access_token: "token-1" });
+    }
+    if (url.endsWith("/assets")) {
+      return Response.json({
+        uploadUri: ADOBE_US_STORAGE_URL,
+        assetID: "asset-1",
+      });
+    }
+    if (url === ADOBE_US_STORAGE_URL) {
+      return new Response(null, { status: 200 });
+    }
+    if (url.endsWith("/operation/extractpdf")) {
+      return new Response(null, {
+        status: 201,
+        headers: {
+          location:
+            "https://pdf-services.adobe.io/operation/extractpdf/job-1/status",
+        },
+      });
+    }
+    if (url.endsWith("/job-1/status")) {
+      return Response.json({ status: "failed" });
+    }
+    return new Response("unexpected", { status: 500 });
+  };
+
+  try {
+    await extractPdfWithAdobe(new Uint8Array([1, 2, 3]), {
+      env: envFrom({
+        PDF_SERVICES_CLIENT_ID: "client-id",
+        PDF_SERVICES_CLIENT_SECRET: "client-secret",
+      }),
+      fetchImpl,
+      sleep: () => Promise.resolve(),
+      maxPollAttempts: 1,
+    });
+    throw new Error("Expected Adobe extraction to fail.");
+  } catch (error) {
+    expect(error).toBeInstanceOf(AdobePdfExtractError);
+    const adobeError = error as AdobePdfExtractError;
+    expect(adobeError.stage).toBe("job_poll");
+    expect(adobeError.upstreamStatus).toBeNull();
+  }
+});
+
+Deno.test("normalizeAdobeExtractZip sanitizes invalid ZIP failures", async () => {
+  try {
+    await normalizeAdobeExtractZip(new Uint8Array([1, 2, 3]));
+    throw new Error("Expected Adobe ZIP normalization to fail.");
+  } catch (error) {
+    expect(error).toBeInstanceOf(AdobePdfExtractError);
+    const adobeError = error as AdobePdfExtractError;
+    expect(adobeError.stage).toBe("result_parse");
+  }
 });
 
 Deno.test("normalizeAdobeStructuredData builds ordered text and counts table elements", () => {

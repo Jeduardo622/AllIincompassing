@@ -114,7 +114,7 @@
   "protectedSurfaceHashes": {
     ".github/workflows/agent-work-ledger-hosted-shadow-proof.yml": "eef158750da0d0f4456c00fb247149827d882a7d332bb36e57ca236c5b8dd83f",
     "scripts/agent-work-ledger-hosted-shadow-proof.mjs": "2fd78613be6dba0583019bd93566b3df73ee75d9d1f1036480fdf7f4c1350323",
-    "tests/agentWorkLedgerHostedShadowProof.test.ts": "8a2169f13d5a4e38727180c84099169bc50038057bd3fe7307e491545ac631da",
+    "tests/agentWorkLedgerHostedShadowProof.test.ts": "74c77e01d3d2fefb138576b81032b0c745c6e061d70d09fd1d407b132aa13b4b",
     "AGENTS.md": "1be8157897d395aee0ae78503a04b9d35203d5e07dc80149198afff2f1301c81",
     ".agents/skills/route-task/SKILL.md": "fbeb48b4131759168641f936abb86676a3f2b0fc856a949fdb14b36de20d8c15",
     "docs/ai/cto-lane-contract.md": "53263ab6570deb1f863e2cdb87d10473a5cf0e3d0925a4ace0488fc68d6443d0",

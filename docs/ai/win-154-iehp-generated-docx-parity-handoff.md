@@ -53,7 +53,9 @@
 - Exact-head CI run `31653029750` on commit `3abf5c5fd40e09397bf9ccc786d83312c6b375ab` cleared the prior checklist approval HTTP `400` and passed the default DOCX and skills/behaviors modes.
 - Generated DOCX parity then reached the post-approval reload and failed because the smoke unconditionally clicked the uploaded filename after the app had already restored the IEHP FBA review.
 - The runner now waits on the restored review when it is already visible and selects the uploaded assessment only when restoration did not occur.
-- Focused regression coverage executes both restoration branches; `107/107` focused tests pass.
+- Exact-head CI run `31654537699` confirmed the immediate branch was still too early because the assessment queue could remain in its loading state after reload.
+- The runner now waits for either the restored review or the specific uploaded assessment before branching, and fails closed if neither appears within the bounded wait.
+- Focused regression coverage executes both restoration branches, delayed queue readiness, and the fail-closed timeout; `109/109` focused tests pass.
 - The next exact-head hosted run remains the decisive Adobe-backed verification for this fix.
 
 ## Review and PR Hygiene

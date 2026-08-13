@@ -859,13 +859,28 @@ export const selectConfiguredSmokeClient = async (
 
 export const restoreIehpGeneratedDocxReviewSelection = async (args: {
   isReviewVisible: () => Promise<boolean>;
+  isUploadedAssessmentVisible: () => Promise<boolean>;
+  waitForNextPoll: () => Promise<void>;
   selectUploadedAssessment: () => Promise<void>;
   waitForReview: () => Promise<void>;
+  maxPollAttempts?: number;
 }): Promise<void> => {
-  if (!(await args.isReviewVisible())) {
-    await args.selectUploadedAssessment();
+  const maxPollAttempts = args.maxPollAttempts ?? 120;
+  for (let attempt = 0; attempt < maxPollAttempts; attempt += 1) {
+    if (await args.isReviewVisible()) {
+      await args.waitForReview();
+      return;
+    }
+    if (await args.isUploadedAssessmentVisible()) {
+      await args.selectUploadedAssessment();
+      await args.waitForReview();
+      return;
+    }
+    if (attempt < maxPollAttempts - 1) {
+      await args.waitForNextPoll();
+    }
   }
-  await args.waitForReview();
+  throw new Error('IEHP assessment queue did not restore a review or uploaded assessment.');
 };
 
 async function run() {
@@ -1215,10 +1230,12 @@ async function run() {
           await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
           await page.waitForLoadState('networkidle').catch(() => undefined);
           const reviewHeading = page.getByRole('heading', { name: 'IEHP FBA Checklist Review' });
+          const uploadedAssessmentButton = page.getByRole('button', { name: uploadFileName, exact: true });
           await restoreIehpGeneratedDocxReviewSelection({
             isReviewVisible: () => reviewHeading.isVisible().catch(() => false),
-            selectUploadedAssessment: () =>
-              page.getByRole('button', { name: uploadFileName, exact: true }).click({ timeout: 20_000 }),
+            isUploadedAssessmentVisible: () => uploadedAssessmentButton.isVisible().catch(() => false),
+            waitForNextPoll: () => page.waitForTimeout(500),
+            selectUploadedAssessment: () => uploadedAssessmentButton.click({ timeout: 20_000 }),
             waitForReview: () => reviewHeading.waitFor({ timeout: 20_000 }),
           });
           const generatedDocxResponsePromise = page.waitForResponse(

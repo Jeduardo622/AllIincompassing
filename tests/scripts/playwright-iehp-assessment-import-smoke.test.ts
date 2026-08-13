@@ -41,6 +41,8 @@ describe('restoreIehpGeneratedDocxReviewSelection', () => {
 
     await restoreIehpGeneratedDocxReviewSelection({
       isReviewVisible: vi.fn().mockResolvedValue(true),
+      isUploadedAssessmentVisible: vi.fn().mockResolvedValue(false),
+      waitForNextPoll: vi.fn().mockResolvedValue(undefined),
       selectUploadedAssessment,
       waitForReview,
     });
@@ -55,6 +57,8 @@ describe('restoreIehpGeneratedDocxReviewSelection', () => {
 
     await restoreIehpGeneratedDocxReviewSelection({
       isReviewVisible: vi.fn().mockResolvedValue(false),
+      isUploadedAssessmentVisible: vi.fn().mockResolvedValue(true),
+      waitForNextPoll: vi.fn().mockResolvedValue(undefined),
       selectUploadedAssessment,
       waitForReview,
     });
@@ -62,6 +66,39 @@ describe('restoreIehpGeneratedDocxReviewSelection', () => {
     expect(selectUploadedAssessment).toHaveBeenCalledOnce();
     expect(waitForReview).toHaveBeenCalledOnce();
     expect(selectUploadedAssessment.mock.invocationCallOrder[0]).toBeLessThan(waitForReview.mock.invocationCallOrder[0]);
+  });
+
+  it('waits for the assessment queue before choosing a restoration path', async () => {
+    const isReviewVisible = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const isUploadedAssessmentVisible = vi.fn().mockResolvedValue(false);
+    const waitForNextPoll = vi.fn().mockResolvedValue(undefined);
+    const selectUploadedAssessment = vi.fn();
+    const waitForReview = vi.fn().mockResolvedValue(undefined);
+
+    await restoreIehpGeneratedDocxReviewSelection({
+      isReviewVisible,
+      isUploadedAssessmentVisible,
+      waitForNextPoll,
+      selectUploadedAssessment,
+      waitForReview,
+    });
+
+    expect(waitForNextPoll).toHaveBeenCalledOnce();
+    expect(selectUploadedAssessment).not.toHaveBeenCalled();
+    expect(waitForReview).toHaveBeenCalledOnce();
+  });
+
+  it('fails closed when neither restoration target becomes visible', async () => {
+    await expect(
+      restoreIehpGeneratedDocxReviewSelection({
+        isReviewVisible: vi.fn().mockResolvedValue(false),
+        isUploadedAssessmentVisible: vi.fn().mockResolvedValue(false),
+        waitForNextPoll: vi.fn().mockResolvedValue(undefined),
+        selectUploadedAssessment: vi.fn(),
+        waitForReview: vi.fn(),
+        maxPollAttempts: 2,
+      }),
+    ).rejects.toThrow('IEHP assessment queue did not restore a review or uploaded assessment');
   });
 });
 
@@ -1197,8 +1234,9 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     expect(approvalSelectionIndex).toBeGreaterThan(manifestDerivationIndex);
     expect(approvedRefetchIndex).toBeGreaterThan(approvalSelectionIndex);
     expect(reviewHeadingIndex).toBeGreaterThan(approvedRefetchIndex);
+    expect(uploadFileButtonIndex).toBeGreaterThan(reviewHeadingIndex);
     expect(restoredSelectionCallIndex).toBeGreaterThan(reviewHeadingIndex);
-    expect(uploadFileButtonIndex).toBeGreaterThan(restoredSelectionCallIndex);
+    expect(restoredSelectionCallIndex).toBeGreaterThan(uploadFileButtonIndex);
     expect(generateButtonIndex).toBeGreaterThan(approvedRefetchIndex);
     expect(outputFixtureReaderIndex).toBeGreaterThan(generateButtonIndex);
     expect(storageCleanupIndex).toBeGreaterThan(outputFixtureReaderIndex);

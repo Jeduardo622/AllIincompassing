@@ -336,3 +336,74 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - A Task 4 Supabase audit found that the snapshot migration header named `20260812113000_payroll_session_lifecycle_context_disabled_state.sql`, which sorts after the snapshot migration and cannot be a valid replay dependency.
 - The snapshot SQL consumes attendance and correction tables established by `20260811214856_payroll_timekeeping_capture_read_model.sql` and does not consume objects added by either later session-context migration.
 - The dependency header now names the capture read-model migration. No runtime SQL, migration filename, hosted state, or activation behavior changed.
+### Task 4 Approval Authority Checkpoint
+
+- Branch: `codex/payroll-timekeeping-approval`; database head: `ca0bc55b`.
+- Authority: immutable canonical snapshot hashes, append-only employee submission/manager decision/payroll lock transitions, append-only blocker resolutions, exact effective manager assignment, explicit payroll grants, no self approval, and actor-bound authenticated RPCs.
+- Locking: current per-employee approval state is authoritative; shared `pay_periods.locked_at` is not mutated. Existing `exported_at` remains a fail-closed compatibility guard until Task 5 owns export authority.
+- Verification: clean local reset/typegen; 46/46 real loopback, migration, and RLS contracts; policy, tenant validation, typecheck, build; 8 GB aggregate `test:ci` with 507 files and 4,436 tests passed, 37 environment-gated skips.
+- Review: code, security, Supabase, test, and performance reviewers approved the fix range after one complete critical finding batch.
+- State: database checkpoint complete; protected approval transport is the next bounded checkpoint. No hosted migration, deploy, activation, merge, or export work occurred.
+
+### Task 4 Protected Approval Transport
+
+- Head: `45827440`; exact API: `POST /api/payroll-approvals`.
+- Actions: employee submit, assigned-manager approve/return, payroll-admin lock/reopen, and payroll-admin snapshot-bound blocker resolution.
+- Boundary: caller JWT only; recursive authority-field rejection; strict request and response schemas; exact authoritative idempotency echo; equivalent Node/Edge typed errors; direct Edge actor rate limiting; no raw compensation fields.
+- Verification: client/server/static 55/55, Edge 15/15, approval RPC 15/15, snapshot RPC 21/21, policy, lint, typecheck, tenant validation, build, and tier-0 routes 228/228.
+- Review: code, security, and DevOps reviewers approved after three bounded fix rounds.
+- State: transport checkpoint complete. Manager/payroll-administration read models and UI remain Task 4 work. Credentialed `ci:playwright` remains locally blocked; no hosted migration, deployment, activation, merge, PHI, customer data, secrets, or `.env*` access occurred.
+
+### Task 4 Approval, Administration, And Review Closure
+
+- Branch: `codex/payroll-timekeeping-approval`; local head: `42b6e4e3` before this handoff-only commit.
+- Workflow: employee submission, assigned-manager approve/return, payroll-admin blocker resolution, lock, and reopen are bound to immutable current snapshots with proactive invalidation on reviewable source changes.
+- Administration: effective-dated organization settings, weekly/biweekly pay groups, California monthly fail-closed behavior, one base hourly rate, employment/manager assignment, sanitized audit history, and explicit compensation visibility are exposed through protected read/write contracts.
+- UI: `/time/review` provides employee and assigned-manager review; `/payroll` provides payroll administration without export controls until Task 5. `/payroll` is routed only to `admin` and `super_admin`.
+- Contract repair: additive migration `20260812212854_payroll_timesheet_period_contract_repair.sql` restores the canonical nested period response while preserving selected-date settings, deterministic organization-first policy precedence, `SECURITY DEFINER`, empty `search_path`, and tenant-scoped source reads.
+- Local database proof: clean migration stack; administration RPC 19/19; approval workflow RPC 24/24; review read models RPC 13/13; migration/static contract 20/20. Database-backed suites were run as isolated processes because they intentionally share one local Supabase database.
+- Aggregate proof: 8 GB `npm run verify:local` passed policy, lint, typecheck, full coverage tests, coverage thresholds, build, and 244/244 Tier-0 routes. `npm run validate:tenant` passed. Coverage summary: 92.96% lines/statements, 98.75% functions, and 84.75% branches.
+- Responsive proof: `/payroll`, `/time`, and `/time/review` passed the read-only observer at desktop `1440x900` and mobile `390x844`; all six evidence cards have empty failure-code lists and matching on-disk hashes.
+- Blocked check: `npm run ci:playwright` stops at the fail-closed preflight because neither `PW_SUPERADMIN_*` nor `PW_ADMIN_*` credential pair is available locally. This remains a required CI/human environment gate.
+- Review: code, security, Supabase, UI, test-isolation, and responsive specialists approved the final bounded behavior after policy-precedence and missing-settings classification fixes.
+- Final protected-path review: commit `32c26097` adds `payroll-approvals` to auth-parity and manual deploy governance, verifies remote `verify_jwt=true`, requires live immutable-current-main attestation before credentials and immediately before deploy, and returns the shared typed Netlify `internal_error` envelope. DevOps, security, and code re-review found no remaining issue.
+- Tracking: existing issue `WIN-219` remains authoritative and was updated with commit and verification evidence. No new issue creation was attempted.
+- Boundary: no hosted migration, deployment, activation, merge, production data, PHI, secrets, `.env*` access, taxes, deductions, payments, full payroll engine, or CSV export occurred. Task 5 owns provider-neutral export.
+
+#### Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: UI/page; auth/routing; server/API/Edge; database/RLS/migration/tenant isolation
+- required checks: focused payroll unit/Edge/RPC tests; clean local migration replay; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run ci:verify-coverage`; `npm run validate:tenant`; `npm run build`; `npm run test:routes:tier0`; `npm run ci:playwright`; responsive observer for `/payroll`, `/time`, and `/time/review`; `npm run verify:local`
+- executed checks: all required local and secret-free checks passed, including the isolated database counts above, six responsive cards, the complete 493.6-second approval gate, and a fresh 485.7-second `verify:local` rerun after the final protected workflow/adapter repair; final coverage is 92.96% lines/statements, 98.75% functions, and 84.75% branches
+- blocked checks: `npm run ci:playwright` -> required credential pairs are unavailable; preflight failed closed before browser execution
+- result: `pass-with-blocked-checks`
+- residual risk: human critical-lane review, exact-head hosted checks, credentialed browser smoke, payroll/legal review, and explicit migration/deploy activation remain mandatory; no merge or activation is authorized
+
+### Task 5 Provider-Neutral Payroll Export
+
+- Branch: `codex/payroll-timekeeping-export`; base: `codex/payroll-timekeeping-approval`; issue: existing `WIN-219`.
+- Scope: immutable provider-neutral v1 CSV exports from the complete locked current snapshot population, deterministic SHA-256 checksums, exact persisted emitted rows, idempotent replay, and cumulative delta-only adjustment exports against the immediately prior run.
+- Authority: actor and organization derive from `auth.uid()`; create/download require `payroll.export_period`; export-only authority cannot open the broader payroll administration model; ledger tables are forced-RLS and append-only, with direct authenticated and service-role mutations denied.
+- Contract: POST returns reconciled totals, checksum, source count, adjustment parent, and export timestamp. The administration read model restores the latest immutable export after reload, while `/time` exposes only initial/adjustment status and timestamp. Session/audit time remains separate and never ends paid time.
+- Delivery: strict Node, Netlify, and Supabase Edge adapters; RFC 4180 CRLF CSV with fixed 17-column schema and formula/control-character rejection; deploy workflow remains explicit manual activation, default false, immutable-current-main attested, and remote `verify_jwt=true` checked. No deployment or activation occurred.
+- Jurisdiction boundary: California derivation is the only active calculation policy. Existing Texas and Arizona documents remain research-only and inactive. Taxes, deductions, payments, provider-specific formats, and a full payroll engine remain out of scope.
+- Database proof: final clean `npx supabase db reset` passed; `tests/payroll-export-ledger-rpc.test.ts` passed 7/7 after reset, including replay, exact CSV persistence, cumulative adjustments, population/blocker/formula/tenant denials, append-only enforcement, full administration payload preservation, export-only administration denial, latest adjustment projection, and employee-safe status.
+- Focused proof: 364 transport/UI/deploy-policy tests, 8 canonical adapter tests, 6 Edge tests, final 121 read-model/UI repair tests, full lint/typecheck, tenant validation, policy suite, production build, coverage threshold 92.96%, and Tier-0 routes 244/244 passed.
+- Responsive proof: `/payroll` and `/time` passed the sanitized observer at desktop `1440x900` and mobile `390x844`; all final evidence cards have empty failure-code lists. The read-only responsive harness contract passed 2/2 after keeping export mutations fail closed in that fixture.
+- Aggregate note: the first default-heap `verify:local` attempt OOMed during full coverage. The 8 GB rerun completed 4,733 passing tests with one Task 5 responsive-harness fixture failure; that fixture was repaired and passed in isolation, after which coverage verification, build, Tier-0, policy, tenant, lint, typecheck, and all Task 5 focused/runtime suites passed. The aggregate result is therefore `pass-with-isolated-rerun`, not a claim that the original umbrella command exited zero.
+- Blocked check: `npm run ci:playwright` requires unavailable `PW_SUPERADMIN_*` or `PW_ADMIN_*` credentials and remains a required exact-head CI/human-environment gate.
+- Review: code, security, Supabase, test, and DevOps specialists reviewed the critical surfaces. Administration payload, latest-adjustment, export-only access, and RPC grant findings were repaired; final code and Supabase re-review returned no findings.
+- Boundary: no hosted migration, production deploy, activation, merge, PHI, customer data, secrets, or `.env*` access occurred.
+
+#### Task 5 Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: visible UI; server/API/Edge; database/RLS/RPC/migration/tenant isolation; Netlify; CI/workflow policy
+- required checks: focused unit/Edge/RPC/workflow tests; clean migration replay; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run ci:verify-coverage`; `npm run validate:tenant`; `npm run build`; `npm run test:routes:tier0`; `npm run ci:playwright`; responsive `/payroll` and `/time`; `npm run verify:local`
+- executed checks: all secret-free checks passed directly or through the documented isolated aggregate repair; final database, tenant, policy, lint, typecheck, build, coverage, Tier-0, Edge, focused, and responsive evidence is green
+- blocked checks: `npm run ci:playwright` -> credential pairs unavailable locally; hosted migration/deploy -> intentionally not authorized
+- result: `pass-with-blocked-checks`
+- residual risk: exact-head hosted CI, credentialed browser smoke, independent human critical-lane review, and payroll/legal review remain mandatory before any merge or explicit activation

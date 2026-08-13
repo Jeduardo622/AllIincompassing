@@ -6162,10 +6162,81 @@ export type Database = {
           },
         ]
       }
+      pay_group_generation_versions: {
+        Row: {
+          cadence: Database["public"]["Enums"]["pay_group_cadence"]
+          created_at: string
+          created_by: string
+          effective_from: string
+          effective_through: string | null
+          id: string
+          organization_id: string
+          pay_group_id: string
+          starts_on: string
+          timezone: string
+        }
+        Insert: {
+          cadence: Database["public"]["Enums"]["pay_group_cadence"]
+          created_at?: string
+          created_by: string
+          effective_from: string
+          effective_through?: string | null
+          id?: string
+          organization_id: string
+          pay_group_id: string
+          starts_on: string
+          timezone: string
+        }
+        Update: {
+          cadence?: Database["public"]["Enums"]["pay_group_cadence"]
+          created_at?: string
+          created_by?: string
+          effective_from?: string
+          effective_through?: string | null
+          id?: string
+          organization_id?: string
+          pay_group_id?: string
+          starts_on?: string
+          timezone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pay_group_generation_versions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pay_group_generation_versions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "pay_group_generation_versions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pay_group_generation_versions_pay_group_id_organization_id_fkey"
+            columns: ["pay_group_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "pay_groups"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
       pay_groups: {
         Row: {
           cadence: Database["public"]["Enums"]["pay_group_cadence"]
           created_at: string
+          created_by: string | null
+          effective_from: string
+          effective_through: string | null
           id: string
           name: string
           organization_id: string
@@ -6174,6 +6245,9 @@ export type Database = {
         Insert: {
           cadence: Database["public"]["Enums"]["pay_group_cadence"]
           created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          effective_through?: string | null
           id?: string
           name: string
           organization_id: string
@@ -6182,12 +6256,29 @@ export type Database = {
         Update: {
           cadence?: Database["public"]["Enums"]["pay_group_cadence"]
           created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          effective_through?: string | null
           id?: string
           name?: string
           organization_id?: string
           timezone?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "pay_groups_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pay_groups_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
           {
             foreignKeyName: "pay_groups_organization_id_fkey"
             columns: ["organization_id"]
@@ -6297,6 +6388,143 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      payroll_blocker_resolutions: {
+        Row: {
+          action: string
+          actor_user_id: string
+          blocker_type: string
+          comment: string | null
+          created_at: string
+          employment_profile_id: string
+          id: string
+          idempotency_key: string
+          occurred_at: string
+          organization_id: string
+          pay_period_id: string
+          payload_hash: string
+          previous_resolution_id: string | null
+          reason: string | null
+          received_at: string
+          session_attendance_correction_request_id: string | null
+          time_correction_request_id: string | null
+          timekeeping_exception_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_user_id: string
+          blocker_type: string
+          comment?: string | null
+          created_at?: string
+          employment_profile_id: string
+          id?: string
+          idempotency_key: string
+          occurred_at?: string
+          organization_id: string
+          pay_period_id: string
+          payload_hash: string
+          previous_resolution_id?: string | null
+          reason?: string | null
+          received_at?: string
+          session_attendance_correction_request_id?: string | null
+          time_correction_request_id?: string | null
+          timekeeping_exception_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string
+          blocker_type?: string
+          comment?: string | null
+          created_at?: string
+          employment_profile_id?: string
+          id?: string
+          idempotency_key?: string
+          occurred_at?: string
+          organization_id?: string
+          pay_period_id?: string
+          payload_hash?: string
+          previous_resolution_id?: string | null
+          reason?: string | null
+          received_at?: string
+          session_attendance_correction_request_id?: string | null
+          time_correction_request_id?: string | null
+          timekeeping_exception_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_blocker_resolutions_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_blocker_resolutions_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "payroll_blocker_resolutions_employment_profile_id_organiza_fkey"
+            columns: ["employment_profile_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employment_profiles"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "payroll_blocker_resolutions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_blocker_resolutions_pay_period_id_organization_id_fkey"
+            columns: ["pay_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "pay_periods"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "payroll_blocker_resolutions_previous_resolution_id_organiz_fkey"
+            columns: ["previous_resolution_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_blocker_resolution_current_states"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "payroll_blocker_resolutions_previous_resolution_id_organiz_fkey"
+            columns: ["previous_resolution_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_blocker_resolutions"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "payroll_blocker_resolutions_session_attendance_correction__fkey"
+            columns: [
+              "session_attendance_correction_request_id",
+              "organization_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "session_attendance_correction_requests"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "payroll_blocker_resolutions_time_correction_request_id_org_fkey"
+            columns: ["time_correction_request_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "time_correction_requests"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "payroll_blocker_resolutions_timekeeping_exception_id_organ_fkey"
+            columns: ["timekeeping_exception_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "timekeeping_exceptions"
+            referencedColumns: ["id", "organization_id"]
           },
         ]
       }
@@ -6519,6 +6747,9 @@ export type Database = {
       payroll_organization_settings: {
         Row: {
           created_at: string
+          created_by: string | null
+          effective_from: string
+          effective_through: string | null
           external_payroll_organization_id: string
           id: string
           organization_id: string
@@ -6529,6 +6760,9 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          effective_through?: string | null
           external_payroll_organization_id: string
           id?: string
           organization_id: string
@@ -6539,6 +6773,9 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          effective_through?: string | null
           external_payroll_organization_id?: string
           id?: string
           organization_id?: string
@@ -6549,9 +6786,23 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "payroll_organization_settings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_organization_settings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "payroll_organization_settings_organization_id_fkey"
             columns: ["organization_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -8990,6 +9241,133 @@ export type Database = {
           },
         ]
       }
+      timesheet_approvals: {
+        Row: {
+          action: string
+          actor_user_id: string
+          attestation: boolean | null
+          comment: string | null
+          created_at: string
+          employment_profile_id: string
+          id: string
+          idempotency_key: string
+          occurred_at: string
+          organization_id: string
+          pay_period_id: string
+          payload_hash: string
+          previous_transition_id: string | null
+          reason: string | null
+          received_at: string
+          snapshot_hash: string
+          snapshot_id: string
+        }
+        Insert: {
+          action: string
+          actor_user_id: string
+          attestation?: boolean | null
+          comment?: string | null
+          created_at?: string
+          employment_profile_id: string
+          id?: string
+          idempotency_key: string
+          occurred_at?: string
+          organization_id: string
+          pay_period_id: string
+          payload_hash: string
+          previous_transition_id?: string | null
+          reason?: string | null
+          received_at?: string
+          snapshot_hash: string
+          snapshot_id: string
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string
+          attestation?: boolean | null
+          comment?: string | null
+          created_at?: string
+          employment_profile_id?: string
+          id?: string
+          idempotency_key?: string
+          occurred_at?: string
+          organization_id?: string
+          pay_period_id?: string
+          payload_hash?: string
+          previous_transition_id?: string | null
+          reason?: string | null
+          received_at?: string
+          snapshot_hash?: string
+          snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "timesheet_approvals_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timesheet_approvals_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "timesheet_approvals_employment_profile_id_organization_id_fkey"
+            columns: ["employment_profile_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employment_profiles"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "timesheet_approvals_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timesheet_approvals_pay_period_id_organization_id_fkey"
+            columns: ["pay_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "pay_periods"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "timesheet_approvals_previous_transition_id_organization_id_fkey"
+            columns: ["previous_transition_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "timesheet_approval_current_states"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "timesheet_approvals_previous_transition_id_organization_id_fkey"
+            columns: ["previous_transition_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "timesheet_approvals"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "timesheet_approvals_snapshot_id_organization_id_employment_fkey"
+            columns: [
+              "snapshot_id",
+              "organization_id",
+              "employment_profile_id",
+              "pay_period_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "timesheet_snapshots"
+            referencedColumns: [
+              "id",
+              "organization_id",
+              "employment_profile_id",
+              "pay_period_id",
+            ]
+          },
+        ]
+      }
       timesheet_meal_resolutions: {
         Row: {
           created_at: string
@@ -9305,7 +9683,9 @@ export type Database = {
       }
       timesheet_snapshots: {
         Row: {
+          calculation_revision: number
           canonical_payload: Json
+          canonical_snapshot_hash: string | null
           created_at: string
           created_by: string
           double_time_seconds: number
@@ -9319,11 +9699,14 @@ export type Database = {
           pay_period_id: string
           policy_version_id: string
           regular_seconds: number
+          snapshot_version: number
           source_hash: string
           source_high_water: Json
         }
         Insert: {
+          calculation_revision?: number
           canonical_payload?: Json
+          canonical_snapshot_hash?: string | null
           created_at?: string
           created_by: string
           double_time_seconds?: number
@@ -9337,11 +9720,14 @@ export type Database = {
           pay_period_id: string
           policy_version_id: string
           regular_seconds?: number
+          snapshot_version?: number
           source_hash: string
           source_high_water?: Json
         }
         Update: {
+          calculation_revision?: number
           canonical_payload?: Json
+          canonical_snapshot_hash?: string | null
           created_at?: string
           created_by?: string
           double_time_seconds?: number
@@ -9355,6 +9741,7 @@ export type Database = {
           pay_period_id?: string
           policy_version_id?: string
           regular_seconds?: number
+          snapshot_version?: number
           source_hash?: string
           source_high_water?: Json
         }
@@ -9675,6 +10062,104 @@ export type Database = {
         }
         Relationships: []
       }
+      payroll_blocker_resolution_current_states: {
+        Row: {
+          action: string | null
+          actor_user_id: string | null
+          blocker_id: string | null
+          blocker_type: string | null
+          comment: string | null
+          created_at: string | null
+          employment_profile_id: string | null
+          id: string | null
+          idempotency_key: string | null
+          occurred_at: string | null
+          organization_id: string | null
+          pay_period_id: string | null
+          payload_hash: string | null
+          previous_resolution_id: string | null
+          reason: string | null
+          received_at: string | null
+          session_attendance_correction_request_id: string | null
+          time_correction_request_id: string | null
+          timekeeping_exception_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_blocker_resolutions_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_blocker_resolutions_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "payroll_blocker_resolutions_employment_profile_id_organiza_fkey"
+            columns: ["employment_profile_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employment_profiles"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "payroll_blocker_resolutions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_blocker_resolutions_pay_period_id_organization_id_fkey"
+            columns: ["pay_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "pay_periods"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "payroll_blocker_resolutions_previous_resolution_id_organiz_fkey"
+            columns: ["previous_resolution_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_blocker_resolution_current_states"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "payroll_blocker_resolutions_previous_resolution_id_organiz_fkey"
+            columns: ["previous_resolution_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_blocker_resolutions"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "payroll_blocker_resolutions_session_attendance_correction__fkey"
+            columns: [
+              "session_attendance_correction_request_id",
+              "organization_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "session_attendance_correction_requests"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "payroll_blocker_resolutions_time_correction_request_id_org_fkey"
+            columns: ["time_correction_request_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "time_correction_requests"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "payroll_blocker_resolutions_timekeeping_exception_id_organ_fkey"
+            columns: ["timekeeping_exception_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "timekeeping_exceptions"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
       session_cpt_details_vw: {
         Row: {
           billed_minutes: number | null
@@ -9726,6 +10211,95 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "therapists"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      timesheet_approval_current_states: {
+        Row: {
+          action: string | null
+          actor_user_id: string | null
+          attestation: boolean | null
+          comment: string | null
+          created_at: string | null
+          employment_profile_id: string | null
+          id: string | null
+          idempotency_key: string | null
+          occurred_at: string | null
+          organization_id: string | null
+          pay_period_id: string | null
+          payload_hash: string | null
+          previous_transition_id: string | null
+          reason: string | null
+          received_at: string | null
+          snapshot_hash: string | null
+          snapshot_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "timesheet_approvals_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timesheet_approvals_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "timesheet_approvals_employment_profile_id_organization_id_fkey"
+            columns: ["employment_profile_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "employment_profiles"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "timesheet_approvals_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timesheet_approvals_pay_period_id_organization_id_fkey"
+            columns: ["pay_period_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "pay_periods"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "timesheet_approvals_previous_transition_id_organization_id_fkey"
+            columns: ["previous_transition_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "timesheet_approval_current_states"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "timesheet_approvals_previous_transition_id_organization_id_fkey"
+            columns: ["previous_transition_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "timesheet_approvals"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "timesheet_approvals_snapshot_id_organization_id_employment_fkey"
+            columns: [
+              "snapshot_id",
+              "organization_id",
+              "employment_profile_id",
+              "pay_period_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "timesheet_snapshots"
+            referencedColumns: [
+              "id",
+              "organization_id",
+              "employment_profile_id",
+              "pay_period_id",
+            ]
           },
         ]
       }
@@ -10503,6 +11077,10 @@ export type Database = {
         Args: { p_user_id: string }
         Returns: undefined
       }
+      execute_payroll_administration: {
+        Args: { p_idempotency_key: string; p_payload: Json }
+        Returns: Json
+      }
       expire_agent_work_approvals: {
         Args: { p_max_items_per_pass: number; p_now: string }
         Returns: Json
@@ -10883,7 +11461,23 @@ export type Database = {
         Args: { p_metadata: Json }
         Returns: string
       }
+      get_payroll_administration: {
+        Args: { selected_local_date: string }
+        Returns: Json
+      }
       get_payroll_day: { Args: { local_date: string }; Returns: Json }
+      get_payroll_review_details: {
+        Args: { snapshot_hash: string; snapshot_id: string }
+        Returns: Json
+      }
+      get_payroll_review_queue: {
+        Args: { selected_local_date: string }
+        Returns: Json
+      }
+      get_payroll_self_approval: {
+        Args: { selected_local_date: string }
+        Returns: Json
+      }
       get_payroll_timesheet_period: {
         Args: { selected_local_date: string }
         Returns: Json
@@ -11581,6 +12175,10 @@ export type Database = {
           strict_billing: boolean
         }[]
       }
+      resolve_payroll_blocker: {
+        Args: { p_idempotency_key: string; p_payload: Json }
+        Returns: Json
+      }
       resubmit_bt_supervision_correction: {
         Args: {
           p_request_id: string
@@ -11861,6 +12459,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      transition_timesheet_approval: {
+        Args: { p_idempotency_key: string; p_payload: Json }
+        Returns: Json
       }
       update_authorization_documents: {
         Args: { p_authorization_id: string; p_documents: Json }

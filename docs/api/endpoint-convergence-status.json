@@ -148,6 +148,30 @@
       "owner": "Backend Platform"
     },
     {
+      "functionFile": "payroll-approvals.ts",
+      "publicApiPath": "/api/payroll-approvals",
+      "edgeTarget": "payroll-approvals",
+      "wave": "B",
+      "status": "migrating",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "payroll-administration.ts",
+      "publicApiPath": "/api/payroll-administration",
+      "edgeTarget": "payroll-administration",
+      "wave": "B",
+      "status": "migrating",
+      "owner": "Backend Platform"
+    },
+    {
+      "functionFile": "payroll-export.ts",
+      "publicApiPath": "/api/payroll-export",
+      "edgeTarget": "payroll-export",
+      "wave": "B",
+      "status": "migrating",
+      "owner": "Backend Platform"
+    },
+    {
       "functionFile": "payroll-time-events.ts",
       "publicApiPath": "/api/payroll-time-events",
       "edgeTarget": "payroll-time-events",

@@ -13,6 +13,8 @@ const mockPreloadRouteModule = vi.fn();
 const mockFetchMessageThreads = vi.fn();
 const mockFetchPendingSupervisionSessionNoteCount = vi.fn();
 const mockUsePayrollDayReadOnly = vi.fn();
+const mockUsePayrollApprovals = vi.fn();
+const mockUsePayrollAdministration = vi.fn();
 
 const capabilityForRole = (role: string) => (capability: string) => {
   const matrix: Record<string, string[]> = {
@@ -42,6 +44,12 @@ vi.mock("../../lib/organization", () => ({
 
 vi.mock("../../features/payroll/usePayrollTime", () => ({
   usePayrollDayReadOnly: (...args: unknown[]) => mockUsePayrollDayReadOnly(...args),
+}));
+vi.mock("../../features/payroll/usePayrollApprovals", () => ({
+  usePayrollApprovals: (...args: unknown[]) => mockUsePayrollApprovals(...args),
+}));
+vi.mock("../../features/payroll/usePayrollAdministration", () => ({
+  usePayrollAdministration: (...args: unknown[]) => mockUsePayrollAdministration(...args),
 }));
 
 vi.mock("../../lib/messages/fetchers", () => ({
@@ -115,6 +123,29 @@ describe("Sidebar navigation active styling", () => {
       data: undefined,
       isLoading: false,
       isError: false,
+    });
+    mockUsePayrollApprovals.mockReturnValue({
+      payrollReviewQueueQuery: {
+        data: undefined,
+        isLoading: false,
+        isError: false,
+      },
+    });
+    mockUsePayrollAdministration.mockReturnValue({
+      administrationQuery: {
+        data: undefined,
+        isLoading: false,
+        isError: false,
+      },
+      reviewQueueQuery: {
+        data: undefined,
+      },
+      reviewDetailsQuery: {
+        data: undefined,
+      },
+      administrationActionMutation: { mutateAsync: vi.fn(), isPending: false, error: null },
+      lockPayrollTimesheetMutation: { mutateAsync: vi.fn(), isPending: false, error: null },
+      reopenPayrollTimesheetMutation: { mutateAsync: vi.fn(), isPending: false, error: null },
     });
   });
 
@@ -389,6 +420,157 @@ describe("Sidebar navigation active styling", () => {
     renderSidebar(["/"]);
 
     expect(screen.getByRole("link", { name: /^time$/i })).toBeInTheDocument();
+  });
+
+  it("shows the Time Review navigation only when the authoritative review queue grants review capability", () => {
+    mockUsePayrollApprovals.mockReturnValue({
+      payrollReviewQueueQuery: {
+        data: {
+          state: "ok",
+          capabilities: {
+            canReviewAssigned: true,
+            canApproveAssigned: false,
+            canViewCompensation: false,
+            hasOrgPayrollAccess: false,
+          },
+          queue: [],
+        },
+        isLoading: false,
+        isError: false,
+      },
+    });
+
+    renderSidebar(["/"]);
+
+    expect(screen.getByRole("link", { name: /time review/i })).toBeInTheDocument();
+  });
+
+  it("shows the Payroll navigation only when the authoritative administration capability view grants access", () => {
+    mockUseAuth.mockReturnValue({
+      signOut: vi.fn(),
+      hasRole: vi.fn((role: string) => role === "admin"),
+      user: {
+        id: "admin-1",
+        email: "admin@example.com",
+        user_metadata: {},
+      },
+      profile: {
+        id: "admin-1",
+        role: "admin",
+      },
+      isGuardian: false,
+      hasAnyRole: vi.fn(() => true),
+      effectiveRole: "admin",
+      hasCapability: vi.fn(capabilityForRole("admin")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("admin"))),
+    });
+    mockUsePayrollAdministration.mockReturnValue({
+      administrationQuery: {
+        data: {
+          state: "ok",
+          capabilities: {
+            canConfigureEmployment: true,
+            canResolveExceptions: false,
+            canLockPeriod: false,
+            canReopenPeriod: false,
+            canGeneratePeriods: false,
+            canExportPeriod: false,
+            canViewCompensation: false,
+            canManagePolicyMutations: false,
+          },
+        },
+        isLoading: false,
+        isError: false,
+      },
+      reviewQueueQuery: { data: undefined },
+      reviewDetailsQuery: { data: undefined },
+      administrationActionMutation: { mutateAsync: vi.fn(), isPending: false, error: null },
+      lockPayrollTimesheetMutation: { mutateAsync: vi.fn(), isPending: false, error: null },
+      reopenPayrollTimesheetMutation: { mutateAsync: vi.fn(), isPending: false, error: null },
+    });
+
+    renderSidebar(["/"]);
+
+    expect(screen.getByRole("link", { name: /^payroll$/i })).toBeInTheDocument();
+  });
+
+  it("keeps Payroll hidden when the static admin role lacks authoritative payroll administration capabilities", () => {
+    mockUseAuth.mockReturnValue({
+      signOut: vi.fn(),
+      hasRole: vi.fn((role: string) => role === "admin"),
+      user: {
+        id: "admin-1",
+        email: "admin@example.com",
+        user_metadata: {},
+      },
+      profile: {
+        id: "admin-1",
+        role: "admin",
+      },
+      isGuardian: false,
+      hasAnyRole: vi.fn(() => true),
+      effectiveRole: "admin",
+      hasCapability: vi.fn(capabilityForRole("admin")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("admin"))),
+    });
+    mockUsePayrollAdministration.mockReturnValue({
+      administrationQuery: {
+        data: {
+          state: "ok",
+          capabilities: {
+            canConfigureEmployment: false,
+            canResolveExceptions: false,
+            canLockPeriod: false,
+            canReopenPeriod: false,
+            canGeneratePeriods: false,
+            canExportPeriod: false,
+            canViewCompensation: false,
+            canManagePolicyMutations: false,
+          },
+        },
+        isLoading: false,
+        isError: false,
+      },
+      reviewQueueQuery: { data: undefined },
+      reviewDetailsQuery: { data: undefined },
+      administrationActionMutation: { mutateAsync: vi.fn(), isPending: false, error: null },
+      lockPayrollTimesheetMutation: { mutateAsync: vi.fn(), isPending: false, error: null },
+      reopenPayrollTimesheetMutation: { mutateAsync: vi.fn(), isPending: false, error: null },
+    });
+
+    renderSidebar(["/"]);
+
+    expect(screen.queryByRole("link", { name: /^payroll$/i })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["loading", { data: undefined, isLoading: true, isError: false }],
+    ["transport error", { data: undefined, isLoading: false, isError: true }],
+    ["non-ok response", { data: { state: "feature_disabled" }, isLoading: false, isError: false }],
+  ])("keeps Payroll hidden while authoritative administration is %s", (_name, administrationQuery) => {
+    mockUseAuth.mockReturnValue({
+      signOut: vi.fn(),
+      hasRole: vi.fn((role: string) => role === "admin"),
+      user: { id: "admin-1", email: "admin@example.com", user_metadata: {} },
+      profile: { id: "admin-1", role: "admin" },
+      isGuardian: false,
+      hasAnyRole: vi.fn(() => true),
+      effectiveRole: "admin",
+      hasCapability: vi.fn(capabilityForRole("admin")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("admin"))),
+    });
+    mockUsePayrollAdministration.mockReturnValue({
+      administrationQuery,
+      reviewQueueQuery: { data: undefined },
+      reviewDetailsQuery: { data: undefined },
+      administrationActionMutation: { mutateAsync: vi.fn(), isPending: false, error: null },
+      lockPayrollTimesheetMutation: { mutateAsync: vi.fn(), isPending: false, error: null },
+      reopenPayrollTimesheetMutation: { mutateAsync: vi.fn(), isPending: false, error: null },
+    });
+
+    renderSidebar(["/"]);
+
+    expect(screen.queryByRole("link", { name: /^payroll$/i })).not.toBeInTheDocument();
   });
 
   it("keeps the Time navigation hidden during loading, transport errors, and non-ok payroll states", () => {

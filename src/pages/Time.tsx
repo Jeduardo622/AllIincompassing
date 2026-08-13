@@ -5,11 +5,13 @@ import { useActiveOrganizationId } from "../lib/organization";
 import {
   type PayrollDayResponse,
   type PayrollEmployeeTimeEvent,
+  type PayrollSelfApprovalResponse,
   type PayrollTimeEventPayload,
   type PayrollTimesheetDeriveResponse,
   type PayrollTimesheetPeriodResponse,
 } from "../features/payroll/api";
 import { usePayrollTime, usePayrollTimesheetPeriodReview } from "../features/payroll/usePayrollTime";
+import { usePayrollApprovals } from "../features/payroll/usePayrollApprovals";
 import type { PendingPayrollEvent } from "../features/payroll/outbox";
 
 const formatLocalDate = (date: Date, timeZone?: string | null): string => {
@@ -144,6 +146,152 @@ const buildIdempotencyKey = (prefix: string): string =>
 const formatHours = (seconds: number | undefined): string => seconds === undefined ? 'Not derived' : `${(seconds / 3600).toFixed(2)}h`;
 const formatMoney = (cents: number | undefined): string => cents === undefined ? 'Not derived' : `$${(cents / 100).toFixed(2)}`;
 
+const PayrollApprovalPanel = ({
+  approvalQuery,
+  submitMutation,
+  scope,
+}: {
+  approvalQuery: {
+    data: PayrollSelfApprovalResponse | undefined;
+    isLoading: boolean;
+    isError: boolean;
+    error: unknown;
+    refetch: () => Promise<unknown>;
+  };
+  submitMutation: {
+    mutateAsync: (input: {
+      organizationId: string;
+      userId: string;
+      localDate: string;
+      idempotencyKey: string;
+      snapshotId: string;
+      snapshotHash: string;
+      attestation: true;
+    }) => Promise<unknown>;
+    isPending: boolean;
+    isError?: boolean;
+    error?: unknown;
+  };
+  scope: { organizationId: string; userId: string; localDate: string };
+}) => {
+  const [attested, setAttested] = useState(false);
+
+  if (approvalQuery.isLoading) {
+    return (
+      <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-dark-lighter">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Employee approval</h2>
+        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Loading authoritative approval state.</p>
+      </section>
+    );
+  }
+
+  if (approvalQuery.isError || !approvalQuery.data) {
+    return (
+      <section className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm dark:border-red-900/60 dark:bg-red-950/40">
+        <h2 className="text-lg font-semibold text-red-900 dark:text-red-100">Employee approval unavailable</h2>
+        <p className="mt-2 text-sm text-red-700 dark:text-red-200">The authoritative self approval state could not be loaded.</p>
+      </section>
+    );
+  }
+
+  if (approvalQuery.data.state !== 'ok' || !approvalQuery.data.approval) {
+    const copy = approvalQuery.data.state === 'feature_disabled'
+      ? 'Payroll approval is not enabled.'
+      : approvalQuery.data.state === 'unsupported_policy' || approvalQuery.data.state === 'unsupported_jurisdiction'
+        ? 'Payroll approval is not supported for this employment policy.'
+        : approvalQuery.data.state === 'missing_prerequisite'
+          ? 'Payroll approval prerequisites are incomplete.'
+          : 'A payroll employment profile is required before self approval can render.';
+    return (
+      <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/40">
+        <h2 className="text-lg font-semibold text-amber-900 dark:text-amber-100">Employee approval unavailable</h2>
+        <p className="mt-2 text-sm text-amber-800 dark:text-amber-200">{copy}</p>
+      </section>
+    );
+  }
+
+  const approval = approvalQuery.data.approval;
+  const canSubmit = approval.actions.canSubmit && approval.snapshot.isCurrent && approval.snapshot.id && approval.snapshot.hash;
+
+  return (
+    <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-dark-lighter">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Employee approval</h2>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Status: {approval.currentState}</p>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Unresolved blockers: {approval.unresolvedBlockerCount}</p>
+          {approval.submittedAt ? <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Submitted: {formatTimestamp(approval.submittedAt)}</p> : null}
+          {approval.returnedComment ? <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Returned comment: {approval.returnedComment}</p> : null}
+        </div>
+        {approval.compensation ? (
+          <div className="rounded-xl border border-gray-100 px-3 py-2 text-sm dark:border-gray-800">
+            Gross earnings: {formatMoney(approval.compensation.grossEarningsCents)}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-4 rounded-xl border border-gray-100 px-3 py-3 text-sm dark:border-gray-800">
+        <p className="font-medium text-gray-900 dark:text-white">Snapshot binding</p>
+        <p className="mt-1 text-gray-600 dark:text-gray-300">Current snapshot: {approval.snapshot.isCurrent ? 'Current' : 'Stale'}</p>
+      </div>
+
+      <label className="mt-4 flex items-start gap-3 text-sm text-gray-700 dark:text-gray-200">
+        <input
+          type="checkbox"
+          checked={attested}
+          onChange={(event) => setAttested(event.target.checked)}
+          className="mt-1"
+        />
+        <span>I attest that this timesheet is accurate and ready for payroll approval.</span>
+      </label>
+
+      {submitMutation.isError ? (
+        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-red-900 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-100">
+          <p className="text-sm font-semibold">Payroll approval submit failed</p>
+          <p className="mt-1 text-sm">
+            {((submitMutation.error as { code?: string; message?: string } | null)?.code === 'state_conflict')
+              ? 'The authoritative snapshot changed. Refresh to continue.'
+              : (((submitMutation.error as { message?: string } | null)?.message) ?? 'Payroll transport failed.')}
+          </p>
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <ActionButton
+          label="Submit approval"
+          onClick={() => canSubmit && attested
+            ? submitMutation.mutateAsync({
+              ...scope,
+              idempotencyKey: buildIdempotencyKey('payroll-submit'),
+              snapshotId: approval.snapshot.id!,
+              snapshotHash: approval.snapshot.hash!,
+              attestation: true,
+            })
+            : Promise.resolve()}
+          disabled={!canSubmit || !attested || submitMutation.isPending}
+        />
+        {!approval.snapshot.isCurrent ? (
+          <ActionButton label="Refresh approval" onClick={() => void approvalQuery.refetch()} />
+        ) : null}
+      </div>
+
+      <div className="mt-6">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">History</h3>
+        <ul className="mt-3 space-y-2">
+          {approval.history.map((entry, index) => (
+            <li key={`${entry.snapshotId}-${index}`} className="rounded-xl border border-gray-100 px-3 py-2 text-sm dark:border-gray-800">
+              <p className="font-medium text-gray-900 dark:text-white">{entry.action}</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{formatTimestamp(entry.occurredAt)}</p>
+              {entry.comment ? <p className="mt-1 text-gray-700 dark:text-gray-200">{entry.comment}</p> : null}
+              {entry.reason ? <p className="mt-1 text-gray-700 dark:text-gray-200">{entry.reason}</p> : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+};
+
 const PeriodReviewSummary = ({
   periodReview,
   deriveResult,
@@ -185,6 +333,11 @@ const PeriodReviewSummary = ({
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Payroll period review</h2>
           <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
             {periodLabel} in {displayedPeriod.timezone ?? 'employment time'}.
+          </p>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+            Payroll export: {periodReview.exportedAt
+              ? `${periodReview.exportKind === 'adjustment' ? 'Adjustment exported' : 'Exported'} ${formatTimestamp(periodReview.exportedAt, displayedPeriod.timezone)}`
+              : 'Not exported'}
           </p>
         </div>
         <ActionButton
@@ -339,6 +492,14 @@ export function Time() {
     payrollTimesheetPeriodQuery,
     derivePayrollTimesheetSnapshotMutation,
   } = usePayrollTimesheetPeriodReview(scope, { enabled: periodReviewEnabled });
+  const {
+    payrollSelfApprovalQuery,
+    submitPayrollApprovalMutation,
+  } = usePayrollApprovals(scope, {
+    selfEnabled: periodReviewEnabled,
+    queueEnabled: false,
+    details: null,
+  });
 
   useEffect(() => {
     const authoritativeLocalDate = payrollDayQuery.data?.bootstrap?.localDate;
@@ -583,6 +744,12 @@ export function Time() {
           <p className="text-sm font-medium text-red-900 dark:text-red-100">Payroll period review is unavailable.</p>
         </section>
       ) : null}
+
+      <PayrollApprovalPanel
+        approvalQuery={payrollSelfApprovalQuery}
+        submitMutation={submitPayrollApprovalMutation}
+        scope={scope}
+      />
 
       <PeriodReviewSummary
         periodReview={payrollTimesheetPeriodQuery.data}

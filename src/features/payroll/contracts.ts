@@ -56,10 +56,35 @@ export const PAYROLL_EVENT_OPERATIONS = [
   "request_session_attendance_correction",
 ] as const;
 
+export const PAYROLL_APPROVAL_ACTIONS = [
+  "review_queue",
+  "review_details",
+  "submit",
+  "manager_approve",
+  "return",
+  "lock",
+  "reopen",
+  "resolve_blocker",
+] as const;
+
+export const PAYROLL_BLOCKER_TYPES = [
+  "time_correction_request",
+  "session_attendance_correction_request",
+  "timekeeping_exception",
+] as const;
+
+export const PAYROLL_BLOCKER_RESOLUTIONS = [
+  "resolved",
+  "reopened",
+] as const;
+
 export type PayrollJurisdiction = (typeof PAYROLL_TIME_JURISDICTIONS)[number];
 export type PayrollAdminEligibleRole =
   (typeof PAYROLL_ADMIN_ELIGIBLE_ROLES)[number];
 export type PayrollEventOperation = (typeof PAYROLL_EVENT_OPERATIONS)[number];
+export type PayrollApprovalAction = (typeof PAYROLL_APPROVAL_ACTIONS)[number];
+export type PayrollBlockerType = (typeof PAYROLL_BLOCKER_TYPES)[number];
+export type PayrollBlockerResolution = (typeof PAYROLL_BLOCKER_RESOLUTIONS)[number];
 export type PayrollCapability = (typeof PAYROLL_CAPABILITIES)[number];
 export type TimeEventType = (typeof TIME_EVENT_TYPES)[number];
 export type SessionAttendanceEventType =

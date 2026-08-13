@@ -14,7 +14,7 @@ export type ObserverArgs = {
   scenario?: ObserverScenario;
 };
 
-export type ObserverScenario = 'schedule-overlap' | 'payroll-time';
+export type ObserverScenario = 'schedule-overlap' | 'payroll-time' | 'payroll-time-review';
 
 export type LayoutTouchTarget = {
   width: number;
@@ -59,6 +59,7 @@ export const OBSERVER_POLICY: ObserverPolicy = {
 
 const SCHEDULE_OVERLAP_SCENARIO: ObserverScenario = 'schedule-overlap';
 const PAYROLL_TIME_SCENARIO: ObserverScenario = 'payroll-time';
+const PAYROLL_TIME_REVIEW_SCENARIO: ObserverScenario = 'payroll-time-review';
 
 const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
@@ -184,7 +185,11 @@ export const parseObserverArgs = (argv: string[]): ObserverArgs => {
         throw new Error('Scenario may be provided only once.');
       }
       const candidate = arg.slice('--scenario='.length);
-      if (candidate !== SCHEDULE_OVERLAP_SCENARIO && candidate !== PAYROLL_TIME_SCENARIO) {
+      if (
+        candidate !== SCHEDULE_OVERLAP_SCENARIO
+        && candidate !== PAYROLL_TIME_SCENARIO
+        && candidate !== PAYROLL_TIME_REVIEW_SCENARIO
+      ) {
         throw new Error(`Unknown observer scenario: ${candidate}`);
       }
       scenario = candidate;
@@ -209,7 +214,11 @@ export const parseObserverArgs = (argv: string[]): ObserverArgs => {
       throw new Error('The payroll-time scenario requires exactly one --route=/time.');
     }
   }
-
+  if (scenario === PAYROLL_TIME_REVIEW_SCENARIO) {
+    if (routes.length !== 1 || routes[0] !== '/time/review') {
+      throw new Error('The payroll-time-review scenario requires exactly one --route=/time/review.');
+    }
+  }
   return { baseUrl, routes, scenario };
 };
 
@@ -243,6 +252,7 @@ export const sanitizeObserverFailures = (messages: string[]): string[] => {
     'scenario-dialog-missing',
     'unexpected-scenario-request',
     'scenario-bootstrap-missing',
+    'route-surface-missing',
   ]);
 
   for (const message of messages) {

@@ -105,6 +105,21 @@
   status = 200
 
 [[redirects]]
+  from = "/api/payroll-approvals"
+  to = "/.netlify/functions/payroll-approvals"
+  status = 200
+
+[[redirects]]
+  from = "/api/payroll-administration"
+  to = "/.netlify/functions/payroll-administration"
+  status = 200
+
+[[redirects]]
+  from = "/api/payroll-export"
+  to = "/.netlify/functions/payroll-export"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

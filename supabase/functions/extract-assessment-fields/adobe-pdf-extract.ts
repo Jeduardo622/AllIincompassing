@@ -28,19 +28,52 @@ export type NormalizedAdobePdfExtract = {
   table_count: number;
 };
 
+export type AdobePdfExtractStage =
+  | "configuration"
+  | "token"
+  | "asset_creation"
+  | "asset_upload"
+  | "job_submission"
+  | "job_poll"
+  | "result_download"
+  | "result_parse"
+  | "unknown";
+
+export type AdobePdfExtractPublicDiagnostics = {
+  stage: AdobePdfExtractStage;
+  upstream_status: number | null;
+};
+
 export class AdobePdfExtractError extends Error {
   readonly code: string;
   readonly status: number;
   readonly publicMessage: string;
+  readonly stage: AdobePdfExtractStage;
+  readonly upstreamStatus: number | null;
 
-  constructor(code: string, message: string, status = 502) {
+  constructor(
+    code: string,
+    message: string,
+    status = 502,
+    stage: AdobePdfExtractStage = "unknown",
+    upstreamStatus: number | null = null,
+  ) {
     super(message);
     this.name = "AdobePdfExtractError";
     this.code = code;
     this.status = status;
+    this.stage = stage;
+    this.upstreamStatus = upstreamStatus;
     this.publicMessage = code === "adobe_pdf_extract_not_configured"
       ? "Adobe PDF extraction is not configured. Review checklist manually."
       : "Adobe PDF extraction failed. Review checklist manually.";
+  }
+
+  toPublicDiagnostics(): AdobePdfExtractPublicDiagnostics {
+    return {
+      stage: this.stage,
+      upstream_status: this.upstreamStatus,
+    };
   }
 }
 
@@ -84,6 +117,7 @@ export const getAdobePdfExtractCredentials = (
       "adobe_pdf_extract_not_configured",
       "Adobe PDF Services credentials are missing.",
       500,
+      "configuration",
     );
   }
 
@@ -93,13 +127,27 @@ export const getAdobePdfExtractCredentials = (
 const parseJsonResponse = async <T>(
   response: Response,
   operation: string,
+  stage: AdobePdfExtractStage,
 ): Promise<T> => {
-  const text = await response.text();
+  let text: string;
+  try {
+    text = await response.text();
+  } catch {
+    throw new AdobePdfExtractError(
+      "adobe_pdf_extract_failed",
+      `Adobe PDF Extract ${operation} response body could not be read.`,
+      502,
+      stage,
+      response.status,
+    );
+  }
   if (!response.ok) {
     throw new AdobePdfExtractError(
       "adobe_pdf_extract_failed",
       `Adobe PDF Extract ${operation} failed with status ${response.status}.`,
       502,
+      stage,
+      response.status,
     );
   }
   try {
@@ -109,6 +157,26 @@ const parseJsonResponse = async <T>(
       "adobe_pdf_extract_failed",
       `Adobe PDF Extract ${operation} returned invalid JSON.`,
       502,
+      stage,
+      response.status,
+    );
+  }
+};
+
+const fetchAdobe = async (
+  fetchImpl: FetchLike,
+  input: RequestInfo | URL,
+  init: RequestInit,
+  stage: AdobePdfExtractStage,
+): Promise<Response> => {
+  try {
+    return await fetchImpl(input, init);
+  } catch {
+    throw new AdobePdfExtractError(
+      "adobe_pdf_extract_failed",
+      `Adobe PDF Extract ${stage} transport request failed.`,
+      502,
+      stage,
     );
   }
 };
@@ -123,6 +191,11 @@ const parseHttpsUrl = (
   url: string,
   context: "polling" | "upload" | "download",
 ): URL => {
+  const stage: AdobePdfExtractStage = context === "polling"
+    ? "job_poll"
+    : context === "upload"
+    ? "asset_upload"
+    : "result_download";
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -131,6 +204,7 @@ const parseHttpsUrl = (
       "adobe_pdf_extract_failed",
       `Adobe PDF Extract returned an invalid ${context} URL.`,
       502,
+      stage,
     );
   }
 
@@ -139,6 +213,7 @@ const parseHttpsUrl = (
       "adobe_pdf_extract_failed",
       `Adobe PDF Extract returned a non-HTTPS ${context} URL.`,
       502,
+      stage,
     );
   }
 
@@ -147,6 +222,7 @@ const parseHttpsUrl = (
       "adobe_pdf_extract_failed",
       `Adobe PDF Extract returned a ${context} URL with credentials.`,
       502,
+      stage,
     );
   }
 
@@ -161,11 +237,15 @@ const assertAdobePollingUrl = (url: string): void => {
       "adobe_pdf_extract_failed",
       "Adobe PDF Extract returned an unexpected polling host.",
       502,
+      "job_poll",
     );
   }
 };
 
-const assertAdobeStorageUrl = (url: string, context: "upload" | "download"): void => {
+const assertAdobeStorageUrl = (
+  url: string,
+  context: "upload" | "download",
+): void => {
   const parsed = parseHttpsUrl(url, context);
   const hostname = parsed.hostname.toLowerCase();
 
@@ -174,6 +254,7 @@ const assertAdobeStorageUrl = (url: string, context: "upload" | "download"): voi
       "adobe_pdf_extract_failed",
       `Adobe PDF Extract returned an unexpected ${context} host.`,
       502,
+      context === "upload" ? "asset_upload" : "result_download",
     );
   }
 };
@@ -190,6 +271,7 @@ const assertAdobeResultDownloadUrl = (url: string): void => {
       "adobe_pdf_extract_failed",
       "Adobe PDF Extract returned an unexpected download host.",
       502,
+      "result_download",
     );
   }
 };
@@ -198,23 +280,26 @@ const requestAccessToken = async (
   credentials: AdobeCredentials,
   fetchImpl: FetchLike,
 ): Promise<string> => {
-  const response = await fetchImpl(ADOBE_PDF_SERVICES_TOKEN_URL, {
+  const response = await fetchAdobe(fetchImpl, ADOBE_PDF_SERVICES_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       client_id: credentials.clientId,
       client_secret: credentials.clientSecret,
     }),
-  });
+  }, "token");
   const body = await parseJsonResponse<{ access_token?: unknown }>(
     response,
     "token request",
+    "token",
   );
   if (typeof body.access_token !== "string" || !body.access_token.trim()) {
     throw new AdobePdfExtractError(
       "adobe_pdf_extract_failed",
       "Adobe PDF Extract token response did not include an access token.",
       502,
+      "token",
+      response.status,
     );
   }
   return body.access_token.trim();
@@ -235,20 +320,27 @@ const createAsset = async (
   accessToken: string,
   fetchImpl: FetchLike,
 ): Promise<{ uploadUri: string; assetID: string }> => {
-  const response = await fetchImpl(`${ADOBE_PDF_SERVICES_BASE_URL}/assets`, {
-    method: "POST",
-    headers: buildAdobeHeaders(credentials, accessToken),
-    body: JSON.stringify({ mediaType: "application/pdf" }),
-  });
+  const response = await fetchAdobe(
+    fetchImpl,
+    `${ADOBE_PDF_SERVICES_BASE_URL}/assets`,
+    {
+      method: "POST",
+      headers: buildAdobeHeaders(credentials, accessToken),
+      body: JSON.stringify({ mediaType: "application/pdf" }),
+    },
+    "asset_creation",
+  );
   const body = await parseJsonResponse<{
     uploadUri?: unknown;
     assetID?: unknown;
-  }>(response, "asset creation");
+  }>(response, "asset creation", "asset_creation");
   if (typeof body.uploadUri !== "string" || typeof body.assetID !== "string") {
     throw new AdobePdfExtractError(
       "adobe_pdf_extract_failed",
       "Adobe PDF Extract asset response was incomplete.",
       502,
+      "asset_creation",
+      response.status,
     );
   }
   return { uploadUri: body.uploadUri, assetID: body.assetID };
@@ -265,16 +357,18 @@ const uploadAsset = async (
     pdfBytes.byteOffset,
     pdfBytes.byteOffset + pdfBytes.byteLength,
   ) as ArrayBuffer;
-  const response = await fetchImpl(uploadUri, {
+  const response = await fetchAdobe(fetchImpl, uploadUri, {
     method: "PUT",
     headers: { "Content-Type": "application/pdf" },
     body,
-  });
+  }, "asset_upload");
   if (!response.ok) {
     throw new AdobePdfExtractError(
       "adobe_pdf_extract_failed",
       `Adobe PDF Extract asset upload failed with status ${response.status}.`,
       502,
+      "asset_upload",
+      response.status,
     );
   }
 };
@@ -285,7 +379,8 @@ const submitExtractJob = async (
   assetID: string,
   fetchImpl: FetchLike,
 ): Promise<string> => {
-  const response = await fetchImpl(
+  const response = await fetchAdobe(
+    fetchImpl,
     `${ADOBE_PDF_SERVICES_BASE_URL}/operation/extractpdf`,
     {
       method: "POST",
@@ -295,12 +390,15 @@ const submitExtractJob = async (
         elementsToExtract: ["text", "tables"],
       }),
     },
+    "job_submission",
   );
   if (!response.ok) {
     throw new AdobePdfExtractError(
       "adobe_pdf_extract_failed",
       `Adobe PDF Extract job submission failed with status ${response.status}.`,
       502,
+      "job_submission",
+      response.status,
     );
   }
   const location = response.headers.get("location")?.trim();
@@ -309,6 +407,8 @@ const submitExtractJob = async (
       "adobe_pdf_extract_failed",
       "Adobe PDF Extract job response did not include a polling location.",
       502,
+      "job_submission",
+      response.status,
     );
   }
   return location;
@@ -349,13 +449,14 @@ const pollExtractJob = async (
   assertAdobePollingUrl(pollingUrl);
 
   for (let attempt = 0; attempt < maxPollAttempts; attempt += 1) {
-    const response = await fetchImpl(pollingUrl, {
+    const response = await fetchAdobe(fetchImpl, pollingUrl, {
       method: "GET",
       headers: buildAdobeHeaders(credentials, accessToken),
-    });
+    }, "job_poll");
     const body = await parseJsonResponse<Record<string, unknown>>(
       response,
       "job status",
+      "job_poll",
     );
     const status = typeof body.status === "string"
       ? body.status.toLowerCase()
@@ -367,6 +468,7 @@ const pollExtractJob = async (
           "adobe_pdf_extract_failed",
           "Adobe PDF Extract completed without a download URI.",
           502,
+          "job_poll",
         );
       }
       return downloadUri;
@@ -376,6 +478,7 @@ const pollExtractJob = async (
         "adobe_pdf_extract_failed",
         "Adobe PDF Extract job failed.",
         502,
+        "job_poll",
       );
     }
     await sleep(pollIntervalMs);
@@ -385,6 +488,7 @@ const pollExtractJob = async (
     "adobe_pdf_extract_failed",
     "Adobe PDF Extract job did not complete before polling timed out.",
     504,
+    "job_poll",
   );
 };
 
@@ -394,15 +498,32 @@ const downloadResultZip = async (
 ): Promise<Uint8Array> => {
   assertAdobeResultDownloadUrl(downloadUri);
 
-  const response = await fetchImpl(downloadUri, { method: "GET" });
+  const response = await fetchAdobe(
+    fetchImpl,
+    downloadUri,
+    { method: "GET" },
+    "result_download",
+  );
   if (!response.ok) {
     throw new AdobePdfExtractError(
       "adobe_pdf_extract_failed",
       `Adobe PDF Extract result download failed with status ${response.status}.`,
       502,
+      "result_download",
+      response.status,
     );
   }
-  return new Uint8Array(await response.arrayBuffer());
+  try {
+    return new Uint8Array(await response.arrayBuffer());
+  } catch {
+    throw new AdobePdfExtractError(
+      "adobe_pdf_extract_failed",
+      "Adobe PDF Extract result response body could not be read.",
+      502,
+      "result_download",
+      response.status,
+    );
+  }
 };
 
 const getElementText = (element: AdobeStructuredElement): string => {
@@ -446,16 +567,37 @@ export const normalizeAdobeExtractZip = async (
   zipBytes: Uint8Array,
 ): Promise<NormalizedAdobePdfExtract> => {
   const { default: JSZip } = await import("npm:jszip@3.10.1");
-  const zip = await JSZip.loadAsync(zipBytes);
+  let zip: InstanceType<typeof JSZip>;
+  try {
+    zip = await JSZip.loadAsync(zipBytes);
+  } catch {
+    throw new AdobePdfExtractError(
+      "adobe_pdf_extract_failed",
+      "Adobe PDF Extract result ZIP is invalid.",
+      502,
+      "result_parse",
+    );
+  }
   const structuredDataFile = zip.file("structuredData.json");
   if (!structuredDataFile) {
     throw new AdobePdfExtractError(
       "adobe_pdf_extract_failed",
       "Adobe PDF Extract result is missing structuredData.json.",
       502,
+      "result_parse",
     );
   }
-  const rawStructuredData = await structuredDataFile.async("string");
+  let rawStructuredData: string;
+  try {
+    rawStructuredData = await structuredDataFile.async("string");
+  } catch {
+    throw new AdobePdfExtractError(
+      "adobe_pdf_extract_failed",
+      "Adobe PDF Extract structuredData.json could not be read.",
+      502,
+      "result_parse",
+    );
+  }
   try {
     return normalizeAdobeStructuredData(JSON.parse(rawStructuredData));
   } catch {
@@ -463,6 +605,7 @@ export const normalizeAdobeExtractZip = async (
       "adobe_pdf_extract_failed",
       "Adobe PDF Extract structuredData.json is invalid.",
       502,
+      "result_parse",
     );
   }
 };

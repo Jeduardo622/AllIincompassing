@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { assessmentDocumentsExtractionBackgroundHandler, assessmentDocumentsHandler } from "../api/assessment-documents";
+import {
+  assessmentDocumentsExtractionBackgroundHandler,
+  assessmentDocumentsHandler,
+  sanitizeAdobeExtractionDiagnostics,
+} from "../api/assessment-documents";
 import { handler as assessmentDocumentsNetlifyHandler } from "../../../netlify/functions/assessment-documents";
 
 vi.mock("../api/shared", async () => {
@@ -33,6 +37,17 @@ const ORIGINAL_SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const ORIGINAL_FETCH = globalThis.fetch;
 
 describe("assessmentDocumentsHandler", () => {
+  it("discards unknown Adobe stages and invalid upstream statuses", () => {
+    expect(sanitizeAdobeExtractionDiagnostics({ stage: "provider_body", upstream_status: 99 })).toStrictEqual({
+      stage: null,
+      upstreamStatus: null,
+    });
+    expect(sanitizeAdobeExtractionDiagnostics({ stage: "token", upstream_status: 600 })).toStrictEqual({
+      stage: "token",
+      upstreamStatus: null,
+    });
+  });
+
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
@@ -1287,7 +1302,9 @@ describe("assessmentDocumentsHandler", () => {
     );
   });
 
-  it("skips fresh extraction_running documents but reclaims stale extraction_running documents", async () => {
+  it("skips extraction_running documents until the explicit 10-minute stale reclaim boundary, then reclaims them", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-13T12:00:00.000Z"));
     vi.mocked(getAccessToken).mockReturnValue("token");
     vi.mocked(resolveOrgAndRole).mockResolvedValue({
       organizationId: "org-1",
@@ -1318,7 +1335,9 @@ describe("assessmentDocumentsHandler", () => {
               template_type: "caloptima_fba",
               bucket_id: "client-documents",
               object_path: "clients/22222222-2222-4222-8222-222222222222/assessments/fba.pdf",
-              updated_at: documentLoadCount === 1 ? new Date().toISOString() : "2020-01-01T00:00:00.000Z",
+              updated_at: documentLoadCount === 1
+                ? "2026-08-13T11:50:01.000Z"
+                : "2026-08-13T11:50:00.000Z",
             },
           ],
         };
@@ -1375,6 +1394,10 @@ describe("assessmentDocumentsHandler", () => {
     );
     expect(freshResponse.status).toBe(202);
     await expect(freshResponse.json()).resolves.toMatchObject({ skipped: true, status: "extraction_running" });
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining("/functions/v1/extract-assessment-fields"),
+      expect.anything(),
+    );
 
     const staleResponse = await assessmentDocumentsExtractionBackgroundHandler(
       new Request("http://localhost/.netlify/functions/assessment-documents-extract-background", {
@@ -3490,7 +3513,13 @@ describe("assessmentDocumentsHandler", () => {
         return {
           ok: false,
           status: 502,
-          data: { error: "Adobe PDF extraction failed. Review checklist manually." },
+          data: {
+            error: "Adobe PDF extraction failed. Review checklist manually.",
+            code: "adobe_pdf_extract_failed",
+            stage: "token",
+            upstream_status: 401,
+            provider_body: "must-not-be-persisted",
+          },
         };
       }
       if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-extract-non-ok")) {
@@ -3581,8 +3610,13 @@ describe("assessmentDocumentsHandler", () => {
       event_payload: {
         reason_code: "edge_extraction_failed",
         status: 502,
+        adobe_stage: "token",
+        adobe_upstream_status: 401,
       },
     });
+    expect(JSON.stringify(extractionFailedReviewEventPayload)).not.toContain(
+      "must-not-be-persisted",
+    );
     expect(extractionFailedReviewEventPayload).not.toHaveProperty("notes");
     expect(extractionFailedReviewEventPayload).not.toHaveProperty("extracted_count");
     expect(extractionFailedReviewEventPayload).not.toHaveProperty("unresolved_count");
@@ -4115,8 +4149,14 @@ describe("assessmentDocumentsHandler", () => {
       extraction_error: null,
     });
     await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(55_000);
-    const documentStatusBodies = vi
+    await vi.advanceTimersByTimeAsync(299_999);
+    let documentStatusBodies = vi
+      .mocked(fetchJson)
+      .mock.calls.filter(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-timeout"))
+      .map(([, init]) => String((init as RequestInit | undefined)?.body ?? ""));
+    expect(documentStatusBodies.some((body) => body.includes("\"status\":\"extraction_failed\""))).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    documentStatusBodies = vi
       .mocked(fetchJson)
       .mock.calls.filter(([url]) => typeof url === "string" && url.includes("/rest/v1/assessment_documents?id=eq.doc-timeout"))
       .map(([, init]) => String((init as RequestInit | undefined)?.body ?? ""));

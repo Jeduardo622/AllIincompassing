@@ -2,15 +2,25 @@
  * @vitest-environment node
  */
 import { describe, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { assertIehpDocumentChecklistField } from '../../scripts/lib/iehp-assessment-import-smoke';
+import {
+  IEHP_GENERATED_DOCX_PARITY_PROOF_CASE,
+  assertIehpDocumentChecklistField,
+  assertIehpGeneratedDocxTextParity,
+} from '../../scripts/lib/iehp-assessment-import-smoke';
 
 import {
   assertIehpAssessorPhoneChecklist,
+  assertIehpGeneratedDocxStorageTarget,
+  cleanupGeneratedDocxParityArtifacts,
   executeIehpSmokeCaseWithCleanup,
   fetchIehpAssessorPhoneProvenance,
   normalizeAssessmentChecklistResponse,
+  parseAssessmentPlanPdfPreflight,
+  readSyntheticGeneratedDocxText,
+  restoreIehpGeneratedDocxReviewSelection,
   selectConfiguredSmokeClient,
 } from '../../scripts/playwright-iehp-assessment-import-smoke';
 import { assertIehpSkillsBehaviorsChecklistSection } from '../../scripts/lib/iehp-assessment-import-smoke';
@@ -27,6 +37,74 @@ const sliceWorkflowJob = (workflow: string, jobName: string): string => {
 
   return nextJob === -1 ? workflow.slice(start) : workflow.slice(start, afterJobName + nextJob);
 };
+
+describe('restoreIehpGeneratedDocxReviewSelection', () => {
+  it('does not click the uploaded assessment when its review is already visible', async () => {
+    const selectUploadedAssessment = vi.fn();
+    const waitForReview = vi.fn().mockResolvedValue(undefined);
+
+    await restoreIehpGeneratedDocxReviewSelection({
+      isReviewVisible: vi.fn().mockResolvedValue(true),
+      isUploadedAssessmentVisible: vi.fn().mockResolvedValue(false),
+      waitForNextPoll: vi.fn().mockResolvedValue(undefined),
+      selectUploadedAssessment,
+      waitForReview,
+    });
+
+    expect(selectUploadedAssessment).not.toHaveBeenCalled();
+    expect(waitForReview).toHaveBeenCalledOnce();
+  });
+
+  it('selects the uploaded assessment before waiting when its review is not visible', async () => {
+    const selectUploadedAssessment = vi.fn().mockResolvedValue(undefined);
+    const waitForReview = vi.fn().mockResolvedValue(undefined);
+
+    await restoreIehpGeneratedDocxReviewSelection({
+      isReviewVisible: vi.fn().mockResolvedValue(false),
+      isUploadedAssessmentVisible: vi.fn().mockResolvedValue(true),
+      waitForNextPoll: vi.fn().mockResolvedValue(undefined),
+      selectUploadedAssessment,
+      waitForReview,
+    });
+
+    expect(selectUploadedAssessment).toHaveBeenCalledOnce();
+    expect(waitForReview).toHaveBeenCalledOnce();
+    expect(selectUploadedAssessment.mock.invocationCallOrder[0]).toBeLessThan(waitForReview.mock.invocationCallOrder[0]);
+  });
+
+  it('waits for the assessment queue before choosing a restoration path', async () => {
+    const isReviewVisible = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const isUploadedAssessmentVisible = vi.fn().mockResolvedValue(false);
+    const waitForNextPoll = vi.fn().mockResolvedValue(undefined);
+    const selectUploadedAssessment = vi.fn();
+    const waitForReview = vi.fn().mockResolvedValue(undefined);
+
+    await restoreIehpGeneratedDocxReviewSelection({
+      isReviewVisible,
+      isUploadedAssessmentVisible,
+      waitForNextPoll,
+      selectUploadedAssessment,
+      waitForReview,
+    });
+
+    expect(waitForNextPoll).toHaveBeenCalledOnce();
+    expect(selectUploadedAssessment).not.toHaveBeenCalled();
+    expect(waitForReview).toHaveBeenCalledOnce();
+  });
+
+  it('fails closed when neither restoration target becomes visible', async () => {
+    await expect(
+      restoreIehpGeneratedDocxReviewSelection({
+        isReviewVisible: vi.fn().mockResolvedValue(false),
+        isUploadedAssessmentVisible: vi.fn().mockResolvedValue(false),
+        waitForNextPoll: vi.fn().mockResolvedValue(undefined),
+        selectUploadedAssessment: vi.fn(),
+        waitForReview: vi.fn(),
+        maxPollAttempts: 2,
+      }),
+    ).rejects.toThrow('IEHP assessment queue did not restore a review or uploaded assessment');
+  });
+});
 
 describe('selectConfiguredSmokeClient', () => {
   it('falls back to the next configured credential when the first seed password drifted', async () => {
@@ -48,7 +126,12 @@ describe('selectConfiguredSmokeClient', () => {
       error: null,
     });
     const maybeSingle = vi.fn().mockResolvedValue({
-      data: { id: 'client-123', therapist_id: 'therapist-123', organization_id: 'org-123' },
+      data: {
+        id: 'client-123',
+        therapist_id: 'therapist-123',
+        organization_id: 'org-123',
+        full_name: 'Synthetic Smoke Client',
+      },
       error: null,
     });
     const anonClient = {
@@ -116,6 +199,48 @@ describe('selectConfiguredSmokeClient', () => {
       email: 'admin@test.com',
       password: 'valid-secret',
     });
+  });
+
+  it('rejects a configured client that is not explicitly marked as smoke, synthetic, or test', async () => {
+    const signInWithPassword = vi.fn().mockResolvedValue({
+      data: { session: { access_token: 'admin-token' }, user: { id: 'admin-user' } },
+      error: null,
+    });
+    const clientMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: 'client-123',
+        therapist_id: 'therapist-123',
+        organization_id: 'org-123',
+        full_name: 'Production Client',
+      },
+      error: null,
+    });
+    const therapistMaybeSingle = vi.fn().mockResolvedValue({
+      data: { id: 'therapist-123', phone: '(951) 555-0101' },
+      error: null,
+    });
+    const anonClient = {
+      auth: { signInWithPassword },
+      from: vi.fn((table: string) => ({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            maybeSingle: table === 'clients' ? clientMaybeSingle : therapistMaybeSingle,
+          })),
+        })),
+      })),
+    };
+
+    await expect(
+      selectConfiguredSmokeClient(
+        'https://example.supabase.co',
+        'anon-key',
+        [{ email: 'admin@test.com', password: 'valid-secret', label: 'synthetic credential' }],
+        {
+          clientFactory: vi.fn(() => anonClient) as never,
+          env: { PW_ASSESSMENT_CLIENT_ID: 'client-123' } as NodeJS.ProcessEnv,
+        },
+      ),
+    ).rejects.toThrow('PW_ASSESSMENT_CLIENT_ID must point at a clearly marked smoke client.');
   });
 
   it('does not try the next credential for generic auth 400 errors', async () => {
@@ -220,7 +345,12 @@ describe('selectConfiguredSmokeClient', () => {
       error: null,
     });
     const clientMaybeSingle = vi.fn().mockResolvedValue({
-      data: { id: 'client-123', therapist_id: 'therapist-123', organization_id: 'org-123' },
+      data: {
+        id: 'client-123',
+        therapist_id: 'therapist-123',
+        organization_id: 'org-123',
+        full_name: 'Synthetic Smoke Client',
+      },
       error: null,
     });
     const from = vi.fn((table: string) => {
@@ -371,7 +501,12 @@ describe('selectConfiguredSmokeClient', () => {
       error: null,
     });
     const clientMaybeSingle = vi.fn().mockResolvedValue({
-      data: { id: 'client-123', therapist_id: 'therapist-123', organization_id: 'org-123' },
+      data: {
+        id: 'client-123',
+        therapist_id: 'therapist-123',
+        organization_id: 'org-123',
+        full_name: 'Synthetic Smoke Client',
+      },
       error: null,
     });
     const therapistMaybeSingle = vi.fn().mockResolvedValue({
@@ -448,10 +583,14 @@ describe('selectConfiguredSmokeClient', () => {
     expect(iehpJob).not.toMatch(/^\s+PW_ADMIN_PASSWORD/m);
     expect(iehpJob).toContain('npm run playwright:iehp-assessment-import-smoke');
     expect(iehpJob).toContain('npm run playwright:iehp-assessment-import-skills-behaviors');
+    expect(iehpJob).toContain('npm run playwright:iehp-assessment-import-generated-docx-parity');
     expect(iehpJob.indexOf('npm run playwright:iehp-assessment-import-smoke')).toBeLessThan(
       iehpJob.indexOf('npm run playwright:iehp-assessment-import-skills-behaviors'),
     );
     expect(iehpJob.indexOf('npm run playwright:iehp-assessment-import-skills-behaviors')).toBeLessThan(
+      iehpJob.indexOf('npm run playwright:iehp-assessment-import-generated-docx-parity'),
+    );
+    expect(iehpJob.indexOf('npm run playwright:iehp-assessment-import-generated-docx-parity')).toBeLessThan(
       iehpJob.indexOf('name: Cleanup IEHP smoke admin'),
     );
     expect(cleanupStepStart).toBeGreaterThanOrEqual(0);
@@ -1047,6 +1186,229 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     expect(checklistAssertionIndex).toBeGreaterThan(checklistFetchIndex);
     expect(proofEvidenceIndex).toBeGreaterThan(checklistAssertionIndex);
     expect(proofModeIndex).toBeGreaterThan(proofCaseRunnerIndex);
+  });
+
+  it('adds an opt-in generated docx parity mode and command after the skills behaviors smoke', () => {
+    const script = readFileSync(
+      path.join(process.cwd(), 'scripts/playwright-iehp-assessment-import-smoke.ts'),
+      'utf8',
+    );
+    const packageJson = JSON.parse(
+      readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'),
+    ) as {
+      scripts?: Record<string, string>;
+    };
+
+    const generatedDocxFlagIndex = script.indexOf(
+      "const isGeneratedDocxParityMode = process.argv.includes('--generated-docx-parity');",
+    );
+    const generatedRunnerIndex = script.indexOf('const runGeneratedDocxParityCase = async () =>');
+    const generatedPdfPageIndex = script.indexOf('const generatedPdfPage = await context.newPage();', generatedRunnerIndex);
+    const generatedPdfHtmlIndex = script.indexOf('buildIehpGeneratedDocxParityPdfHtml', generatedRunnerIndex);
+    const generatedPdfBufferIndex = script.indexOf(
+      "generatedPdfBuffer = await generatedPdfPage.pdf({ format: 'Letter', printBackground: true });",
+      generatedRunnerIndex,
+    );
+    const generatedPdfUploadNameIndex = script.indexOf("const uploadFileName = buildIehpSmokeUploadFileName(Date.now(), 'pdf');", generatedRunnerIndex);
+    const generatedPdfMimeIndex = script.indexOf("mimeType: 'application/pdf'", generatedRunnerIndex);
+    const preflightCallIndex = script.indexOf('const preflightBeforeApprovalResponse = await postAssessmentPlanPdfPreflight', generatedRunnerIndex);
+    const manifestDerivationIndex = script.indexOf('deriveIehpGeneratedDocxParityManifest', generatedRunnerIndex);
+    const approvalSelectionIndex = script.indexOf('selectIehpRequiredFinalOutputApprovals', generatedRunnerIndex);
+    const approvedRefetchIndex = script.indexOf('const approvedChecklist = await fetchAssessmentChecklist', generatedRunnerIndex);
+    const reviewHeadingIndex = script.indexOf("const reviewHeading = page.getByRole('heading', { name: 'IEHP FBA Checklist Review' });", generatedRunnerIndex);
+    const restoredSelectionCallIndex = script.indexOf('await restoreIehpGeneratedDocxReviewSelection({', generatedRunnerIndex);
+    const uploadFileButtonIndex = script.indexOf("name: uploadFileName, exact: true", generatedRunnerIndex);
+    const generateButtonIndex = script.indexOf("name: /Generate completed IEHP DOCX/i", generatedRunnerIndex);
+    const outputFixtureReaderIndex = script.indexOf('readSyntheticGeneratedDocxText', generatedRunnerIndex);
+    const storageCleanupIndex = script.indexOf('deleteAssessmentStorageObject', generatedRunnerIndex);
+    const generatedModeIndex = script.indexOf("mode: 'generated-docx-parity'", generatedRunnerIndex);
+
+    expect(packageJson.scripts?.['playwright:iehp-assessment-import-generated-docx-parity']).toBe(
+      'tsx scripts/playwright-iehp-assessment-import-smoke.ts --generated-docx-parity',
+    );
+    expect(generatedDocxFlagIndex).toBeGreaterThanOrEqual(0);
+    expect(generatedRunnerIndex).toBeGreaterThan(generatedDocxFlagIndex);
+    expect(generatedPdfPageIndex).toBeGreaterThan(generatedRunnerIndex);
+    expect(generatedPdfHtmlIndex).toBeGreaterThan(generatedPdfPageIndex);
+    expect(generatedPdfBufferIndex).toBeGreaterThan(generatedPdfHtmlIndex);
+    expect(generatedPdfUploadNameIndex).toBeGreaterThan(generatedRunnerIndex);
+    expect(generatedPdfMimeIndex).toBeGreaterThan(generatedPdfUploadNameIndex);
+    expect(preflightCallIndex).toBeGreaterThan(generatedDocxFlagIndex);
+    expect(manifestDerivationIndex).toBeGreaterThan(preflightCallIndex);
+    expect(approvalSelectionIndex).toBeGreaterThan(manifestDerivationIndex);
+    expect(approvedRefetchIndex).toBeGreaterThan(approvalSelectionIndex);
+    expect(reviewHeadingIndex).toBeGreaterThan(approvedRefetchIndex);
+    expect(uploadFileButtonIndex).toBeGreaterThan(reviewHeadingIndex);
+    expect(restoredSelectionCallIndex).toBeGreaterThan(reviewHeadingIndex);
+    expect(restoredSelectionCallIndex).toBeGreaterThan(uploadFileButtonIndex);
+    expect(generateButtonIndex).toBeGreaterThan(approvedRefetchIndex);
+    expect(outputFixtureReaderIndex).toBeGreaterThan(generateButtonIndex);
+    expect(storageCleanupIndex).toBeGreaterThan(outputFixtureReaderIndex);
+    expect(generatedModeIndex).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('parseAssessmentPlanPdfPreflight', () => {
+  it('reads the hosted preflight payload shape and fails closed if it drifts', () => {
+    expect(
+      parseAssessmentPlanPdfPreflight({
+        assessment_document_id: 'assessment-123',
+        generated_file_type: 'docx',
+        preflight: {
+          ready: false,
+          blockers: [{ code: 'required_checklist_pending' }],
+          warnings: [],
+        },
+      }),
+    ).toEqual({
+      assessmentDocumentId: 'assessment-123',
+      generatedFileType: 'docx',
+      ready: false,
+      blockers: [{ code: 'required_checklist_pending' }],
+    });
+  });
+
+  it.each([
+    {
+      name: 'missing preflight object',
+      payload: { assessment_document_id: 'assessment-123', generated_file_type: 'docx' },
+      message: 'payload.preflight',
+    },
+    {
+      name: 'missing ready boolean',
+      payload: { assessment_document_id: 'assessment-123', generated_file_type: 'docx', preflight: { blockers: [] } },
+      message: 'ready boolean',
+    },
+    {
+      name: 'missing blockers array',
+      payload: { assessment_document_id: 'assessment-123', generated_file_type: 'docx', preflight: { ready: true } },
+      message: 'blockers array',
+    },
+  ])('fails clearly for $name', ({ payload, message }) => {
+    expect(() => parseAssessmentPlanPdfPreflight(payload)).toThrow(message);
+  });
+});
+
+describe('cleanupGeneratedDocxParityArtifacts', () => {
+  it('attempts both generated-object and source cleanup even when the first one fails', async () => {
+    const deleteGeneratedArtifact = vi.fn().mockRejectedValue(new Error('generated delete failed'));
+    const deleteSourceAssessment = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      cleanupGeneratedDocxParityArtifacts({
+        generatedArtifact: { bucketId: 'generated-bucket', objectPath: 'generated/path.docx' },
+        sourceAssessment: {
+          assessmentDocumentId: 'assessment-123',
+          bucketId: 'client-documents',
+          objectPath: 'clients/source.pdf',
+        },
+        deleteGeneratedArtifact,
+        deleteSourceAssessment,
+      }),
+    ).rejects.toThrow('IEHP generated DOCX parity cleanup did not complete for 1 cleanup target(s).');
+
+    expect(deleteGeneratedArtifact).toHaveBeenCalledTimes(1);
+    expect(deleteSourceAssessment).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('generated DOCX artifact containment', () => {
+  it('accepts only the exact private bucket and assessment-scoped generated object path', () => {
+    expect(
+      assertIehpGeneratedDocxStorageTarget({
+        bucketId: 'client-documents',
+        objectPath: 'clients/client-123/assessments/generated-iehp-fba-assessment-123-1786560000000.docx',
+        clientId: 'client-123',
+        assessmentDocumentId: 'assessment-123',
+      }),
+    ).toEqual({
+      bucketId: 'client-documents',
+      objectPath: 'clients/client-123/assessments/generated-iehp-fba-assessment-123-1786560000000.docx',
+    });
+  });
+
+  it.each([
+    {
+      name: 'wrong bucket',
+      bucketId: 'public-documents',
+      objectPath: 'clients/client-123/assessments/generated-iehp-fba-assessment-123-1786560000000.docx',
+      message: 'unexpected generated artifact bucket',
+    },
+    {
+      name: 'wrong client',
+      bucketId: 'client-documents',
+      objectPath: 'clients/other-client/assessments/generated-iehp-fba-assessment-123-1786560000000.docx',
+      message: 'unexpected generated artifact object path',
+    },
+    {
+      name: 'wrong assessment',
+      bucketId: 'client-documents',
+      objectPath: 'clients/client-123/assessments/generated-iehp-fba-other-assessment-1786560000000.docx',
+      message: 'unexpected generated artifact object path',
+    },
+  ])('rejects $name before cleanup can delete it', ({ bucketId, objectPath, message }) => {
+    expect(() =>
+      assertIehpGeneratedDocxStorageTarget({
+        bucketId,
+        objectPath,
+        clientId: 'client-123',
+        assessmentDocumentId: 'assessment-123',
+      }),
+    ).toThrow(message);
+  });
+
+  it('uses a non-artifact temp directory and removes the DOCX after extracting text', async () => {
+    const tempRoot = mkdtempSync(path.join(tmpdir(), 'iehp-docx-parity-test-'));
+    let capturedPath = '';
+
+    try {
+      const text = await readSyntheticGeneratedDocxText(Buffer.from('synthetic-docx'), {
+        tempRoot,
+        reader: async (filePath) => {
+          capturedPath = filePath;
+          expect(existsSync(filePath)).toBe(true);
+          expect(filePath).not.toContain(path.join('artifacts', 'latest'));
+          return 'synthetic extracted text';
+        },
+      });
+
+      expect(text).toBe('synthetic extracted text');
+      expect(existsSync(capturedPath)).toBe(false);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('matches every representative heading against the bundled generated IEHP DOCX template', async () => {
+    const templateBuffer = readFileSync(
+      path.resolve('supabase/functions/generate-assessment-plan-docx/fill_docs/Updated FBA -IEHP.docx'),
+    );
+    const generatedDocxText = await readSyntheticGeneratedDocxText(templateBuffer);
+
+    expect(
+      assertIehpGeneratedDocxTextParity({
+        generatedDocxText,
+        sourceManifest: {
+          sectionCount: 1,
+          version: 1,
+          names: [],
+          totalNames: 0,
+          behaviorCount: 0,
+          skillCount: 0,
+          matchedCount: 0,
+          detailedOnlyCount: 0,
+          summaryOnlyOrAmbiguousCount: 0,
+        },
+        proofCase: {
+          ...IEHP_GENERATED_DOCX_PARITY_PROOF_CASE,
+          expectedNarrativeTerms: [],
+        },
+      }),
+    ).toMatchObject({
+      expectedSectionHeadingCount: 26,
+      matchedSectionHeadingCount: 26,
+      allExpectedContentPresent: true,
+    });
   });
 });
 

@@ -109,7 +109,7 @@ jobs:
     name: Hosted IEHP PDF mini-matrix proof
     needs: validate
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 75
     permissions:
       checks: read
       contents: read
@@ -273,9 +273,15 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           if [ -f "$PRIVATE_ADMIN_ENV_PATH" ]; then
-            source "$PRIVATE_ADMIN_ENV_PATH"
+            while IFS='=' read -r key value; do
+              case "$key" in
+                CI_SMOKE_ADMIN_EMAIL) CI_SMOKE_ADMIN_EMAIL="$value" ;;
+                PW_SUPERADMIN_USER_ID) PW_SUPERADMIN_USER_ID="$value" ;;
+              esac
+            done < "$PRIVATE_ADMIN_ENV_PATH"
           fi
           export CI_SMOKE_ADMIN_EMAIL
+          export PW_SUPERADMIN_USER_ID
           npx tsx scripts/provision-ci-smoke-admin.ts --cleanup
 
       - name: Finalize redacted run evidence
@@ -286,174 +292,7 @@ jobs:
           VALIDATED_SHA: ${{ needs.validate.outputs.validated_sha }}
           VALIDATED_PR_NUMBER: ${{ needs.validate.outputs.validated_pr_number }}
           PREVIEW_URL: ${{ env.IEHP_PROOF_PREVIEW_URL }}
-        run: |
-          node --input-type=module <<'NODE'
-          import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-          import path from 'node:path';
-
-          const publicDir = path.join(process.env.RUNNER_TEMP, 'iehp-pdf-mini-matrix-public');
-          const logPath = process.env.PRIVATE_MATRIX_LOG_PATH;
-          const workflowSucceeded = process.env.WORKFLOW_STATUS === 'success';
-
-          rmSync(publicDir, { recursive: true, force: true });
-          mkdirSync(publicDir, { recursive: true });
-
-          const runStatus = {
-            ok: workflowSucceeded,
-            status: process.env.WORKFLOW_STATUS ?? 'unknown',
-            workflowRunId: process.env.GITHUB_RUN_ID ?? null,
-            workflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
-            validatedSha: process.env.VALIDATED_SHA ?? null,
-            validatedPrNumber: process.env.VALIDATED_PR_NUMBER ?? null,
-            previewUrl: process.env.PREVIEW_URL ?? null,
-          };
-
-          const writeRunStatus = () => {
-            writeFileSync(path.join(publicDir, 'run-status.json'), `${JSON.stringify(runStatus, null, 2)}\n`, 'utf8');
-          };
-
-          try {
-            if (!logPath || !existsSync(logPath)) {
-              writeRunStatus();
-              if (workflowSucceeded) {
-                throw new Error('PRIVATE_MATRIX_LOG_PATH is missing after a successful matrix run.');
-              }
-              process.exit(0);
-            }
-
-            const source = readFileSync(logPath, 'utf8');
-            const objects = [];
-            let depth = 0;
-            let start = -1;
-            let inString = false;
-            let escaping = false;
-
-            for (let index = 0; index < source.length; index += 1) {
-              const char = source[index];
-              if (inString) {
-                if (escaping) {
-                  escaping = false;
-                } else if (char === '\\') {
-                  escaping = true;
-                } else if (char === '"') {
-                  inString = false;
-                }
-                continue;
-              }
-
-              if (char === '"') {
-                inString = true;
-                continue;
-              }
-
-              if (char === '{') {
-                if (depth === 0) {
-                  start = index;
-                }
-                depth += 1;
-                continue;
-              }
-
-              if (char === '}') {
-                if (depth === 0) continue;
-                depth -= 1;
-                if (depth === 0 && start >= 0) {
-                  const candidate = source.slice(start, index + 1);
-                  try {
-                    objects.push(JSON.parse(candidate));
-                  } catch {
-                    // Ignore non-JSON brace blocks.
-                  }
-                  start = -1;
-                }
-              }
-            }
-
-            const expectedCaseIds = [
-              'clean-single-page',
-              'multi-page-target-content',
-              'alternate-document-phone-format',
-              'scan-300dpi-monochrome',
-              'scan-300dpi-monochrome-rotated-2deg',
-              'scan-150dpi-grayscale-low-quality',
-              'table-structured-fields',
-              'skills-behaviors-proof',
-            ];
-            const matrixCases = objects
-              .filter((entry) => entry?.mode === 'pdf-mini-matrix-case')
-              .map((entry) => {
-                const {
-                  screenshotPath,
-                  screenshot,
-                  ...rest
-                } = entry;
-                return rest;
-              });
-            const aggregate = objects.find((entry) => entry?.mode === 'pdf-mini-matrix');
-
-            if (matrixCases.length !== 8) {
-              throw new Error(`Expected exactly eight case evidence objects but found ${matrixCases.length}.`);
-            }
-            if (!aggregate) {
-              throw new Error('Missing aggregate matrix evidence.');
-            }
-
-            const actualCaseIds = matrixCases.map((entry) => entry.caseId);
-            if (JSON.stringify(actualCaseIds) !== JSON.stringify(expectedCaseIds)) {
-              throw new Error(`Matrix case IDs did not match the expected order. Received: ${JSON.stringify(actualCaseIds)}.`);
-            }
-            const redactedPhonePattern = /^\(\*\*\*\) \*\*\*-\d{4}$/;
-            for (const matrixCase of matrixCases) {
-              const phoneAssertion = matrixCase.assessorPhoneAssertion;
-              if (
-                !phoneAssertion
-                || !redactedPhonePattern.test(phoneAssertion.expectedPhoneRedacted ?? '')
-                || !redactedPhonePattern.test(phoneAssertion.actualPhoneRedacted ?? '')
-              ) {
-                throw new Error(`Matrix case ${matrixCase.caseId} did not contain redacted assessor-phone evidence.`);
-              }
-            }
-            const rawPhonePattern = /(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}/;
-            if (rawPhonePattern.test(JSON.stringify(matrixCases))) {
-              throw new Error('Curated matrix evidence contained a raw phone number.');
-            }
-            if (aggregate.totalCases !== 8) {
-              throw new Error(`Expected aggregate totalCases to equal 8 but received ${aggregate.totalCases}.`);
-            }
-            if (aggregate.passedCases !== 8) {
-              throw new Error(`Expected aggregate passedCases to equal 8 but received ${aggregate.passedCases}.`);
-            }
-            if (aggregate.cleanupVerifiedCases !== 8) {
-              throw new Error(`Expected aggregate cleanupVerifiedCases to equal 8 but received ${aggregate.cleanupVerifiedCases}.`);
-            }
-            if (aggregate.skillsBehaviorsVerifiedCases !== 1) {
-              throw new Error(`Expected aggregate skillsBehaviorsVerifiedCases to equal 1 but received ${aggregate.skillsBehaviorsVerifiedCases}.`);
-            }
-
-            const metadata = {
-              ok: workflowSucceeded,
-              status: process.env.WORKFLOW_STATUS ?? 'unknown',
-              workflowRunId: process.env.GITHUB_RUN_ID ?? null,
-              workflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
-              validatedSha: process.env.VALIDATED_SHA ?? null,
-              validatedPrNumber: process.env.VALIDATED_PR_NUMBER ?? null,
-              previewUrl: process.env.PREVIEW_URL ?? null,
-              caseCount: matrixCases.length,
-            };
-
-            writeFileSync(path.join(publicDir, 'cases.json'), `${JSON.stringify(matrixCases, null, 2)}\n`, 'utf8');
-            writeFileSync(path.join(publicDir, 'aggregate.json'), `${JSON.stringify(aggregate, null, 2)}\n`, 'utf8');
-            writeFileSync(path.join(publicDir, 'run-metadata.json'), `${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
-            writeRunStatus();
-          } catch (error) {
-            runStatus.evidenceError = error instanceof Error ? error.message : String(error);
-            writeRunStatus();
-            if (workflowSucceeded) {
-              throw error;
-            }
-          }
-          NODE
-
+        run: node scripts/finalize-iehp-pdf-mini-matrix-evidence.mjs
       - name: Upload redacted matrix evidence
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0

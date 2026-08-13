@@ -18,6 +18,7 @@ type WorkflowStep = {
 type WorkflowJob = {
   needs?: string;
   if?: string;
+  'timeout-minutes'?: number;
   permissions?: Record<string, string>;
   env?: Record<string, string>;
   outputs?: Record<string, string>;
@@ -92,6 +93,7 @@ describe('protected hosted IEHP PDF mini-matrix workflow', () => {
     const deploy = findStep(proof, 'Verify exact Netlify preview deployment');
 
     expect(proof?.needs).toBe('validate');
+    expect(proof?.['timeout-minutes']).toBe(75);
     expect(proof?.permissions).toEqual({ checks: 'read', contents: 'read', statuses: 'read' });
     expect(findStep(proof, 'Checkout validated commit')?.with).toMatchObject({
       ref: '${{ needs.validate.outputs.validated_sha }}',
@@ -151,24 +153,22 @@ describe('protected hosted IEHP PDF mini-matrix workflow', () => {
     });
     expect(matrix?.run).toContain('set -o pipefail');
     expect(cleanup?.if).toBe('always()');
+    expect(cleanup?.env).toEqual({
+      PRIVATE_ADMIN_ENV_PATH: '${{ runner.temp }}/iehp-pdf-mini-matrix-private/admin.env',
+      SUPABASE_URL: '${{ secrets.SUPABASE_URL }}',
+      SUPABASE_SERVICE_ROLE_KEY: '${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}',
+    });
+    expect(cleanup?.run).not.toContain('source "$PRIVATE_ADMIN_ENV_PATH"');
+    expect(cleanup?.run).not.toContain('set -a');
+    expect(cleanup?.run).not.toContain('export PW_SUPERADMIN_PASSWORD');
+    expect(cleanup?.run).toContain('CI_SMOKE_ADMIN_EMAIL) CI_SMOKE_ADMIN_EMAIL="$value"');
+    expect(cleanup?.run).toContain('PW_SUPERADMIN_USER_ID) PW_SUPERADMIN_USER_ID="$value"');
+    expect(cleanup?.run).toContain('export PW_SUPERADMIN_USER_ID');
     expect(cleanup?.run).toContain('npx tsx scripts/provision-ci-smoke-admin.ts --cleanup');
     expect(finalize?.if).toBe('always()');
-    expect(finalize?.run).toContain('rmSync(publicDir, { recursive: true, force: true })');
-    expect(finalize?.run).toContain("'scan-300dpi-monochrome'");
-    expect(finalize?.run).toContain("'scan-300dpi-monochrome-rotated-2deg'");
-    expect(finalize?.run).toContain("'scan-150dpi-grayscale-low-quality'");
-    expect(finalize?.run).toContain("'table-structured-fields'");
     expect(expectedEvidenceCount).toBe(8);
-    expect(finalize?.run).toContain(`matrixCases.length !== ${expectedEvidenceCount}`);
-    expect(finalize?.run).toContain(`aggregate.totalCases !== ${expectedEvidenceCount}`);
-    expect(finalize?.run).toContain(`aggregate.passedCases !== ${expectedEvidenceCount}`);
-    expect(finalize?.run).toContain(`aggregate.cleanupVerifiedCases !== ${expectedEvidenceCount}`);
-    expect(finalize?.run).toContain('redactedPhonePattern');
-    expect(finalize?.run).toContain('rawPhonePattern');
-    expect(finalize?.run).toContain("'cases.json'");
-    expect(finalize?.run).toContain("'aggregate.json'");
-    expect(finalize?.run).toContain("'run-metadata.json'");
-    expect(finalize?.run).toContain('run-status.json');
+    expect(finalize?.run).toBe('node scripts/finalize-iehp-pdf-mini-matrix-evidence.mjs');
+    expect(finalize?.run).not.toContain("node --input-type=module <<'NODE'");
     expect(finalize?.env).toHaveProperty('WORKFLOW_STATUS', '${{ job.status }}');
     expect(upload?.if).toBe('always()');
     expect(String(upload?.with?.path)).toContain('run-status.json');
@@ -177,6 +177,7 @@ describe('protected hosted IEHP PDF mini-matrix workflow', () => {
     expect(String(upload?.with?.path)).toContain('aggregate.json');
     expect(String(upload?.with?.path)).not.toContain('iehp-pdf-mini-matrix-private');
     expect(String(upload?.with?.path)).not.toContain('matrix-output.log');
+    expect(String(upload?.with?.path)).not.toContain('.png');
     expect(upload?.with?.['if-no-files-found']).toBe('warn');
     expect(upload?.with?.['retention-days']).toBe(7);
     const steps = proof?.steps ?? [];

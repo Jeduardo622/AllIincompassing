@@ -198,6 +198,12 @@ const buildPayrollAdministrationMock = (overrides: Record<string, unknown> = {})
     isPending: false,
     error: null,
   },
+  resolvePayrollBlockerMutation: {
+    mutateAsync: vi.fn(),
+    isPending: false,
+    error: null,
+    variables: undefined,
+  },
   ...overrides,
 });
 
@@ -518,6 +524,194 @@ describe("Payroll page", () => {
     expect(screen.getByRole("button", { name: /lock period/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /reopen period/i })).toBeInTheDocument();
     expect(screen.queryByText(/edit punch/i)).not.toBeInTheDocument();
+  });
+
+  it("renders per-unresolved-blocker resolve controls only when exception resolution authority is granted", async () => {
+    const { rerender } = renderPage();
+
+    await userEvent.click(screen.getByRole("button", { name: "Exceptions" }));
+    expect(screen.getByLabelText(/resolve reason for timekeeping_exception/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /resolve timekeeping_exception/i })).toBeInTheDocument();
+
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      administrationQuery: {
+        data: {
+          ...administrationData,
+          capabilities: {
+            ...administrationData.capabilities,
+            canResolveExceptions: false,
+          },
+        },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      },
+    }));
+
+    rerender(
+      <MemoryRouter initialEntries={["/payroll"]}>
+        <Payroll />
+      </MemoryRouter>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Exceptions" }));
+    expect(screen.queryByLabelText(/resolve reason for timekeeping_exception/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /resolve timekeeping_exception/i })).not.toBeInTheDocument();
+  });
+
+  it("submits blocker resolution for the selected snapshot, clears reason after success, and surfaces mutation errors", async () => {
+    const user = userEvent.setup();
+    const resolveMutateAsync = vi.fn().mockResolvedValue({ resolutionId: "resolved-1" });
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      resolvePayrollBlockerMutation: {
+        mutateAsync: resolveMutateAsync,
+        isPending: false,
+        error: null,
+      },
+    }));
+
+    const { rerender } = renderPage();
+
+    await user.click(screen.getByRole("button", { name: "Exceptions" }));
+    const reasonField = screen.getByLabelText(/resolve reason for timekeeping_exception/i);
+    const resolveButton = screen.getByRole("button", { name: /resolve timekeeping_exception/i });
+    expect(resolveButton).toBeDisabled();
+
+    await user.type(reasonField, "Verified and resolved.");
+    await user.click(resolveButton);
+
+    expect(resolveMutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+      snapshotId: "88888888-8888-4888-8888-888888888888",
+      snapshotHash: "a".repeat(64),
+      blockerType: "timekeeping_exception",
+      blockerId: "99999999-9999-4999-8999-999999999999",
+      resolution: "resolved",
+      reason: "Verified and resolved.",
+    }));
+    await waitFor(() => expect(screen.getByLabelText(/resolve reason for timekeeping_exception/i)).toHaveValue(""));
+
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      resolvePayrollBlockerMutation: {
+        mutateAsync: vi.fn().mockRejectedValue(new Error("Resolve failed.")),
+        isPending: false,
+        error: new Error("Resolve failed."),
+        variables: {
+          snapshotId: "88888888-8888-4888-8888-888888888888",
+          snapshotHash: "a".repeat(64),
+        },
+      },
+    }));
+    rerender(
+      <MemoryRouter initialEntries={["/payroll"]}>
+        <Payroll />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Exceptions" }));
+    expect(screen.getByText(/resolve failed\./i)).toBeInTheDocument();
+  });
+
+  it("preserves a failed resolve reason for its snapshot and clears the error after snapshot selection changes", async () => {
+    const user = userEvent.setup();
+    const resolveMutateAsync = vi.fn().mockRejectedValue(new Error("Resolve failed."));
+    const secondQueueItem = {
+      ...reviewQueue.queue[0],
+      employeeLabel: "Employee 1002",
+      employmentProfileId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      payPeriodId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      snapshot: {
+        id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        hash: "b".repeat(64),
+      },
+    };
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      reviewQueueQuery: {
+        data: { ...reviewQueue, queue: [...reviewQueue.queue, secondQueueItem] },
+        isLoading: false,
+        isError: false,
+        error: null,
+      },
+      resolvePayrollBlockerMutation: {
+        mutateAsync: resolveMutateAsync,
+        isPending: false,
+        error: new Error("Resolve failed."),
+        variables: {
+          snapshotId: "88888888-8888-4888-8888-888888888888",
+          snapshotHash: "a".repeat(64),
+        },
+      },
+    }));
+
+    renderPage();
+    await user.click(screen.getByRole("button", { name: "Exceptions" }));
+    const reasonField = screen.getByLabelText(/resolve reason for timekeeping_exception/i);
+    await user.type(reasonField, "Keep this operator rationale.");
+    await user.click(screen.getByRole("button", { name: /resolve timekeeping_exception/i }));
+
+    await waitFor(() => expect(resolveMutateAsync).toHaveBeenCalled());
+    expect(reasonField).toHaveValue("Keep this operator rationale.");
+    expect(screen.getByText(/resolve failed\./i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Approvals" }));
+    await user.click(screen.getByRole("button", { name: /employee 1002/i }));
+    await user.click(screen.getByRole("button", { name: "Exceptions" }));
+
+    expect(screen.queryByText(/resolve failed\./i)).not.toBeInTheDocument();
+  });
+
+  it("keeps a different snapshot blocker usable while another resolution is pending", async () => {
+    const user = userEvent.setup();
+    const secondQueueItem = {
+      ...reviewQueue.queue[0],
+      employeeLabel: "Employee 1002",
+      employmentProfileId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      payPeriodId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      snapshot: {
+        id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        hash: "b".repeat(64),
+      },
+    };
+    const secondReviewDetails = {
+      ...reviewDetails,
+      snapshotId: secondQueueItem.snapshot.id,
+      snapshotHash: secondQueueItem.snapshot.hash,
+      blockers: [{
+        ...reviewDetails.blockers[0],
+        blockerId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      }],
+    };
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      reviewQueueQuery: {
+        data: { ...reviewQueue, queue: [...reviewQueue.queue, secondQueueItem] },
+        isLoading: false,
+        isError: false,
+        error: null,
+      },
+      reviewDetailsQuery: {
+        data: secondReviewDetails,
+        isLoading: false,
+        isError: false,
+        error: null,
+      },
+      resolvePayrollBlockerMutation: {
+        mutateAsync: vi.fn(),
+        isPending: true,
+        error: null,
+        variables: {
+          snapshotId: reviewDetails.snapshotId,
+          snapshotHash: reviewDetails.snapshotHash,
+          blockerType: reviewDetails.blockers[0].blockerType,
+          blockerId: reviewDetails.blockers[0].blockerId,
+        },
+      },
+    }));
+
+    renderPage();
+    await user.click(screen.getByRole("button", { name: "Approvals" }));
+    await user.click(screen.getByRole("button", { name: /employee 1002/i }));
+    await user.click(screen.getByRole("button", { name: "Exceptions" }));
+    await user.type(screen.getByLabelText(/resolve reason for timekeeping_exception/i), "Resolve the second blocker.");
+
+    expect(screen.getByRole("button", { name: /resolve timekeeping_exception/i })).toBeEnabled();
   });
 
   it("requires an operator-entered reopen reason and submits the exact rationale", async () => {

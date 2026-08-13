@@ -7,6 +7,7 @@ import { AutoScheduleModal } from "../../../../src/components/AutoScheduleModal"
 import { ProgramsGoalsTab } from "../../../../src/components/ClientDetails/ProgramsGoalsTab";
 import { DashboardView } from "../../../../src/pages/Dashboard";
 import { Payroll } from "../../../../src/pages/Payroll";
+import { TimeReview } from "../../../../src/pages/TimeReview";
 import type { BtCorrectionTask } from "../../../../src/lib/supervision-session-notes";
 
 import {
@@ -183,6 +184,8 @@ const DashboardHarnessRoute = () => {
 
 const PayrollHarnessRoute = () => <Payroll />;
 
+const TimeReviewHarnessRoute = () => <TimeReview />;
+
 export function HarnessApp() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -193,6 +196,7 @@ export function HarnessApp() {
           <Route path="/schedule" element={<ScheduleHarnessRoute />} />
           <Route path="/dashboard" element={<DashboardHarnessRoute />} />
           <Route path="/payroll" element={<PayrollHarnessRoute />} />
+          <Route path="/time/review" element={<TimeReviewHarnessRoute />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

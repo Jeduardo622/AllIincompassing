@@ -270,6 +270,32 @@ describe('responsive-ui-observer contract', () => {
       }
     });
 
+    it('accepts a bounded artifact namespace and rejects unsafe or duplicate run IDs', () => {
+      expect(parseObserverArgs([
+        'node',
+        'scripts/playwright-responsive-ui-observer.ts',
+        `--base-url=${baseUrl}`,
+        '--route=/time/review',
+        '--scenario=payroll-time-review',
+        '--artifact-run-id=responsive-harness-contract',
+      ])).toMatchObject({ artifactRunId: 'responsive-harness-contract' });
+
+      for (const invalidArgs of [
+        ['--artifact-run-id=../shared'],
+        ['--artifact-run-id=UPPERCASE'],
+        ['--artifact-run-id=valid', '--artifact-run-id=duplicate'],
+      ]) {
+        expect(() => parseObserverArgs([
+          'node',
+          'scripts/playwright-responsive-ui-observer.ts',
+          `--base-url=${baseUrl}`,
+          '--route=/time/review',
+          '--scenario=payroll-time-review',
+          ...invalidArgs,
+        ])).toThrow(/artifact run id/i);
+      }
+    });
+
     it('rejects payroll-administration interception and accepts /payroll only as an ordinary local route', () => {
       expect(parseObserverArgs([
         'node',

@@ -494,6 +494,60 @@ describe("Time page", () => {
     expect(submitApproval.mock.calls[0]?.[0]).not.toHaveProperty("grossEarningsCents");
   });
 
+  it("preserves employee attestation across same-snapshot refresh and clears it when the authoritative snapshot changes", async () => {
+    const sameSnapshotRefresh = {
+      ...baseApprovalValue,
+      payrollSelfApprovalQuery: {
+        ...baseApprovalValue.payrollSelfApprovalQuery,
+        data: {
+          ...baseApprovalValue.payrollSelfApprovalQuery.data,
+          approval: {
+            ...baseApprovalValue.payrollSelfApprovalQuery.data.approval,
+            returnedComment: "Same snapshot refresh.",
+          },
+        },
+      },
+    };
+    const changedSnapshotRefresh = {
+      ...baseApprovalValue,
+      payrollSelfApprovalQuery: {
+        ...baseApprovalValue.payrollSelfApprovalQuery,
+        data: {
+          ...baseApprovalValue.payrollSelfApprovalQuery.data,
+          approval: {
+            ...baseApprovalValue.payrollSelfApprovalQuery.data.approval,
+            snapshot: {
+              ...baseApprovalValue.payrollSelfApprovalQuery.data.approval.snapshot,
+              id: "22222222-2222-4222-8222-222222222222",
+              hash: "b".repeat(64),
+            },
+          },
+        },
+      },
+    };
+    const { rerender } = renderTimePage();
+    const checkbox = screen.getByRole("checkbox");
+
+    await userEvent.click(checkbox);
+    expect(checkbox).toBeChecked();
+
+    mockUsePayrollApprovals.mockReturnValue(sameSnapshotRefresh);
+    rerender(
+      <MemoryRouter initialEntries={["/time"]}>
+        <Time />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("checkbox")).toBeChecked();
+
+    mockUsePayrollApprovals.mockReturnValue(changedSnapshotRefresh);
+    rerender(
+      <MemoryRouter initialEntries={["/time"]}>
+        <Time />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("checkbox")).not.toBeChecked();
+  });
+
   it("renders authoritative blocked derive exceptions returned by the mutation", async () => {
     const blockedResult = {
       state: "blocked" as const,

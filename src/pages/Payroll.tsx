@@ -778,11 +778,22 @@ function ExceptionsTab({
   reviewDetailsQuery,
   selectedReview,
   canResolveExceptions,
+  onResolveBlocker,
+  pendingResolve,
+  resolveError,
 }: {
   reviewQueueQuery: ReturnType<typeof usePayrollAdministration>["reviewQueueQuery"];
   reviewDetailsQuery: ReturnType<typeof usePayrollAdministration>["reviewDetailsQuery"];
   selectedReview: ReviewSelection;
   canResolveExceptions: boolean;
+  onResolveBlocker: (input: { snapshotId: string; snapshotHash: string; blockerType: string; blockerId: string; reason: string }) => Promise<unknown>;
+  pendingResolve: {
+    snapshotId: string;
+    snapshotHash: string;
+    blockerType: string;
+    blockerId: string;
+  } | null;
+  resolveError: unknown;
 }) {
   if (reviewQueueQuery.isLoading) {
     return (
@@ -844,10 +855,26 @@ function ExceptionsTab({
                   <li key={`${blocker.blockerType}-${blocker.blockerId}-${index}`} className="rounded-xl border border-gray-100 px-3 py-2 text-sm dark:border-gray-800">
                     <p className="font-medium text-gray-900 dark:text-white">{blocker.blockerType}</p>
                     <p className="mt-1 text-gray-600 dark:text-gray-300">{blocker.state}</p>
+                    {canResolveExceptions && blocker.state !== "resolved" ? (
+                      <ResolveBlockerControl
+                        key={`${selectedReview?.snapshotId ?? "none"}:${selectedReview?.snapshotHash ?? "none"}:${blocker.blockerType}:${blocker.blockerId}`}
+                        snapshotId={reviewDetails.snapshotId}
+                        snapshotHash={reviewDetails.snapshotHash}
+                        blockerType={blocker.blockerType}
+                        blockerId={blocker.blockerId}
+                        pending={Boolean(pendingResolve
+                          && pendingResolve.snapshotId === reviewDetails.snapshotId
+                          && pendingResolve.snapshotHash === reviewDetails.snapshotHash
+                          && pendingResolve.blockerType === blocker.blockerType
+                          && pendingResolve.blockerId === blocker.blockerId)}
+                        onResolveBlocker={onResolveBlocker}
+                      />
+                    ) : null}
                   </li>
                 ))}
               </ul>
             )}
+            {canResolveExceptions ? <div className="mt-3"><MutationError error={resolveError} /></div> : null}
           </div>
         ) : null}
         <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 px-3 py-3 text-sm text-gray-700 dark:border-gray-800 dark:bg-dark">
@@ -856,6 +883,62 @@ function ExceptionsTab({
             : "This route surfaces blocker visibility only. Punch editing is never available in payroll administration."}
         </div>
       </SectionCard>
+    </div>
+  );
+}
+
+function ResolveBlockerControl({
+  snapshotId,
+  snapshotHash,
+  blockerType,
+  blockerId,
+  pending,
+  onResolveBlocker,
+}: {
+  snapshotId: string;
+  snapshotHash: string;
+  blockerType: string;
+  blockerId: string;
+  pending: boolean;
+  onResolveBlocker: (input: { snapshotId: string; snapshotHash: string; blockerType: string; blockerId: string; reason: string }) => Promise<unknown>;
+}) {
+  const [reason, setReason] = useState("");
+  const trimmedReason = reason.trim();
+  const inputLabel = `Resolve reason for ${blockerType}`;
+
+  const submitResolve = async () => {
+    if (!trimmedReason) {
+      return;
+    }
+    try {
+      await onResolveBlocker({
+        snapshotId,
+        snapshotHash,
+        blockerType,
+        blockerId,
+        reason: trimmedReason,
+      });
+      setReason("");
+    } catch {
+      // Mutation state renders the authoritative error without discarding operator input.
+    }
+  };
+
+  return (
+    <div className="mt-3 space-y-3 rounded-xl border border-dashed border-gray-200 p-3 dark:border-gray-700">
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium text-gray-700 dark:text-gray-200">{inputLabel}</span>
+        <textarea
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          className="min-h-24 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-dark-lighter"
+        />
+      </label>
+      <ActionButton
+        label={`Resolve ${blockerType}`}
+        disabled={pending || !trimmedReason}
+        onClick={() => void submitResolve()}
+      />
     </div>
   );
 }
@@ -1109,6 +1192,7 @@ export function Payroll() {
     reviewDetailsQuery,
     administrationActionMutation,
     lockPayrollTimesheetMutation,
+    resolvePayrollBlockerMutation,
     reopenPayrollTimesheetMutation,
   } = usePayrollAdministration(scope, {
     enabled: Boolean(organizationId && user?.id),
@@ -1119,6 +1203,15 @@ export function Payroll() {
     createPayrollExportMutation,
     downloadPayrollExportMutation,
   } = usePayrollExport(scope);
+  const resolveErrorForSelectedReview = selectedReview
+    && resolvePayrollBlockerMutation.variables?.snapshotId === selectedReview.snapshotId
+    && resolvePayrollBlockerMutation.variables.snapshotHash === selectedReview.snapshotHash
+    ? resolvePayrollBlockerMutation.error
+    : null;
+  const pendingResolve = resolvePayrollBlockerMutation.isPending
+    && resolvePayrollBlockerMutation.variables
+    ? resolvePayrollBlockerMutation.variables
+    : null;
 
   useEffect(() => {
     const firstSelectable = reviewQueueQuery.data?.queue.find((item) => item.snapshot.id && item.snapshot.hash);
@@ -1243,6 +1336,18 @@ export function Payroll() {
           reviewDetailsQuery={reviewDetailsQuery}
           selectedReview={selectedReview}
           canResolveExceptions={administration.capabilities.canResolveExceptions}
+          onResolveBlocker={({ snapshotId, snapshotHash, blockerType, blockerId, reason }) => resolvePayrollBlockerMutation.mutateAsync({
+            ...scope,
+            idempotencyKey: buildIdempotencyKey("payroll-resolve-blocker"),
+            snapshotId,
+            snapshotHash,
+            blockerType: blockerType as "time_correction_request" | "session_attendance_correction_request" | "timekeeping_exception",
+            blockerId,
+            resolution: "resolved",
+            reason,
+          })}
+          pendingResolve={pendingResolve}
+          resolveError={resolveErrorForSelectedReview}
         />
       ) : null}
 

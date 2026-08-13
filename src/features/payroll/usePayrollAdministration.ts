@@ -3,6 +3,7 @@ import {
   fetchPayrollReviewDetails,
   fetchPayrollReviewQueue,
   lockPayrollTimesheet,
+  resolvePayrollBlocker,
   reopenPayrollTimesheet,
   type PayrollScope,
 } from "./api";
@@ -112,12 +113,30 @@ export function usePayrollAdministration(
     networkMode: "always",
   });
 
+  const resolvePayrollBlockerMutation = useMutation({
+    mutationFn: resolvePayrollBlocker,
+    onSuccess: async (_data, variables) => {
+      await queryClient.invalidateQueries({ queryKey: administrationKey });
+      await queryClient.invalidateQueries({ queryKey: queueKey });
+      await queryClient.invalidateQueries({
+        queryKey: payrollAdministrationDetailsKey(
+          variables.organizationId,
+          variables.userId,
+          variables.snapshotId,
+          variables.snapshotHash,
+        ),
+      });
+    },
+    networkMode: "always",
+  });
+
   return {
     administrationQuery,
     reviewQueueQuery,
     reviewDetailsQuery,
     administrationActionMutation,
     lockPayrollTimesheetMutation,
+    resolvePayrollBlockerMutation,
     reopenPayrollTimesheetMutation,
   };
 }

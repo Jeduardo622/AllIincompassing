@@ -273,7 +273,7 @@ const payrollApprovalErrorSchema = z.object({
   success: z.literal(false),
   error: z.string().min(1),
   requestId: z.string().min(1),
-  code: z.enum(["feature_disabled", "conflict", "state_conflict", "validation_error", "forbidden", "upstream_error", "rate_limited", "invalid_response"]),
+  code: z.enum(["feature_disabled", "conflict", "state_conflict", "validation_error", "forbidden", "unauthorized", "upstream_error", "rate_limited", "invalid_response"]),
   message: z.string().min(1),
   classification: z.object({
     category: z.string().min(1),

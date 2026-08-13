@@ -323,7 +323,7 @@ describe('responsive UI observer browser runtime', () => {
     }
   }, 60_000);
 
-  it('runs the fixed payroll-time-review scenario with loopback-only fulfilled approval reads', async () => {
+  it('does not mask the harness-backed payroll-time-review route with observer fulfillments', async () => {
     const requestStart = receivedRequests.length;
     const summary = await runResponsiveUiObserver([
       'node',
@@ -335,7 +335,7 @@ describe('responsive UI observer browser runtime', () => {
 
     expect(summary.ok).toBe(true);
     expect(summary.results).toHaveLength(2);
-    expect(receivedRequests.slice(requestStart)).toEqual([]);
+    expect(receivedRequests.slice(requestStart)).toEqual(['GET /time/review', 'GET /time/review']);
     for (const result of summary.results) {
       artifactPaths.add(result.screenshotPath);
       artifactPaths.add(result.evidencePath);

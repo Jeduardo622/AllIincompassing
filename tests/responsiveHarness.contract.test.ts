@@ -64,6 +64,95 @@ describe("responsive harness contract", () => {
     await expect(storage.remove()).rejects.toThrow("responsive_harness_read_only");
   });
 
+  it("serves exact read-only payroll review contracts and rejects mutation attempts", async () => {
+    (globalThis as { window?: Record<string, unknown> }).window = {
+      __RESPONSIVE_HARNESS__: {
+        envSentinel: null,
+        apiCalls: [],
+        fetchCalls: [],
+        xhrCalls: [],
+        storageReads: 0,
+        storageWrites: 0,
+        cookieReads: 0,
+        cookieWrites: 0,
+      },
+    };
+    const { callApi } = await import("./fixtures/responsive-harness/src/shims/api");
+
+    const queueResponse = await callApi("/api/payroll-approvals", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "review_queue",
+        selectedLocalDate: "2026-08-12",
+      }),
+    });
+    expect(queueResponse.status).toBe(200);
+    await expect(queueResponse.json()).resolves.toEqual({
+      state: "ok",
+      selectedLocalDate: "2026-08-12",
+      capabilities: {
+        canReviewAssigned: true,
+        canApproveAssigned: true,
+        canViewCompensation: false,
+        hasOrgPayrollAccess: false,
+      },
+      queue: [{
+        employeeLabel: "Employee 1001",
+        employmentProfileId: "10000000-0000-4000-8000-000000000003",
+        payPeriodId: "10000000-0000-4000-8000-000000000007",
+        periodStart: "2026-08-01",
+        periodEnd: "2026-08-14",
+        state: "submitted",
+        blockerCount: 1,
+        submittedAt: "2026-08-12T18:00:00.000Z",
+        snapshot: {
+          id: "10000000-0000-4000-8000-000000000008",
+          hash: "a".repeat(64),
+        },
+        classifiedSeconds: { regular: 28800, overtime: 3600, doubleTime: 0 },
+      }],
+    });
+
+    const detailsResponse = await callApi("/api/payroll-approvals", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "review_details",
+        snapshotId: "10000000-0000-4000-8000-000000000008",
+        snapshotHash: "a".repeat(64),
+      }),
+    });
+    expect(detailsResponse.status).toBe(200);
+    await expect(detailsResponse.json()).resolves.toEqual({
+      state: "ok",
+      snapshotId: "10000000-0000-4000-8000-000000000008",
+      snapshotHash: "a".repeat(64),
+      periodStart: "2026-08-01",
+      periodEnd: "2026-08-14",
+      punches: [],
+      classifiedSeconds: { regular: 28800, overtime: 3600, doubleTime: 0 },
+      approvalHistory: [],
+      blockers: [{
+        blockerType: "timekeeping_exception",
+        blockerId: "10000000-0000-4000-8000-000000000009",
+        state: "open",
+        createdAt: "2026-08-12T19:00:00.000Z",
+      }],
+      unresolvedBlockerCount: 1,
+    });
+
+    const mutationResponse = await callApi("/api/payroll-approvals", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "approve",
+        snapshotId: "10000000-0000-4000-8000-000000000008",
+        snapshotHash: "a".repeat(64),
+        idempotencyKey: "responsive-harness-mutation-attempt",
+      }),
+    });
+    expect(mutationResponse.status).toBe(405);
+    await expect(mutationResponse.json()).resolves.toEqual({ error: "responsive_harness_read_only" });
+  });
+
   it("builds separately, binds loopback-only, and renders the isolated pathname routes without env, storage, or network mutation drift", async () => {
     const packageJson = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")) as {
       scripts?: Record<string, string>;
@@ -87,7 +176,7 @@ describe("responsive harness contract", () => {
 
     browser = await chromium.launch({ headless: true });
 
-    const visit = async (route: "/clients/test-client" | "/schedule" | "/dashboard" | "/payroll") => {
+    const visit = async (route: "/clients/test-client" | "/schedule" | "/dashboard" | "/payroll" | "/time/review") => {
       const page = await browser!.newPage();
       const requests: Array<{ method: string; url: string }> = [];
       page.on("request", (request) => {
@@ -107,6 +196,14 @@ describe("responsive harness contract", () => {
         await page.getByRole("dialog", { name: /Amend BT Note/i }).waitFor();
         await page.getByLabel("Discussed domains/progress/data collection").waitFor();
         expect(await page.getByLabel("Discussed programs/progress/data collection").count()).toBe(0);
+      } else if (route === "/time/review") {
+        await page.getByRole("heading", { name: "Time Review", exact: true }).waitFor();
+        await page.getByRole("heading", { name: "Assigned queue" }).waitFor();
+        await page.getByText("Employee 1001").waitFor();
+        await page.getByRole("heading", { name: "Immutable snapshot details" }).waitFor();
+        await page.getByRole("heading", { name: "Blockers" }).waitFor();
+        expect(await page.getByRole("button", { name: "Approve", exact: true }).count()).toBe(1);
+        expect(await page.getByRole("button", { name: "Return", exact: true }).count()).toBe(1);
       } else {
         await page.getByRole("heading", { name: "Payroll", exact: true }).waitFor();
         const tabs = ["Employment", "Pay Groups", "Periods", "Exceptions", "Approvals"] as const;
@@ -151,6 +248,11 @@ describe("responsive harness contract", () => {
           call.method === "POST"
           && (call.path === "/api/payroll-administration" || call.path === "/api/payroll-approvals")
         ))).toBe(true);
+      } else if (route === "/time/review") {
+        expect(apiCalls).toEqual([
+          { method: "POST", path: "/api/payroll-approvals" },
+          { method: "POST", path: "/api/payroll-approvals" },
+        ]);
       } else {
         expect(apiCalls.every((call) => call.method === "GET")).toBe(true);
       }
@@ -167,12 +269,15 @@ describe("responsive harness contract", () => {
     await visit("/schedule");
     await visit("/dashboard");
     await visit("/payroll");
+    await visit("/time/review");
 
     const observerSummary = await runResponsiveUiObserver([
       "node",
       "scripts/playwright-responsive-ui-observer.ts",
       "--base-url=http://127.0.0.1:4176",
-      "--route=/payroll",
+      "--route=/time/review",
+      "--scenario=payroll-time-review",
+      "--artifact-run-id=responsive-harness-contract",
     ]);
     expect(observerSummary.ok).toBe(true);
     expect(observerSummary.results).toHaveLength(2);
@@ -180,7 +285,7 @@ describe("responsive harness contract", () => {
       expect(result.result).toBe("pass");
       expect(result.failureCodes).toEqual([]);
       const evidence = JSON.parse(readFileSync(result.evidencePath, "utf8")) as Record<string, unknown>;
-      expect(evidence.scenarioId).toBe("none");
+      expect(evidence.scenarioId).toBe("payroll-time-review");
       rmSync(result.screenshotPath, { force: true });
       rmSync(result.evidencePath, { force: true });
     }

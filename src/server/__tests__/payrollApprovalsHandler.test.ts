@@ -995,6 +995,68 @@ describe("payrollApprovalsHandler", () => {
     await expect(forwarded.json()).resolves.toEqual(expect.objectContaining(expectedBody));
   });
 
+  it("keeps a typed edge 401 unauthorized envelope unauthorized and preserves only safe headers", async () => {
+    vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
+    vi.mocked(proxyToEdgeAuthority).mockResolvedValue(
+      new Response(JSON.stringify({
+        success: false,
+        error: "Unauthorized",
+        requestId: "edge-unauthorized",
+        code: "unauthorized",
+        message: "Unauthorized",
+        classification: {
+          category: "auth",
+          severity: "medium",
+          retryable: false,
+          httpStatus: 401,
+        },
+        idempotencyKey: "approval-unauthorized-key",
+      }), {
+        status: 401,
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": "approval-unauthorized-key",
+          "WWW-Authenticate": "Bearer error=\"invalid_token\"",
+          "x-request-id": "edge-forwarded-request",
+          "x-internal-debug": "do-not-forward",
+        },
+      }),
+    );
+
+    const response = await payrollApprovalsHandler(
+      new Request("http://localhost/api/payroll-approvals", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${createAuthToken()}`,
+          "Idempotency-Key": "approval-unauthorized-key",
+          "x-request-id": "client-request-id",
+        },
+        body: JSON.stringify({
+          action: "lock",
+          snapshotId: "11111111-1111-1111-1111-111111111111",
+          snapshotHash: "a".repeat(64),
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("Idempotency-Key")).toBe("approval-unauthorized-key");
+    expect(response.headers.get("WWW-Authenticate")).toBe("Bearer error=\"invalid_token\"");
+    expect(response.headers.get("x-request-id")).toBe("edge-forwarded-request");
+    expect(response.headers.get("x-internal-debug")).toBeNull();
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      code: "unauthorized",
+      message: "Unauthorized",
+      idempotencyKey: "approval-unauthorized-key",
+      classification: {
+        category: "auth",
+        severity: "medium",
+        retryable: false,
+        httpStatus: 401,
+      },
+    }));
+  });
+
   it("fails closed when a typed edge-authority error body omits the authoritative idempotency header echo", async () => {
     vi.mocked(getApiAuthorityMode).mockReturnValue("edge");
     vi.mocked(proxyToEdgeAuthority).mockResolvedValue(

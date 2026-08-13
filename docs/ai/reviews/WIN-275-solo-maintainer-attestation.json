@@ -64,8 +64,9 @@
   },
   "terminologySuccessorAttestation": {
     "path": "docs/ai/reviews/WIN-275-clinical-domain-terminology-successor-attestation.json",
-    "sha256": "3a33d47fad2749990aaf9201b23efc2cb552fecef034bfd37ac1710846be8635",
-    "implementationHeadCommit": "e5f9e0843149df6260838d75df66feebb11a979c",
+    "sha256": "c93bb25e09c1f7f80b2a952a8b1c3f1e0c416e1cdbf4d02896b0aa3b55a934f9",
+    "originalImplementationHeadCommit": "e5f9e0843149df6260838d75df66feebb11a979c",
+    "implementationHeadCommit": "2fb23276af27355d14e98a8d202e21cbc9b01ff9",
     "mergedVerificationHeadCommit": "f3be4aaf558c6331724f1ba1439ad7d98e4000ad",
     "hostedActionAuthorized": false
   },
@@ -129,7 +130,7 @@
     "docs/ai/handoffs/agent-work-ledger-adoption-contract.md": "d200e34d9516117ea21c10a950de30bc8e3c8870552dff9382ab8fb38664fe62",
     "docs/ops/agent-work-ledger-caller-adoption.md": "85a23906a650b0f8929dbae58096e3d688780fe27c6f25dbe5b3f49b68984a1e",
     "src/components/ClientDetails/IehpFbaLayoutReview.tsx": "8fe6c210cc1719efce43fad12b2af38815dd75a92b17e4878da12211f0394209",
-    "src/components/ClientDetails/ProgramsGoalsTab.tsx": "b35c8c719a68cdba9be9183b99a5a690da26d097bb12915c354243102b4bdea6",
+    "src/components/ClientDetails/ProgramsGoalsTab.tsx": "093d2287e9c2e9b01b40f00b93cfaa7b35d4f1dcc2037408f83b5cba1c0de859",
     "src/components/__tests__/IehpFbaLayoutReview.test.tsx": "06f5a04b356347fe75bc3bf7f389017f46b381a09af3b4702a440414c759ef2e",
     "src/lib/__tests__/agent-work-ledger.test.ts": "20850c876406328c2f8a09ee78f70ed83f379e7130b3e30dede8f50af5972814",
     "src/lib/agent-work-ledger.ts": "77f4eb775c6744bc55588ee3ab126978796470bfae1691ff06fe762aa29ad0a6",

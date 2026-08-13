@@ -112,7 +112,12 @@ export function AddSessionNoteModal({
   // Programs — still loaded for goal group headers (display only).
   // The program <select> has been removed; goals are now fetched client-wide.
   // ---------------------------------------------------------------------------
-  const { data: programs = [], isLoading: isLoadingPrograms } = useQuery({
+  const {
+    data: programs = [],
+    isLoading: isLoadingPrograms,
+    isError: isProgramsError,
+    refetch: refetchPrograms,
+  } = useQuery({
     queryKey: ['client-programs', clientId, organizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
       if (!clientId || !organizationId) {
@@ -134,7 +139,12 @@ export function AddSessionNoteModal({
   });
 
   // Client-scoped goals query — fetches all goals regardless of program.
-  const { data: goals = [], isLoading: isLoadingGoals } = useQuery({
+  const {
+    data: goals = [],
+    isLoading: isLoadingGoals,
+    isError: isGoalsError,
+    refetch: refetchGoals,
+  } = useQuery({
     queryKey: ['client-goals', clientId, organizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
       if (!clientId || !organizationId) {
@@ -552,6 +562,11 @@ export function AddSessionNoteModal({
 
     if (hasSessions && !selectedSessionId && !isEditingUnlinkedNote) {
       showError('Select a scheduled session to link this note.');
+      return;
+    }
+
+    if (isProgramsError || isGoalsError) {
+      showError('Retry loading domains and goals before logging this note.');
       return;
     }
 
@@ -1206,6 +1221,17 @@ export function AddSessionNoteModal({
             <p className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Domains &amp; Goals</p>
             {isLoadingGoals || isLoadingPrograms ? (
               <div className="text-sm text-gray-500 dark:text-gray-400">Loading goals…</div>
+            ) : isProgramsError || isGoalsError ? (
+              <div className="space-y-2 text-sm text-red-700 dark:text-red-300" role="alert">
+                <p>Unable to load domains and goals.</p>
+                <button
+                  type="button"
+                  onClick={() => void Promise.all([refetchPrograms(), refetchGoals()])}
+                  className="rounded-md border border-red-300 px-3 py-2 text-sm font-medium hover:bg-red-50 dark:border-red-700 dark:hover:bg-red-950/30"
+                >
+                  Retry loading domains and goals
+                </button>
+              </div>
             ) : availableGoals.length === 0 ? (
               <div className="space-y-1 text-sm text-gray-500 dark:text-gray-400">
                 <p>
@@ -1280,7 +1306,7 @@ export function AddSessionNoteModal({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={isSaving}
+            disabled={isSaving || isProgramsError || isGoalsError}
             className="flex min-h-11 w-full items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[10rem]"
           >
             {isSaving ? 'Saving…' : 'Save Note'}

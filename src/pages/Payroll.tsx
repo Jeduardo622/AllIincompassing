@@ -9,6 +9,7 @@ import {
   type PayrollAdministrationReadResponse,
 } from "../features/payroll/administrationApi";
 import { usePayrollAdministration } from "../features/payroll/usePayrollAdministration";
+import { usePayrollExport } from "../features/payroll/usePayrollExport";
 
 const tabs = ["Employment", "Pay Groups", "Periods", "Exceptions", "Approvals"] as const;
 type PayrollTab = (typeof tabs)[number];
@@ -34,6 +35,7 @@ const formatTimestamp = (value: string | null | undefined): string => {
 };
 
 const formatMoney = (cents: number): string => `$${(cents / 100).toFixed(2)}`;
+const formatHours = (seconds: number): string => `${(seconds / 3600).toFixed(2)}h`;
 
 const hasPayrollRouteAccess = (capabilities: PayrollAdministrationCapabilities): boolean =>
   hasAnyPayrollAdministrationCapability(capabilities);
@@ -535,6 +537,9 @@ function PeriodsTab({
   data,
   canConfigureEmployment,
   canGeneratePeriods,
+  canExportPeriod,
+  createPayrollExportMutation,
+  downloadPayrollExportMutation,
   onAction,
   actionPending,
   actionError,
@@ -542,6 +547,9 @@ function PeriodsTab({
   data: PayrollAdministrationReadResponse;
   canConfigureEmployment: boolean;
   canGeneratePeriods: boolean;
+  canExportPeriod: boolean;
+  createPayrollExportMutation: ReturnType<typeof usePayrollExport>["createPayrollExportMutation"];
+  downloadPayrollExportMutation: ReturnType<typeof usePayrollExport>["downloadPayrollExportMutation"];
   onAction: (action: PayrollAdministrationActionInput, prefix: string) => void;
   actionPending: boolean;
   actionError: unknown;
@@ -555,6 +563,33 @@ function PeriodsTab({
     from: data.selectedLocalDate,
     to: data.selectedLocalDate,
   });
+  const exportRunForPeriod = (payPeriodId: string) =>
+    createPayrollExportMutation.data?.payPeriodId === payPeriodId
+      ? createPayrollExportMutation.data
+      : data.payPeriods.find((period) => period.id === payPeriodId)?.latestExport ?? null;
+
+  const runExport = (payPeriodId: string) => {
+    void createPayrollExportMutation.mutateAsync({
+      idempotencyKey: buildIdempotencyKey("payroll-export"),
+      payPeriodId,
+      adapterVersion: "provider-neutral-v1",
+    });
+  };
+
+  const downloadExport = async (runId: string) => {
+    const result = await downloadPayrollExportMutation.mutateAsync({ runId });
+    if (!result?.blob || !result.filename) {
+      throw new Error("Payroll export download metadata missing.");
+    }
+    const url = window.URL.createObjectURL(result.blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = result.filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="grid gap-6">
@@ -616,6 +651,93 @@ function PeriodsTab({
                     <span>Exported: {formatTimestamp(period.exportedAt)}</span>
                   </div>
                 </div>
+                <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-dark">
+                  {!canExportPeriod ? (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100">
+                      Export capability is unavailable. Period export stays fail-closed until the authoritative payroll read model grants access.
+                    </div>
+                  ) : !period.lockedAt ? (
+                    <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-dark-lighter dark:text-gray-200">
+                      Export becomes available after the period is locked.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap gap-2">
+                        <ActionButton
+                          label="Create or reuse export"
+                          disabled={createPayrollExportMutation.isPending}
+                          onClick={() => runExport(period.id)}
+                        />
+                        {exportRunForPeriod(period.id) ? (
+                          <ActionButton
+                            label="Download export CSV"
+                            variant="secondary"
+                            disabled={downloadPayrollExportMutation.isPending}
+                            onClick={() => void downloadExport(exportRunForPeriod(period.id)!.runId)}
+                          />
+                        ) : null}
+                      </div>
+
+                      {exportRunForPeriod(period.id) ? (
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                          <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-dark-lighter">
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Adapter version</p>
+                            <p className="mt-2 font-semibold text-gray-900 dark:text-white">{exportRunForPeriod(period.id)!.adapterVersion}</p>
+                          </div>
+                          <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-dark-lighter">
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Reconciliation</p>
+                            <p className="mt-2 font-semibold capitalize text-gray-900 dark:text-white">{exportRunForPeriod(period.id)!.reconciliationStatus}</p>
+                          </div>
+                          <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-dark-lighter">
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Exported</p>
+                            <p className="mt-2 font-semibold text-gray-900 dark:text-white">{formatTimestamp(exportRunForPeriod(period.id)!.exportedAt)}</p>
+                          </div>
+                          <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-dark-lighter">
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Row count</p>
+                            <p className="mt-2 font-semibold text-gray-900 dark:text-white">Row count: {exportRunForPeriod(period.id)!.rowCount}</p>
+                          </div>
+                          <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-dark-lighter">
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Source snapshots</p>
+                            <p className="mt-2 font-semibold text-gray-900 dark:text-white">Source snapshots: {exportRunForPeriod(period.id)!.sourceSnapshotCount}</p>
+                          </div>
+                          <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-dark-lighter md:col-span-2 xl:col-span-3">
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Checksum</p>
+                            <p className="mt-2 break-all font-mono text-sm text-gray-900 dark:text-white">Checksum: {exportRunForPeriod(period.id)!.checksumSha256}</p>
+                          </div>
+                          <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-dark-lighter md:col-span-2 xl:col-span-3">
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Adjustment parent</p>
+                            <p className="mt-2 text-gray-900 dark:text-white">
+                              Adjustment parent: {exportRunForPeriod(period.id)!.adjustsRunId ?? "None"}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-dark-lighter">
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Regular total</p>
+                            <p className="mt-2 font-semibold text-gray-900 dark:text-white">Regular total: {formatHours(exportRunForPeriod(period.id)!.totalRegularSeconds)}</p>
+                          </div>
+                          <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-dark-lighter">
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Overtime total</p>
+                            <p className="mt-2 font-semibold text-gray-900 dark:text-white">Overtime total: {formatHours(exportRunForPeriod(period.id)!.totalOvertimeSeconds)}</p>
+                          </div>
+                          <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-dark-lighter">
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Double time total</p>
+                            <p className="mt-2 font-semibold text-gray-900 dark:text-white">Double time total: {formatHours(exportRunForPeriod(period.id)!.totalDoubleTimeSeconds)}</p>
+                          </div>
+                          <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-dark-lighter">
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Meal premium total</p>
+                            <p className="mt-2 font-semibold text-gray-900 dark:text-white">Meal premium total: {formatMoney(exportRunForPeriod(period.id)!.totalMealPremiumCents)}</p>
+                          </div>
+                          <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-dark-lighter">
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Gross total</p>
+                            <p className="mt-2 font-semibold text-gray-900 dark:text-white">Gross total: {formatMoney(exportRunForPeriod(period.id)!.totalGrossEarningsCents)}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <EmptyPanel title="No export run" body="Create or reuse the provider-neutral export after the period is locked." />
+                      )}
+
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -643,6 +765,8 @@ function PeriodsTab({
         ) : null}
         <div className="mt-4">
           <MutationError error={actionError} />
+          <MutationError error={createPayrollExportMutation.error} />
+          <MutationError error={downloadPayrollExportMutation.error} />
         </div>
       </SectionCard>
     </div>
@@ -991,6 +1115,10 @@ export function Payroll() {
     queueEnabled: Boolean(organizationId && user?.id),
     selectedReview,
   });
+  const {
+    createPayrollExportMutation,
+    downloadPayrollExportMutation,
+  } = usePayrollExport(scope);
 
   useEffect(() => {
     const firstSelectable = reviewQueueQuery.data?.queue.find((item) => item.snapshot.id && item.snapshot.hash);
@@ -1100,6 +1228,9 @@ export function Payroll() {
           data={administration}
           canConfigureEmployment={administration.capabilities.canConfigureEmployment}
           canGeneratePeriods={administration.capabilities.canGeneratePeriods}
+          canExportPeriod={administration.capabilities.canExportPeriod}
+          createPayrollExportMutation={createPayrollExportMutation}
+          downloadPayrollExportMutation={downloadPayrollExportMutation}
           onAction={runAction}
           actionPending={administrationActionMutation.isPending}
           actionError={administrationActionMutation.error}
@@ -1163,7 +1294,7 @@ export function Payroll() {
             <RotateCcw className="h-4 w-4" />
             Export actions
           </div>
-          <p className="mt-2 text-sm text-gray-700 dark:text-gray-200">No export UI or export action renders until Task 5.</p>
+          <p className="mt-2 text-sm text-gray-700 dark:text-gray-200">Locked periods expose provider-neutral export metadata only when the authoritative export read model grants explicit capability.</p>
         </div>
       </div>
     </div>

@@ -380,3 +380,30 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - blocked checks: `npm run ci:playwright` -> required credential pairs are unavailable; preflight failed closed before browser execution
 - result: `pass-with-blocked-checks`
 - residual risk: human critical-lane review, exact-head hosted checks, credentialed browser smoke, payroll/legal review, and explicit migration/deploy activation remain mandatory; no merge or activation is authorized
+
+### Task 5 Provider-Neutral Payroll Export
+
+- Branch: `codex/payroll-timekeeping-export`; base: `codex/payroll-timekeeping-approval`; issue: existing `WIN-219`.
+- Scope: immutable provider-neutral v1 CSV exports from the complete locked current snapshot population, deterministic SHA-256 checksums, exact persisted emitted rows, idempotent replay, and cumulative delta-only adjustment exports against the immediately prior run.
+- Authority: actor and organization derive from `auth.uid()`; create/download require `payroll.export_period`; export-only authority cannot open the broader payroll administration model; ledger tables are forced-RLS and append-only, with direct authenticated and service-role mutations denied.
+- Contract: POST returns reconciled totals, checksum, source count, adjustment parent, and export timestamp. The administration read model restores the latest immutable export after reload, while `/time` exposes only initial/adjustment status and timestamp. Session/audit time remains separate and never ends paid time.
+- Delivery: strict Node, Netlify, and Supabase Edge adapters; RFC 4180 CRLF CSV with fixed 17-column schema and formula/control-character rejection; deploy workflow remains explicit manual activation, default false, immutable-current-main attested, and remote `verify_jwt=true` checked. No deployment or activation occurred.
+- Jurisdiction boundary: California derivation is the only active calculation policy. Existing Texas and Arizona documents remain research-only and inactive. Taxes, deductions, payments, provider-specific formats, and a full payroll engine remain out of scope.
+- Database proof: final clean `npx supabase db reset` passed; `tests/payroll-export-ledger-rpc.test.ts` passed 7/7 after reset, including replay, exact CSV persistence, cumulative adjustments, population/blocker/formula/tenant denials, append-only enforcement, full administration payload preservation, export-only administration denial, latest adjustment projection, and employee-safe status.
+- Focused proof: 364 transport/UI/deploy-policy tests, 8 canonical adapter tests, 6 Edge tests, final 121 read-model/UI repair tests, full lint/typecheck, tenant validation, policy suite, production build, coverage threshold 92.96%, and Tier-0 routes 244/244 passed.
+- Responsive proof: `/payroll` and `/time` passed the sanitized observer at desktop `1440x900` and mobile `390x844`; all final evidence cards have empty failure-code lists. The read-only responsive harness contract passed 2/2 after keeping export mutations fail closed in that fixture.
+- Aggregate note: the first default-heap `verify:local` attempt OOMed during full coverage. The 8 GB rerun completed 4,733 passing tests with one Task 5 responsive-harness fixture failure; that fixture was repaired and passed in isolation, after which coverage verification, build, Tier-0, policy, tenant, lint, typecheck, and all Task 5 focused/runtime suites passed. The aggregate result is therefore `pass-with-isolated-rerun`, not a claim that the original umbrella command exited zero.
+- Blocked check: `npm run ci:playwright` requires unavailable `PW_SUPERADMIN_*` or `PW_ADMIN_*` credentials and remains a required exact-head CI/human-environment gate.
+- Review: code, security, Supabase, test, and DevOps specialists reviewed the critical surfaces. Administration payload, latest-adjustment, export-only access, and RPC grant findings were repaired; final code and Supabase re-review returned no findings.
+- Boundary: no hosted migration, production deploy, activation, merge, PHI, customer data, secrets, or `.env*` access occurred.
+
+#### Task 5 Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: visible UI; server/API/Edge; database/RLS/RPC/migration/tenant isolation; Netlify; CI/workflow policy
+- required checks: focused unit/Edge/RPC/workflow tests; clean migration replay; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run ci:verify-coverage`; `npm run validate:tenant`; `npm run build`; `npm run test:routes:tier0`; `npm run ci:playwright`; responsive `/payroll` and `/time`; `npm run verify:local`
+- executed checks: all secret-free checks passed directly or through the documented isolated aggregate repair; final database, tenant, policy, lint, typecheck, build, coverage, Tier-0, Edge, focused, and responsive evidence is green
+- blocked checks: `npm run ci:playwright` -> credential pairs unavailable locally; hosted migration/deploy -> intentionally not authorized
+- result: `pass-with-blocked-checks`
+- residual risk: exact-head hosted CI, credentialed browser smoke, independent human critical-lane review, and payroll/legal review remain mandatory before any merge or explicit activation

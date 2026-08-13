@@ -20,6 +20,7 @@
     "assessment-documents-extract-background.ts",
     "payroll-administration.ts",
     "payroll-approvals.ts",
+    "payroll-export.ts",
     "payroll-time-events.ts",
     "payroll-timesheets.ts",
     "sessions-complete.ts",

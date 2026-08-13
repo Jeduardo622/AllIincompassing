@@ -171,6 +171,14 @@
       "authoritativeTarget": "payroll-administration"
     },
     {
+      "publicApiPath": "/api/payroll-export",
+      "functionFile": "payroll-export.ts",
+      "status": "migrating",
+      "owner": "Backend Platform",
+      "wave": "B",
+      "authoritativeTarget": "payroll-export"
+    },
+    {
       "publicApiPath": "/api/payroll-time-events",
       "functionFile": "payroll-time-events.ts",
       "status": "migrating",

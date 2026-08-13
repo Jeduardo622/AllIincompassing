@@ -419,6 +419,8 @@ const payrollTimesheetPeriodSchema = z.object({
 });
 const payrollTimesheetPeriodResponseSchema = z.object({
   state: payrollTimesheetStateSchema,
+  exportedAt: z.string().min(1).nullable(),
+  exportKind: z.enum(["initial", "adjustment"]).nullable(),
   period: payrollTimesheetPeriodSchema,
   totals: payrollTimesheetTotalsSchema.optional(),
   exceptions: z.array(payrollTimesheetReviewExceptionSchema).optional(),

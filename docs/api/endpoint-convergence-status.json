@@ -164,6 +164,14 @@
       "owner": "Backend Platform"
     },
     {
+      "functionFile": "payroll-export.ts",
+      "publicApiPath": "/api/payroll-export",
+      "edgeTarget": "payroll-export",
+      "wave": "B",
+      "status": "migrating",
+      "owner": "Backend Platform"
+    },
+    {
       "functionFile": "payroll-time-events.ts",
       "publicApiPath": "/api/payroll-time-events",
       "edgeTarget": "payroll-time-events",

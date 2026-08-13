@@ -334,6 +334,11 @@ const PeriodReviewSummary = ({
           <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
             {periodLabel} in {displayedPeriod.timezone ?? 'employment time'}.
           </p>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+            Payroll export: {periodReview.exportedAt
+              ? `${periodReview.exportKind === 'adjustment' ? 'Adjustment exported' : 'Exported'} ${formatTimestamp(periodReview.exportedAt, displayedPeriod.timezone)}`
+              : 'Not exported'}
+          </p>
         </div>
         <ActionButton
           label={periodReview.snapshot ? 'Re-derive snapshot' : 'Derive snapshot'}

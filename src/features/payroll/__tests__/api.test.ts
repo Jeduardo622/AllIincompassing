@@ -218,6 +218,8 @@ describe("payroll api client", () => {
     mockedCallApi.mockResolvedValueOnce(
       jsonResponse({
         state: "ok",
+        exportedAt: null,
+        exportKind: null,
         period: {
           selectedLocalDate: "2026-08-11",
           periodStart: "2026-08-10",
@@ -272,6 +274,8 @@ describe("payroll api client", () => {
       mockedCallApi.mockResolvedValueOnce(
         jsonResponse({
           state,
+          exportedAt: null,
+          exportKind: null,
           period: {
             selectedLocalDate: "2026-08-11",
             timezone: "America/Los_Angeles",

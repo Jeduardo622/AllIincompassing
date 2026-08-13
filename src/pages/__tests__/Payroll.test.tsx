@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mockUseAuth = vi.fn();
 const mockUseActiveOrganizationId = vi.fn();
 const mockUsePayrollAdministration = vi.fn();
+const mockUsePayrollExport = vi.fn();
 
 vi.mock("../../lib/authContext", () => ({
   useAuth: () => mockUseAuth(),
@@ -20,6 +21,10 @@ vi.mock("../../features/payroll/usePayrollAdministration", () => ({
   usePayrollAdministration: (...args: unknown[]) => mockUsePayrollAdministration(...args),
 }));
 
+vi.mock("../../features/payroll/usePayrollExport", () => ({
+  usePayrollExport: (...args: unknown[]) => mockUsePayrollExport(...args),
+}));
+
 import { Payroll } from "../Payroll";
 
 const administrationData = {
@@ -31,6 +36,7 @@ const administrationData = {
     canLockPeriod: true,
     canReopenPeriod: true,
     canGeneratePeriods: true,
+    canExportPeriod: true,
     canViewCompensation: false,
     canManagePolicyMutations: false,
   },
@@ -93,6 +99,7 @@ const administrationData = {
     endsOn: "2026-08-14",
     lockedAt: null,
     exportedAt: null,
+    latestExport: null,
   }],
   bounds: {
     orgSettings: 50,
@@ -194,6 +201,65 @@ const buildPayrollAdministrationMock = (overrides: Record<string, unknown> = {})
   ...overrides,
 });
 
+const lockedAdministrationData = {
+  ...administrationData,
+  payPeriods: administrationData.payPeriods.map((period) => ({
+    ...period,
+    lockedAt: "2026-08-12T18:30:00.000Z",
+  })),
+};
+
+const exportRun = {
+  runId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  payPeriodId: "77777777-7777-4777-8777-777777777777",
+  adapterVersion: "provider-neutral-v1",
+  replayed: false,
+  createdAt: "2026-08-12T19:00:00.000Z",
+  exportedAt: "2026-08-12T19:00:00.000Z",
+  reconciliationStatus: "reconciled",
+  checksumSha256: "a".repeat(64),
+  rowCount: 4,
+  totalRegularSeconds: 28800,
+  totalOvertimeSeconds: 3600,
+  totalDoubleTimeSeconds: 0,
+  totalMealPremiumCents: 1500,
+  totalGrossEarningsCents: 12345,
+  sourceSnapshotCount: 2,
+  adjustsRunId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  idempotencyKey: "export-key",
+};
+
+const latestExport = {
+  runId: exportRun.runId,
+  adapterVersion: exportRun.adapterVersion,
+  exportedAt: exportRun.exportedAt,
+  reconciliationStatus: exportRun.reconciliationStatus,
+  checksumSha256: exportRun.checksumSha256,
+  rowCount: exportRun.rowCount,
+  totalRegularSeconds: exportRun.totalRegularSeconds,
+  totalOvertimeSeconds: exportRun.totalOvertimeSeconds,
+  totalDoubleTimeSeconds: exportRun.totalDoubleTimeSeconds,
+  totalMealPremiumCents: exportRun.totalMealPremiumCents,
+  totalGrossEarningsCents: exportRun.totalGrossEarningsCents,
+  sourceSnapshotCount: exportRun.sourceSnapshotCount,
+  adjustsRunId: exportRun.adjustsRunId,
+};
+
+const buildPayrollExportMock = (overrides: Record<string, unknown> = {}) => ({
+  createPayrollExportMutation: {
+    mutateAsync: vi.fn(),
+    isPending: false,
+    error: null,
+    data: exportRun,
+  },
+  downloadPayrollExportMutation: {
+    mutateAsync: vi.fn(),
+    isPending: false,
+    error: null,
+  },
+  ...overrides,
+});
+
 const renderPage = () => render(
   <MemoryRouter initialEntries={["/payroll"]}>
     <Payroll />
@@ -202,6 +268,10 @@ const renderPage = () => render(
 
 describe("Payroll page", () => {
   beforeEach(() => {
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => "blob:payroll-export"),
+      revokeObjectURL: vi.fn(),
+    });
     mockUseActiveOrganizationId.mockReturnValue("org-1");
     mockUseAuth.mockReturnValue({
       user: { id: "admin-1", email: "admin@example.com" },
@@ -209,6 +279,7 @@ describe("Payroll page", () => {
       profileLoading: false,
     });
     mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock());
+    mockUsePayrollExport.mockReturnValue(buildPayrollExportMock());
   });
 
   it("renders the exact payroll administration tabs", () => {
@@ -234,6 +305,7 @@ describe("Payroll page", () => {
             canLockPeriod: false,
             canReopenPeriod: false,
             canGeneratePeriods: false,
+            canExportPeriod: true,
             canViewCompensation: false,
           },
         },
@@ -287,10 +359,152 @@ describe("Payroll page", () => {
     expect(screen.queryByText(/gross earnings:/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /grant capability/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /revoke capability/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /export/i })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Approvals" }));
     expect(screen.queryByText(/gross earnings:/i)).not.toBeInTheDocument();
+  });
+
+  it("renders reconciled export metadata in the periods tab and offers create or reuse plus download", async () => {
+    const user = userEvent.setup();
+    const createMutateAsync = vi.fn();
+    const downloadMutateAsync = vi.fn().mockResolvedValue({
+      filename: "payroll-export-2026-08-12.csv",
+      blob: new Blob(["schema_version,export_id"], { type: "text/csv" }),
+    });
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      administrationQuery: {
+        data: lockedAdministrationData,
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      },
+    }));
+    mockUsePayrollExport.mockReturnValue(buildPayrollExportMock({
+      createPayrollExportMutation: {
+        mutateAsync: createMutateAsync,
+        isPending: false,
+        error: null,
+        data: exportRun,
+      },
+      downloadPayrollExportMutation: {
+        mutateAsync: downloadMutateAsync,
+        isPending: false,
+        error: null,
+      },
+    }));
+
+    renderPage();
+
+    await user.click(screen.getByRole("button", { name: "Periods" }));
+    expect(screen.getByText(/provider-neutral-v1/i)).toBeInTheDocument();
+    expect(screen.getByText(/^reconciled$/i)).toBeInTheDocument();
+    expect(screen.getByText(/row count: 4/i)).toBeInTheDocument();
+    expect(screen.getByText(/source snapshots: 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/checksum:/i)).toBeInTheDocument();
+    expect(screen.getByText(/adjustment parent: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/i)).toBeInTheDocument();
+    expect(screen.getByText(/regular total: 8\.00h/i)).toBeInTheDocument();
+    expect(screen.getByText(/overtime total: 1\.00h/i)).toBeInTheDocument();
+    expect(screen.getByText(/double time total: 0\.00h/i)).toBeInTheDocument();
+    expect(screen.getByText(/meal premium total: \$15\.00/i)).toBeInTheDocument();
+    expect(screen.getByText(/gross total: \$123\.45/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /create or reuse export/i }));
+    expect(createMutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+      payPeriodId: "77777777-7777-4777-8777-777777777777",
+      adapterVersion: "provider-neutral-v1",
+    }));
+
+    await user.click(screen.getByRole("button", { name: /download export csv/i }));
+    expect(downloadMutateAsync).toHaveBeenCalledWith({
+      runId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    });
+  });
+
+  it("restores reconciled export metadata and download from the administration read model after reload", async () => {
+    const downloadMutateAsync = vi.fn().mockResolvedValue({
+      filename: "payroll-export-2026-08-12.csv",
+      blob: new Blob(["schema_version,export_id"], { type: "text/csv" }),
+    });
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      administrationQuery: {
+        data: {
+          ...lockedAdministrationData,
+          payPeriods: lockedAdministrationData.payPeriods.map((period) => ({
+            ...period,
+            exportedAt: latestExport.exportedAt,
+            latestExport,
+          })),
+        },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      },
+    }));
+    mockUsePayrollExport.mockReturnValue(buildPayrollExportMock({
+      createPayrollExportMutation: {
+        mutateAsync: vi.fn(),
+        isPending: false,
+        error: null,
+        data: undefined,
+      },
+      downloadPayrollExportMutation: {
+        mutateAsync: downloadMutateAsync,
+        isPending: false,
+        error: null,
+      },
+    }));
+
+    renderPage();
+    await userEvent.click(screen.getByRole("button", { name: "Periods" }));
+    expect(screen.getByText(/row count: 4/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /download export csv/i }));
+    expect(downloadMutateAsync).toHaveBeenCalledWith({ runId: latestExport.runId });
+  });
+
+  it("does not offer download before a reconciled server run exists", async () => {
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      administrationQuery: {
+        data: lockedAdministrationData,
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      },
+    }));
+    mockUsePayrollExport.mockReturnValue(buildPayrollExportMock({
+      createPayrollExportMutation: {
+        mutateAsync: vi.fn(),
+        isPending: false,
+        error: null,
+        data: undefined,
+      },
+    }));
+
+    renderPage();
+
+    await userEvent.click(screen.getByRole("button", { name: "Periods" }));
+    expect(screen.getByText(/no export run/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /download export csv/i })).not.toBeInTheDocument();
+  });
+
+  it("stays fail-closed when administration does not grant explicit export capability", async () => {
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      administrationQuery: {
+        data: {
+          ...administrationData,
+          capabilities: { ...administrationData.capabilities, canExportPeriod: false },
+        },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      },
+    }));
+
+    renderPage();
+
+    await userEvent.click(screen.getByRole("button", { name: "Periods" }));
+    expect(screen.getByText(/export capability is unavailable/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /create or reuse export/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /download export csv/i })).not.toBeInTheDocument();
   });
 
   it("shows blocker visibility in Exceptions and lock or reopen controls in Approvals without punch editing", async () => {

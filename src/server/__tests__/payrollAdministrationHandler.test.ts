@@ -53,6 +53,7 @@ const baseReadPayload = {
     canLockPeriod: false,
     canReopenPeriod: false,
     canGeneratePeriods: true,
+    canExportPeriod: true,
     canViewCompensation: false,
     canManagePolicyMutations: false,
   },
@@ -121,6 +122,7 @@ const baseReadPayload = {
       endsOn: "2026-08-14",
       lockedAt: null,
       exportedAt: null,
+      latestExport: null,
     },
   ],
   bounds: {

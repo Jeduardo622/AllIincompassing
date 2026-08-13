@@ -17,6 +17,7 @@ Machine-readable source: `docs/api/endpoint-convergence-status.json`
 | `/api/assessment-plan-pdf` | Netlify `assessment-plan-pdf` | Legacy server `assessment-plan-pdf` handler | A | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
 | `/api/payroll-approvals` | Netlify `payroll-approvals` transport adapter | Supabase edge `payroll-approvals` | B | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
 | `/api/payroll-administration` | Netlify `payroll-administration` transport adapter | Supabase edge `payroll-administration` | B | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
+| `/api/payroll-export` | Netlify `payroll-export` transport adapter | Supabase edge `payroll-export` | B | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
 | `/api/payroll-time-events` | Netlify `payroll-time-events` transport adapter | Supabase edge `payroll-time-events` | B | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
 | `/api/payroll-timesheets` | Netlify `payroll-timesheets` transport adapter | Supabase edge `payroll-timesheets` | B | migrating | Backend Platform | 2026-09-01T23:59:59.999Z |
 | `/api/programs` | Retired Netlify shim | Supabase edge `programs` | B | retired | Backend Platform | N/A |

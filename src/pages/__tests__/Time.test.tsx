@@ -139,6 +139,8 @@ const basePeriodReviewValue = {
   payrollTimesheetPeriodQuery: {
     data: {
       state: "ok" as const,
+      exportedAt: null,
+      exportKind: null,
       period: {
         selectedLocalDate: "2026-08-11",
         localDate: "2026-08-11",
@@ -418,11 +420,29 @@ describe("Time page", () => {
     expect(screen.getByText(/current work location/i)).toBeInTheDocument();
     expect(screen.getByText(/^office$/i)).toBeInTheDocument();
     expect(screen.getByText(/payroll period review/i)).toBeInTheDocument();
+    expect(screen.getByText(/payroll export: not exported/i)).toBeInTheDocument();
     expect(screen.getAllByText(/\$240.00/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/meal_missing/i)).toBeInTheDocument();
     expect(screen.queryByText(/\$20\.00 from/i)).not.toBeInTheDocument();
     expect(screen.getByText(/employee approval/i)).toBeInTheDocument();
     expect(screen.getByText(/returned comment: fix the missing meal punch\./i)).toBeInTheDocument();
+  });
+
+  it("distinguishes a later adjustment export from the initial payroll export", () => {
+    mockUsePayrollTimesheetPeriodReview.mockReturnValue({
+      ...basePeriodReviewValue,
+      payrollTimesheetPeriodQuery: {
+        ...basePeriodReviewValue.payrollTimesheetPeriodQuery,
+        data: {
+          ...basePeriodReviewValue.payrollTimesheetPeriodQuery.data,
+          exportedAt: "2026-08-12T20:00:00.000Z",
+          exportKind: "adjustment",
+        },
+      },
+    });
+
+    renderTimePage();
+    expect(screen.getByText(/payroll export: adjustment exported/i)).toBeInTheDocument();
   });
 
   it.each([

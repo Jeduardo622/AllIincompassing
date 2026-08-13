@@ -2,16 +2,22 @@ import { describe, expect, it } from 'vitest';
 import { isValidPhone } from '../../src/lib/validation';
 
 import {
+  IEHP_GENERATED_DOCX_PARITY_PROOF_CASE,
   IEHP_PDF_MINI_MATRIX_CASES,
   IEHP_SKILLS_BEHAVIORS_PROOF_CASE,
+  assertIehpGeneratedDocxTextParity,
   assertIehpSkillsBehaviorsChecklistSection,
+  buildRedactedIehpPreflightBlockerEvidence,
+  buildIehpGeneratedDocxParityPdfHtml,
   buildIehpPdfMiniMatrixHtml,
   buildIehpSkillsBehaviorsProofPdfHtml,
   canonicalizeUsPhoneForComparison,
   buildIehpSmokeUploadFileName,
   buildIehpSmokeCleanupFailureMessage,
   buildIehpSmokeCleanupFailureManifestPayload,
+  deriveIehpGeneratedDocxParityManifest,
   resolveIehpSmokeSampleFile,
+  selectIehpRequiredFinalOutputApprovals,
 } from '../../scripts/lib/iehp-assessment-import-smoke';
 
 describe('IEHP assessment import smoke helpers', () => {
@@ -64,6 +70,10 @@ describe('IEHP assessment import smoke helpers', () => {
   it('keeps the default DOCX upload name and supports PDF uploads explicitly', () => {
     expect(buildIehpSmokeUploadFileName(12345)).toBe('iehp-fba-smoke-12345.docx');
     expect(buildIehpSmokeUploadFileName(12345, 'pdf')).toBe('iehp-fba-smoke-12345.pdf');
+  });
+
+  it('supports a dedicated generated docx parity smoke command name', () => {
+    expect(buildIehpSmokeUploadFileName(12345, 'docx')).toBe('iehp-fba-smoke-12345.docx');
   });
 
   it('defines exactly the approved IEHP PDF mini matrix cases with unique synthetic values', () => {
@@ -260,6 +270,44 @@ describe('IEHP assessment import smoke helpers', () => {
     expect(message).toContain('artifacts/latest/manifest.json');
     expect(message).not.toContain('client-documents');
     expect(message).not.toContain('doc-1');
+  });
+
+  it('redacts preflight blocker evidence down to code and count only', () => {
+    expect(
+      buildRedactedIehpPreflightBlockerEvidence({
+        ready: false,
+        blockers: [
+          { code: 'required_checklist_pending', message: 'Synthetic detail that must stay private.' },
+          { code: 'required_checklist_pending', message: 'Second private detail.' },
+          { code: 'required_structured_sections_pending', message: 'Another private detail.' },
+        ],
+      }),
+    ).toEqual({
+      ready: false,
+      blockerCount: 3,
+      blockerCodes: ['required_checklist_pending', 'required_structured_sections_pending'],
+      hasUnapprovedRequiredBlocker: true,
+    });
+  });
+
+  it('renders a dedicated synthetic IEHP generated-docx parity PDF fixture with full extraction headings and deterministic terms', () => {
+    const html = buildIehpGeneratedDocxParityPdfHtml(IEHP_GENERATED_DOCX_PARITY_PROOF_CASE);
+
+    for (const term of IEHP_GENERATED_DOCX_PARITY_PROOF_CASE.expectedBehaviorSkillTerms) {
+      expect(html).toContain(term);
+    }
+    for (const term of IEHP_GENERATED_DOCX_PARITY_PROOF_CASE.expectedNarrativeTerms) {
+      expect(html).toContain(term);
+    }
+
+    expect(html).toContain('Report Date: 08/12/2026');
+    expect(html).toContain('IEHP Member ID#: SYNTH-0001');
+    expect(html).toContain('Records Reviewed: 08/01/2026 Telehealth BCBA');
+    expect(html).toContain('Clinical Interview: 08/02/2026 Home BCBA');
+    expect(html).toContain('1st Member Observation: 08/03/2026 home observation narrative.');
+    expect(html).toContain('2nd Member Observation: 08/04/2026 school observation narrative.');
+    expect(html).toContain('H2019 Therapeutic Behavioral Services, per 15 minutes 10 units');
+    expect(html).toContain('H0032 Mental Health Service Plan Development by Non-Physician, per 15 minutes 4 units');
   });
 });
 
@@ -533,5 +581,551 @@ describe('assertIehpSkillsBehaviorsChecklistSection', () => {
         proofCase: IEHP_SKILLS_BEHAVIORS_PROOF_CASE,
       }),
     ).toThrow(message);
+  });
+});
+
+describe('deriveIehpGeneratedDocxParityManifest', () => {
+  const checklist = {
+    items: [],
+    structured_sections: [
+      {
+        field_key: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS',
+        payload: {
+          skills_behaviors: {
+            version: 1,
+            items: [
+              {
+                name: 'Behavior One',
+                clinical_goal_type: 'behavior',
+                reconciliation_status: 'matched',
+              },
+              {
+                name: 'Skill One',
+                clinical_goal_type: 'skill',
+                reconciliation_status: 'matched',
+              },
+              {
+                name: 'Skill Two',
+                clinical_goal_type: 'skill',
+                reconciliation_status: 'detailed_only',
+              },
+            ],
+          },
+        },
+      },
+    ],
+  };
+
+  it('derives a v1 generated-docx parity manifest from skills_behaviors without producing log-ready names', () => {
+    expect(deriveIehpGeneratedDocxParityManifest({ checklist })).toEqual({
+      sectionCount: 1,
+      version: 1,
+      names: ['Behavior One', 'Skill One', 'Skill Two'],
+      totalNames: 3,
+      behaviorCount: 1,
+      skillCount: 2,
+      matchedCount: 2,
+      detailedOnlyCount: 1,
+      summaryOnlyOrAmbiguousCount: 0,
+    });
+  });
+
+  it.each(['summary_only', 'ambiguous'] as const)(
+    'refuses to build an auto-approval manifest with a %s skills_behaviors item',
+    (reconciliationStatus) => {
+      const unresolvedChecklist = structuredClone(checklist);
+      const section = unresolvedChecklist.structured_sections[0];
+      section.payload.skills_behaviors.items.push({
+        name: 'Needs Review',
+        clinical_goal_type: null,
+        reconciliation_status: reconciliationStatus,
+      });
+
+      expect(() => deriveIehpGeneratedDocxParityManifest({ checklist: unresolvedChecklist })).toThrow(
+        'IEHP generated DOCX parity refuses to auto-approve summary-only or ambiguous skills_behaviors items.',
+      );
+    },
+  );
+
+  it.each([
+    {
+      name: 'missing section',
+      input: { items: [], structured_sections: [] },
+      message: 'IEHP smoke could not find IEHP_FBA_BEHAVIOR_SKILL_TARGETS in structured sections.',
+    },
+    {
+      name: 'wrong version',
+      input: {
+        items: [],
+        structured_sections: [
+          {
+            field_key: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS',
+            payload: { skills_behaviors: { version: 2, items: [{ name: 'Behavior One', clinical_goal_type: 'behavior', reconciliation_status: 'matched' }, { name: 'Skill One', clinical_goal_type: 'skill', reconciliation_status: 'matched' }] } },
+          },
+        ],
+      },
+      message: 'IEHP smoke expected IEHP_FBA_BEHAVIOR_SKILL_TARGETS skills_behaviors.version to equal 1.',
+    },
+    {
+      name: 'missing behavior',
+      input: {
+        items: [],
+        structured_sections: [
+          {
+            field_key: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS',
+            payload: { skills_behaviors: { version: 1, items: [{ name: 'Skill One', clinical_goal_type: 'skill', reconciliation_status: 'matched' }] } },
+          },
+        ],
+      },
+      message: 'IEHP smoke expected at least one behavior and one skill in IEHP_FBA_BEHAVIOR_SKILL_TARGETS.',
+    },
+    {
+      name: 'blank item name',
+      input: {
+        items: [],
+        structured_sections: [
+          {
+            field_key: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS',
+            payload: { skills_behaviors: { version: 1, items: [{ name: 'Behavior One', clinical_goal_type: 'behavior', reconciliation_status: 'matched' }, { name: '   ', clinical_goal_type: 'skill', reconciliation_status: 'matched' }] } },
+          },
+        ],
+      },
+      message: 'IEHP smoke found IEHP_FBA_BEHAVIOR_SKILL_TARGETS but payload.skills_behaviors.items contained a blank name.',
+    },
+  ])('fails clearly for $name', ({ input, message }) => {
+    expect(() => deriveIehpGeneratedDocxParityManifest({ checklist: input })).toThrow(message);
+  });
+});
+
+describe('assertIehpGeneratedDocxTextParity', () => {
+  const proofCase = {
+    id: 'generated-docx-parity' as const,
+    expectedSectionHeadings: ['I. IDENTIFICATION', 'IX. TARGET BEHAVIORS'],
+    expectedBehaviorSkillTerms: ['Behavior One', 'Skill One', 'Skill Two', 'Skill Three'] as const,
+    expectedNarrativeTerms: ['Synthetic narrative one', 'Synthetic narrative two'],
+  };
+  const sourceManifest = {
+    sectionCount: 1 as const,
+    version: 1 as const,
+    names: ['Behavior One', 'Skill One'],
+    totalNames: 2,
+    behaviorCount: 1,
+    skillCount: 1,
+    matchedCount: 2,
+    detailedOnlyCount: 0,
+    summaryOnlyOrAmbiguousCount: 0,
+  };
+  const completeText = [
+    ...proofCase.expectedSectionHeadings,
+    ...proofCase.expectedNarrativeTerms,
+    ...sourceManifest.names,
+  ].join('\n');
+
+  it('requires names, representative section headings, and representative source narratives', () => {
+    expect(assertIehpGeneratedDocxTextParity({ generatedDocxText: completeText, sourceManifest, proofCase })).toEqual({
+      expectedNameCount: 2,
+      matchedNameCount: 2,
+      expectedSectionHeadingCount: 2,
+      matchedSectionHeadingCount: 2,
+      expectedNarrativeTermCount: 2,
+      matchedNarrativeTermCount: 2,
+      allExpectedContentPresent: true,
+    });
+  });
+
+  it('matches section headings across Word run fragmentation and non-literal numbering', () => {
+    const fragmentedProofCase = {
+      ...proofCase,
+      expectedSectionHeadings: ['II. BEHAVIORS', 'Assessor/Certification:', 'Safety Procedure/Crisis Plan'],
+    };
+    const fragmentedText = [
+      'BEHAVIORS :',
+      'Assessor /C ertification :',
+      'Safety Procedure/Crisis Plan-',
+      ...proofCase.expectedNarrativeTerms,
+      ...sourceManifest.names,
+    ].join('\n');
+
+    expect(
+      assertIehpGeneratedDocxTextParity({
+        generatedDocxText: fragmentedText,
+        sourceManifest,
+        proofCase: fragmentedProofCase,
+      }),
+    ).toMatchObject({
+      matchedSectionHeadingCount: 3,
+      allExpectedContentPresent: true,
+    });
+  });
+
+  it('does not satisfy missing headings with related body text or later behavior headings', () => {
+    const collisionProofCase = {
+      ...proofCase,
+      expectedSectionHeadings: [
+        'II. BEHAVIORS',
+        'ASSESSMENT MEAURES:',
+        'Discharge, Transition and Exit Plans:',
+        'Transition Planning:',
+      ],
+    };
+    const collisionText = [
+      'TARGET BEHAVIORS:',
+      'REPLACEMENT BEHAVIORS:',
+      'Assessment Summary:',
+      'Discharge criteria are described in this body paragraph.',
+      'Transition planning includes fading service intensity.',
+      ...proofCase.expectedNarrativeTerms,
+      ...sourceManifest.names,
+    ].join('\n');
+
+    expect(() =>
+      assertIehpGeneratedDocxTextParity({
+        generatedDocxText: collisionText,
+        sourceManifest,
+        proofCase: collisionProofCase,
+      }),
+    ).toThrow('representative IEHP section heading');
+  });
+
+  it.each([
+    {
+      label: 'skill or behavior name',
+      text: completeText.replace('Behavior One', 'Behavior\nOne'),
+    },
+    {
+      label: 'source narrative',
+      text: completeText.replace('Synthetic narrative two', 'Synthetic narrative\ntwo'),
+    },
+  ])('does not join adjacent paragraphs to satisfy a missing $label', ({ text }) => {
+    expect(() =>
+      assertIehpGeneratedDocxTextParity({
+        generatedDocxText: text,
+        sourceManifest,
+        proofCase,
+      }),
+    ).toThrow('IEHP generated DOCX parity expected');
+  });
+
+  it.each([
+    ['skill or behavior name', 'Behavior One'],
+    ['section heading', 'IX. TARGET BEHAVIORS'],
+    ['source narrative', 'Synthetic narrative two'],
+  ])('fails closed when the generated DOCX omits a representative %s', (_label, missingTerm) => {
+    expect(() =>
+      assertIehpGeneratedDocxTextParity({
+        generatedDocxText: completeText.replace(missingTerm, ''),
+        sourceManifest,
+        proofCase,
+      }),
+    ).toThrow('IEHP generated DOCX parity expected');
+  });
+});
+
+describe('selectIehpRequiredFinalOutputApprovals', () => {
+  const baseChecklist = {
+    items: [
+      {
+        id: 'required-checklist',
+        label: 'Required text field',
+        placeholder_key: 'IEHP_REQUIRED_TEXT',
+        required: true,
+        status: 'verified',
+        value_text: 'Approved text',
+      },
+      {
+        id: 'optional-phone',
+        label: 'Optional phone',
+        placeholder_key: 'IEHP_FBA_ASSESSOR_PHONE',
+        required: true,
+        status: 'verified',
+        value_text: '(951) 555-0101',
+      },
+    ],
+    structured_sections: [
+      {
+        id: 'required-structured',
+        field_key: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS',
+        section_key: 'behavior-skill-targets',
+        section_index: 0,
+        required: true,
+        status: 'verified',
+        payload: {
+          skills_behaviors: {
+            version: 1,
+            items: [{ name: 'Behavior One', clinical_goal_type: 'behavior', reconciliation_status: 'matched' }],
+          },
+          keep_server_side: true,
+        },
+      },
+      {
+        id: 'optional-provider',
+        field_key: 'IEHP_FBA_REFERRING_PROVIDER',
+        section_key: 'provider',
+        section_index: 1,
+        required: true,
+        status: 'verified',
+        payload: { provider: 'Synthetic Provider' },
+      },
+    ],
+  };
+
+  it('selects only final-output-required approvals and keeps structured approvals status-only', () => {
+    const result = selectIehpRequiredFinalOutputApprovals({ checklist: baseChecklist });
+
+    expect(result.summary).toEqual({
+      checklistCount: 1,
+      structuredCount: 1,
+      allRequiredRowsApproved: false,
+    });
+    expect(result.checklistApprovals).toEqual([
+      {
+        item_id: 'required-checklist',
+        status: 'approved',
+        review_notes: 'IEHP generated DOCX parity auto-approved required checklist row from synthetic smoke fixture.',
+        value_text: 'Approved text',
+      },
+    ]);
+    expect(result.structuredSectionApprovals).toEqual([
+      {
+        structured_section_id: 'required-structured',
+        status: 'approved',
+        review_notes: 'IEHP generated DOCX parity auto-approved required structured row from synthetic smoke fixture.',
+      },
+    ]);
+  });
+
+  it('reports all required rows approved after already-approved required rows are filtered out', () => {
+    const result = selectIehpRequiredFinalOutputApprovals({
+      checklist: {
+        items: [
+          {
+            id: 'required-checklist',
+            label: 'Required text field',
+            placeholder_key: 'IEHP_REQUIRED_TEXT',
+            required: true,
+            status: 'approved',
+            value_text: 'Approved text',
+          },
+        ],
+        structured_sections: [
+          {
+            id: 'required-structured',
+            field_key: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS',
+            section_key: 'behavior-skill-targets',
+            section_index: 0,
+            required: true,
+            status: 'approved',
+            payload: {
+              targets: ['Behavior One'],
+              skills_behaviors: {
+                version: 1,
+                items: [{ name: 'Behavior One', clinical_goal_type: 'behavior', reconciliation_status: 'matched' }],
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    expect(result.summary).toEqual({
+      checklistCount: 0,
+      structuredCount: 0,
+      allRequiredRowsApproved: true,
+    });
+  });
+
+  it('preserves value_json on checklist approvals instead of stringifying it into value_text', () => {
+    const valueJson = { narrative: 'Structured review value', selected: 'yes' };
+    const result = selectIehpRequiredFinalOutputApprovals({
+      checklist: {
+        items: [
+          {
+            id: 'required-checklist',
+            label: 'Required json field',
+            placeholder_key: 'IEHP_REQUIRED_JSON',
+            required: true,
+            status: 'verified',
+            value_text: '   ',
+            value_json: valueJson,
+          },
+        ],
+        structured_sections: [],
+      },
+    });
+
+    expect(result.checklistApprovals).toEqual([
+      {
+        item_id: 'required-checklist',
+        status: 'approved',
+        review_notes: 'IEHP generated DOCX parity auto-approved required checklist row from synthetic smoke fixture.',
+        value_json: valueJson,
+      },
+    ]);
+  });
+
+  it.each([
+    {
+      name: 'blank required checklist value',
+      checklist: {
+        items: [
+          {
+            id: 'required-checklist',
+            label: 'Required text field',
+            placeholder_key: 'IEHP_REQUIRED_TEXT',
+            required: true,
+            status: 'verified',
+            value_text: '   ',
+          },
+        ],
+        structured_sections: [],
+      },
+      message: 'IEHP smoke required checklist row IEHP_REQUIRED_TEXT was blank or malformed.',
+    },
+    {
+      name: 'missing required structured payload',
+      checklist: {
+        items: [],
+        structured_sections: [
+          {
+            id: 'required-structured',
+            field_key: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS',
+            section_key: 'behavior-skill-targets',
+            section_index: 0,
+            required: true,
+            status: 'verified',
+            payload: null,
+          },
+        ],
+      },
+      message: 'IEHP smoke required structured row IEHP_FBA_BEHAVIOR_SKILL_TARGETS was blank or malformed.',
+    },
+    {
+      name: 'false-only checklist value',
+      checklist: {
+        items: [
+          {
+            id: 'required-checklist',
+            label: 'Required boolean field',
+            placeholder_key: 'IEHP_REQUIRED_BOOLEAN',
+            required: true,
+            status: 'verified',
+            value_json: false,
+          },
+        ],
+        structured_sections: [],
+      },
+      message: 'IEHP smoke required checklist row IEHP_REQUIRED_BOOLEAN was blank or malformed.',
+    },
+    {
+      name: 'metadata-only structured payload',
+      checklist: {
+        items: [],
+        structured_sections: [
+          {
+            id: 'required-structured',
+            field_key: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS',
+            section_key: 'behavior-skill-targets',
+            section_index: 0,
+            required: true,
+            status: 'verified',
+            payload: {
+              field_key: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS',
+              section_index: 0,
+              required: true,
+              source: 'adobe',
+            },
+          },
+        ],
+      },
+      message: 'IEHP smoke required structured row IEHP_FBA_BEHAVIOR_SKILL_TARGETS was blank or malformed.',
+    },
+    {
+      name: 'derived-only skills behaviors payload',
+      checklist: {
+        items: [],
+        structured_sections: [
+          {
+            id: 'required-structured',
+            field_key: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS',
+            required: true,
+            status: 'verified',
+            payload: {
+              skills_behaviors: {
+                version: 1,
+                items: [{ name: 'Derived Only', clinical_goal_type: 'skill', reconciliation_status: 'matched' }],
+              },
+            },
+          },
+        ],
+      },
+      message: 'IEHP smoke required structured row IEHP_FBA_BEHAVIOR_SKILL_TARGETS was blank or malformed.',
+    },
+    {
+      name: 'approved metadata-only structured payload',
+      checklist: {
+        items: [],
+        structured_sections: [
+          {
+            id: 'required-structured',
+            field_key: 'IEHP_FBA_REASON_FOR_REFERRAL',
+            required: true,
+            status: 'approved',
+            payload: { source: 'adobe', template_placeholder: true, entered_value_present: false },
+          },
+        ],
+      },
+      message: 'IEHP smoke required structured row IEHP_FBA_REASON_FOR_REFERRAL was blank or malformed.',
+    },
+    {
+      name: 'unknown-only structured payload',
+      checklist: {
+        items: [],
+        structured_sections: [
+          {
+            id: 'required-structured',
+            field_key: 'IEHP_FBA_REASON_FOR_REFERRAL',
+            required: true,
+            status: 'verified',
+            payload: { clinical_value: 'unknown' },
+          },
+        ],
+      },
+      message: 'IEHP smoke required structured row IEHP_FBA_REASON_FOR_REFERRAL was blank or malformed.',
+    },
+    {
+      name: 'unreviewable checklist status',
+      checklist: {
+        items: [
+          {
+            id: 'required-checklist',
+            placeholder_key: 'IEHP_REQUIRED_TEXT',
+            required: true,
+            status: 'not_started',
+            value_text: 'Synthetic value',
+          },
+        ],
+        structured_sections: [],
+      },
+      message: 'IEHP smoke required row IEHP_REQUIRED_TEXT was not in a reviewable status for synthetic auto-approval.',
+    },
+    {
+      name: 'rejected structured status',
+      checklist: {
+        items: [],
+        structured_sections: [
+          {
+            id: 'required-structured',
+            field_key: 'IEHP_FBA_BEHAVIOR_SKILL_TARGETS',
+            required: true,
+            status: 'rejected',
+            payload: { narrative: 'Synthetic value' },
+          },
+        ],
+      },
+      message:
+        'IEHP smoke required row IEHP_FBA_BEHAVIOR_SKILL_TARGETS was not in a reviewable status for synthetic auto-approval.',
+    },
+  ])('fails closed for $name', ({ checklist, message }) => {
+    expect(() => selectIehpRequiredFinalOutputApprovals({ checklist })).toThrow(message);
   });
 });

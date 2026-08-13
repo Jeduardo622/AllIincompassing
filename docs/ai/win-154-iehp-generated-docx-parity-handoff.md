@@ -3,7 +3,7 @@
 - Date: August 12, 2026
 - Linear: `WIN-154`
 - Branch: `codex/win-154-fba-output-parity`
-- PR: pending
+- PR: `#930`
 - Classification: `high-risk human-reviewed`
 - Lane: `critical`
 - Triggering path: `.github/workflows/ci.yml`
@@ -48,13 +48,21 @@
 - result: `pass-with-blocked-checks`
 - residual risk: hosted extraction/template latency and contract drift can only be resolved by the required PR CI run; the expanded job retains its existing 25-minute timeout
 
+## Hosted Failure Triage
+
+- Exact-head CI run `31653029750` on commit `3abf5c5fd40e09397bf9ccc786d83312c6b375ab` cleared the prior checklist approval HTTP `400` and passed the default DOCX and skills/behaviors modes.
+- Generated DOCX parity then reached the post-approval reload and failed because the smoke unconditionally clicked the uploaded filename after the app had already restored the IEHP FBA review.
+- The runner now waits on the restored review when it is already visible and selects the uploaded assessment only when restoration did not occur.
+- Focused regression coverage executes both restoration branches; `107/107` focused tests pass.
+- The next exact-head hosted run remains the decisive Adobe-backed verification for this fix.
+
 ## Review and PR Hygiene
 
 - `code-review-engineer`: approve after requested output-parity and assessment-binding fixes; no findings
 - `security-engineer`: approve after smoke-client, temp-artifact, storage-scope, and review-state containment fixes; no findings
 - `devops-engineer`: approve; the command remains inside the IEHP smoke job required by `ci-gate`; no findings
 - `test-engineer`: required focused, full-suite, hosted, and cleanup evidence identified before implementation
-- `pr-ready`: yes, pending commit/push and live hosted checks
+- `pr-ready`: yes, pending the next exact-head live hosted checks
 - `branch-ready`: yes
 - `linear-ready`: yes (`WIN-154`)
 - `single-purpose`: yes

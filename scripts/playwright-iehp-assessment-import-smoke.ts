@@ -857,6 +857,17 @@ export const selectConfiguredSmokeClient = async (
   throw new Error('Could not authenticate any configured IEHP assessment import smoke credential.');
 };
 
+export const restoreIehpGeneratedDocxReviewSelection = async (args: {
+  isReviewVisible: () => Promise<boolean>;
+  selectUploadedAssessment: () => Promise<void>;
+  waitForReview: () => Promise<void>;
+}): Promise<void> => {
+  if (!(await args.isReviewVisible())) {
+    await args.selectUploadedAssessment();
+  }
+  await args.waitForReview();
+};
+
 async function run() {
   loadPlaywrightEnv();
 
@@ -1203,8 +1214,13 @@ async function run() {
 
           await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
           await page.waitForLoadState('networkidle').catch(() => undefined);
-          await page.getByRole('button', { name: uploadFileName, exact: true }).click({ timeout: 20_000 });
-          await page.getByRole('heading', { name: 'IEHP FBA Checklist Review' }).waitFor({ timeout: 20_000 });
+          const reviewHeading = page.getByRole('heading', { name: 'IEHP FBA Checklist Review' });
+          await restoreIehpGeneratedDocxReviewSelection({
+            isReviewVisible: () => reviewHeading.isVisible().catch(() => false),
+            selectUploadedAssessment: () =>
+              page.getByRole('button', { name: uploadFileName, exact: true }).click({ timeout: 20_000 }),
+            waitForReview: () => reviewHeading.waitFor({ timeout: 20_000 }),
+          });
           const generatedDocxResponsePromise = page.waitForResponse(
             (response) => {
               const url = new URL(response.url());

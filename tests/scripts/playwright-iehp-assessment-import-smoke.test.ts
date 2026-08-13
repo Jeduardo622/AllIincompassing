@@ -16,6 +16,7 @@ import {
   normalizeAssessmentChecklistResponse,
   parseAssessmentPlanPdfPreflight,
   readSyntheticGeneratedDocxText,
+  restoreIehpGeneratedDocxReviewSelection,
   selectConfiguredSmokeClient,
 } from '../../scripts/playwright-iehp-assessment-import-smoke';
 import { assertIehpSkillsBehaviorsChecklistSection } from '../../scripts/lib/iehp-assessment-import-smoke';
@@ -32,6 +33,37 @@ const sliceWorkflowJob = (workflow: string, jobName: string): string => {
 
   return nextJob === -1 ? workflow.slice(start) : workflow.slice(start, afterJobName + nextJob);
 };
+
+describe('restoreIehpGeneratedDocxReviewSelection', () => {
+  it('does not click the uploaded assessment when its review is already visible', async () => {
+    const selectUploadedAssessment = vi.fn();
+    const waitForReview = vi.fn().mockResolvedValue(undefined);
+
+    await restoreIehpGeneratedDocxReviewSelection({
+      isReviewVisible: vi.fn().mockResolvedValue(true),
+      selectUploadedAssessment,
+      waitForReview,
+    });
+
+    expect(selectUploadedAssessment).not.toHaveBeenCalled();
+    expect(waitForReview).toHaveBeenCalledOnce();
+  });
+
+  it('selects the uploaded assessment before waiting when its review is not visible', async () => {
+    const selectUploadedAssessment = vi.fn().mockResolvedValue(undefined);
+    const waitForReview = vi.fn().mockResolvedValue(undefined);
+
+    await restoreIehpGeneratedDocxReviewSelection({
+      isReviewVisible: vi.fn().mockResolvedValue(false),
+      selectUploadedAssessment,
+      waitForReview,
+    });
+
+    expect(selectUploadedAssessment).toHaveBeenCalledOnce();
+    expect(waitForReview).toHaveBeenCalledOnce();
+    expect(selectUploadedAssessment.mock.invocationCallOrder[0]).toBeLessThan(waitForReview.mock.invocationCallOrder[0]);
+  });
+});
 
 describe('selectConfiguredSmokeClient', () => {
   it('falls back to the next configured credential when the first seed password drifted', async () => {
@@ -1142,6 +1174,9 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     const manifestDerivationIndex = script.indexOf('deriveIehpGeneratedDocxParityManifest', generatedRunnerIndex);
     const approvalSelectionIndex = script.indexOf('selectIehpRequiredFinalOutputApprovals', generatedRunnerIndex);
     const approvedRefetchIndex = script.indexOf('const approvedChecklist = await fetchAssessmentChecklist', generatedRunnerIndex);
+    const reviewHeadingIndex = script.indexOf("const reviewHeading = page.getByRole('heading', { name: 'IEHP FBA Checklist Review' });", generatedRunnerIndex);
+    const restoredSelectionCallIndex = script.indexOf('await restoreIehpGeneratedDocxReviewSelection({', generatedRunnerIndex);
+    const uploadFileButtonIndex = script.indexOf("name: uploadFileName, exact: true", generatedRunnerIndex);
     const generateButtonIndex = script.indexOf("name: /Generate completed IEHP DOCX/i", generatedRunnerIndex);
     const outputFixtureReaderIndex = script.indexOf('readSyntheticGeneratedDocxText', generatedRunnerIndex);
     const storageCleanupIndex = script.indexOf('deleteAssessmentStorageObject', generatedRunnerIndex);
@@ -1161,6 +1196,9 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     expect(manifestDerivationIndex).toBeGreaterThan(preflightCallIndex);
     expect(approvalSelectionIndex).toBeGreaterThan(manifestDerivationIndex);
     expect(approvedRefetchIndex).toBeGreaterThan(approvalSelectionIndex);
+    expect(reviewHeadingIndex).toBeGreaterThan(approvedRefetchIndex);
+    expect(restoredSelectionCallIndex).toBeGreaterThan(reviewHeadingIndex);
+    expect(uploadFileButtonIndex).toBeGreaterThan(restoredSelectionCallIndex);
     expect(generateButtonIndex).toBeGreaterThan(approvedRefetchIndex);
     expect(outputFixtureReaderIndex).toBeGreaterThan(generateButtonIndex);
     expect(storageCleanupIndex).toBeGreaterThan(outputFixtureReaderIndex);

@@ -115,7 +115,8 @@ export function AddSessionNoteModal({
   const {
     data: programs = [],
     isLoading: isLoadingPrograms,
-    isError: isProgramsError,
+    isLoadingError: isProgramsLoadingError,
+    isRefetchError: isProgramsRefetchError,
     refetch: refetchPrograms,
   } = useQuery({
     queryKey: ['client-programs', clientId, organizationId ?? 'MISSING_ORG'],
@@ -142,7 +143,8 @@ export function AddSessionNoteModal({
   const {
     data: goals = [],
     isLoading: isLoadingGoals,
-    isError: isGoalsError,
+    isLoadingError: isGoalsLoadingError,
+    isRefetchError: isGoalsRefetchError,
     refetch: refetchGoals,
   } = useQuery({
     queryKey: ['client-goals', clientId, organizationId ?? 'MISSING_ORG'],
@@ -175,6 +177,8 @@ export function AddSessionNoteModal({
     () => programs.some((program) => program.status === 'active'),
     [programs],
   );
+  const hasDomainGoalLoadingError = isProgramsLoadingError || isGoalsLoadingError;
+  const hasDomainGoalRefetchError = isProgramsRefetchError || isGoalsRefetchError;
 
   // Goals grouped by program_id, ordered by the programs array.
   const goalsByProgram = useMemo(() => {
@@ -565,7 +569,7 @@ export function AddSessionNoteModal({
       return;
     }
 
-    if (isProgramsError || isGoalsError) {
+    if (hasDomainGoalLoadingError) {
       showError('Retry loading domains and goals before logging this note.');
       return;
     }
@@ -1219,9 +1223,14 @@ export function AddSessionNoteModal({
 
           <div>
             <p className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Domains &amp; Goals</p>
+            {hasDomainGoalRefetchError && (
+              <p className="mb-2 text-sm text-amber-700 dark:text-amber-300" role="status">
+                Could not refresh domains and goals. Showing the most recently loaded data.
+              </p>
+            )}
             {isLoadingGoals || isLoadingPrograms ? (
               <div className="text-sm text-gray-500 dark:text-gray-400">Loading goals…</div>
-            ) : isProgramsError || isGoalsError ? (
+            ) : hasDomainGoalLoadingError ? (
               <div className="space-y-2 text-sm text-red-700 dark:text-red-300" role="alert">
                 <p>Unable to load domains and goals.</p>
                 <button
@@ -1306,7 +1315,7 @@ export function AddSessionNoteModal({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={isSaving || isProgramsError || isGoalsError}
+            disabled={isSaving || hasDomainGoalLoadingError}
             className="flex min-h-11 w-full items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[10rem]"
           >
             {isSaving ? 'Saving…' : 'Save Note'}

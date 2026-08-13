@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react';
+import { focusManager } from '@tanstack/react-query';
 import { renderWithProviders } from '../../test/utils';
 import { AddSessionNoteModal } from '../AddSessionNoteModal';
 import { supabase } from '../../lib/supabase';
@@ -414,6 +415,42 @@ describe('AddSessionNoteModal — per-goal note textareas', () => {
     expect(screen.getByRole('button', { name: 'Retry loading domains and goals' })).toBeInTheDocument();
     expect(screen.queryByText('No active domains found for this client.')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save Note' })).toBeDisabled();
+  });
+
+  it('keeps cached goals usable when a background refetch fails', async () => {
+    let programRequestCount = 0;
+    let goalRequestCount = 0;
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'programs') {
+        programRequestCount += 1;
+        return programRequestCount === 1
+          ? buildChain([mockProgram]) as any
+          : buildErrorChain('domain refresh failed') as any;
+      }
+      if (table === 'goals') {
+        goalRequestCount += 1;
+        return goalRequestCount === 1
+          ? buildChain([mockGoal]) as any
+          : buildErrorChain('goal refresh failed') as any;
+      }
+      if (table === 'sessions') return buildChainWithLimit([mockSession]) as any;
+      if (table === 'session_goals') return buildChain([]) as any;
+      return buildChain([]) as any;
+    });
+
+    renderWithProviders(<AddSessionNoteModal {...defaultProps} clientId="client-refetch-error" />);
+    expect(await screen.findByRole('checkbox', { name: /default goal/i })).toBeInTheDocument();
+
+    act(() => focusManager.setFocused(false));
+    act(() => focusManager.setFocused(true));
+
+    expect(
+      await screen.findByText('Could not refresh domains and goals. Showing the most recently loaded data.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /default goal/i })).toBeInTheDocument();
+    expect(screen.queryByText('Unable to load domains and goals.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Note' })).toBeEnabled();
+    act(() => focusManager.setFocused(undefined));
   });
 
   it('does not treat an inactive domain as active', async () => {

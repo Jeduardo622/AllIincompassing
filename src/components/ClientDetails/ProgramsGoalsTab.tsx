@@ -621,6 +621,9 @@ const callEdgeWithSupabaseFallback = async (params: {
 
 const presentCarePlanDomainError = (message: string) =>
   message
+    .replace(/\bprogram(?:_ids?|Ids?)\b/gi, (identifier) =>
+      identifier.startsWith("P") ? "Domain" : "domain",
+    )
     .replace(/\bPrograms\b/g, "Domains")
     .replace(/\bProgram\b/g, "Domain")
     .replace(/\bprograms\b/g, "domains")

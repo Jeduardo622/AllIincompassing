@@ -991,7 +991,10 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "POST" && path === "/api/programs") {
-        return new Response(JSON.stringify({ error: "Failed to create program" }), { status: 500 });
+        return new Response(
+          JSON.stringify({ error: "Failed to create program: program_id is not in scope for this organization" }),
+          { status: 500 },
+        );
       }
       if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
       if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
@@ -1011,7 +1014,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     await waitFor(() => expect(showError).toHaveBeenCalled());
     expect(vi.mocked(showError).mock.calls.at(-1)?.[0]).toEqual(
-      expect.objectContaining({ message: "Failed to create domain" }),
+      expect.objectContaining({ message: "Failed to create domain: domain is not in scope for this organization" }),
     );
   });
 

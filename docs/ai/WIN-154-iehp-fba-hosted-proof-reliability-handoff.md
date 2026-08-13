@@ -127,3 +127,11 @@ Non-goals remain credential rotation, secret access, parser behavior changes, sc
 - `pr handoff`: draft PR `#941`; exact-head CI, human review, reviewed function deployment, and hosted matrix proof remain required.
 - `reviewer`: code, security, test, architecture, specification, implementation, and Supabase reviews completed.
 - `required follow-up`: push the exact head, require CI success, obtain critical-lane owner review, deploy the reviewed Edge Function, then rerun the eight-case hosted synthetic matrix before merge confirmation.
+
+## Post-Merge Hosted Proof Target
+
+- PR `#941` was owner-merged at `dc62f5ec32d0143b992d0f8cd51ab2214265e0b5` after exact-head required CI and specialist review passed.
+- Production `extract-assessment-fields` is active at version `123`; direct source inspection confirms `AdobePdfExtractStage`, `toPublicDiagnostics`, and `upstream_status` are deployed.
+- The protected mini-matrix workflow requires an open same-repository PR targeting `main`, so merged PR `#941` cannot be used as its immutable Netlify preview target.
+- This docs-only follow-up exists solely to provide that fresh open target. It changes no parser, application, workflow, Supabase, auth, secret, runtime, or deployment behavior.
+- Keep the follow-up PR open until the repository owner dispatches `.github/workflows/iehp-pdf-mini-matrix-proof.yml` against its exact head and Codex validates the curated redacted artifact contract at `8/8/8/1`.

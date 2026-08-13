@@ -64,9 +64,9 @@
   },
   "terminologySuccessorAttestation": {
     "path": "docs/ai/reviews/WIN-275-clinical-domain-terminology-successor-attestation.json",
-    "sha256": "9e7976f2e2858d4c90acb6c13970584155fa60325993b2fb9cc62c0968d7394e",
+    "sha256": "3a33d47fad2749990aaf9201b23efc2cb552fecef034bfd37ac1710846be8635",
     "implementationHeadCommit": "e5f9e0843149df6260838d75df66feebb11a979c",
-    "mergedVerificationHeadCommit": "e5f9e0843149df6260838d75df66feebb11a979c",
+    "mergedVerificationHeadCommit": "f3be4aaf558c6331724f1ba1439ad7d98e4000ad",
     "hostedActionAuthorized": false
   },
   "terminologySuccessorReviews": {
@@ -114,7 +114,7 @@
   "protectedSurfaceHashes": {
     ".github/workflows/agent-work-ledger-hosted-shadow-proof.yml": "eef158750da0d0f4456c00fb247149827d882a7d332bb36e57ca236c5b8dd83f",
     "scripts/agent-work-ledger-hosted-shadow-proof.mjs": "2fd78613be6dba0583019bd93566b3df73ee75d9d1f1036480fdf7f4c1350323",
-    "tests/agentWorkLedgerHostedShadowProof.test.ts": "5bea82c55a0791214807d3e4a8ec5e1355e144c61e942f41d96b1b260439b3b4",
+    "tests/agentWorkLedgerHostedShadowProof.test.ts": "8a2169f13d5a4e38727180c84099169bc50038057bd3fe7307e491545ac631da",
     "AGENTS.md": "1be8157897d395aee0ae78503a04b9d35203d5e07dc80149198afff2f1301c81",
     ".agents/skills/route-task/SKILL.md": "fbeb48b4131759168641f936abb86676a3f2b0fc856a949fdb14b36de20d8c15",
     "docs/ai/cto-lane-contract.md": "53263ab6570deb1f863e2cdb87d10473a5cf0e3d0925a4ace0488fc68d6443d0",

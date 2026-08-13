@@ -380,6 +380,33 @@ describe("agent work hosted shadow proof contract", () => {
     }
   });
 
+  it("binds terminology predecessor evidence to explicit repository revisions", () => {
+    const successor = JSON.parse(
+      readFileSync(
+        path.resolve("docs/ai/reviews/WIN-275-clinical-domain-terminology-successor-attestation.json"),
+        "utf8",
+      ),
+    ) as {
+      predecessorReferences: Array<{ path: string; revision?: string; sha256?: string }>;
+    };
+
+    for (const reference of successor.predecessorReferences) {
+      expect(reference.revision, reference.path).toMatch(/^[0-9a-f]{40}$/);
+      expect(reference.sha256, reference.path).toMatch(/^[0-9a-f]{64}$/);
+      const revision = reference.revision as string;
+      const expectedSha256 = reference.sha256 as string;
+      const historicalFile = spawnSync(
+        "git",
+        ["show", `${revision}:${reference.path}`],
+        { encoding: null },
+      );
+      expect(historicalFile.status, reference.path).toBe(0);
+      expect(createHash("sha256").update(historicalFile.stdout).digest("hex"), reference.path).toBe(
+        expectedSha256,
+      );
+    }
+  });
+
   it("runs fallbacks only after hosted prerequisites exist", () => {
     expect(workflow).toMatch(
       /- name: Revalidate approval immediately before hosted access\r?\n\s+id: authority_revalidation/,

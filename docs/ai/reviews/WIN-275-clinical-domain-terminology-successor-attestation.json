@@ -5,7 +5,7 @@
   "successorKey": "clinical-domain-terminology",
   "repository": "Jeduardo622/AllIincompassing",
   "createdAt": "2026-08-11T11:35:27.4621824-07:00",
-  "status": "PASS_WITH_CI_PENDING",
+  "status": "POST_MERGE_REVIEW_GAPS_IDENTIFIED",
   "authorization": {
     "uiOnlyEvidence": true,
     "hostedAction": false,
@@ -53,7 +53,7 @@
     "branch": "codex/win-275-terminology-successor",
     "baseMergeCommit": "37e7cbfa888ebb3b33cf895cb9638f6b6590bd5f",
     "implementationHeadCommit": "e5f9e0843149df6260838d75df66feebb11a979c",
-    "mergedVerificationHeadCommit": "e5f9e0843149df6260838d75df66feebb11a979c"
+    "mergedVerificationHeadCommit": "f3be4aaf558c6331724f1ba1439ad7d98e4000ad"
   },
   "successorAgents": {
     "specification-engineer": {
@@ -114,7 +114,7 @@
     }
   },
   "verification": {
-    "result": "pass-with-blocked-checks",
+    "result": "pass-with-review-follow-up-required",
     "passed": [
       "npm run lint",
       "npm run typecheck",
@@ -126,39 +126,49 @@
       "npm run test:routes:tier0: 220 tests",
       "npm run test:ci: 4178 tests across 484 files",
       "npm run ci:verify-coverage: 92.81 percent line coverage",
-      "NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local"
+      "NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local",
+      "PR #922 exact-head required CI at b547ee73"
     ],
     "failed": [],
     "blocked": [
-      "npm run ci:playwright requires PW_ADMIN or PW_SUPERADMIN credentials and stopped at preflight locally",
-      "exact-head CI requires this evidence refresh to be committed and pushed"
+      "Four non-outdated Codex review threads require follow-up PRs before this successor is fully closed"
     ]
   },
   "predecessorReferences": [
     {
       "path": "docs/ai/reviews/WIN-275-solo-maintainer-attestation.json",
-      "sha256": "53e83bd78fef02c24dbd4bf8fbd66bdd4f92c38b44f0edfd61d9aceb1b5aa322"
+      "revision": "e5f9e0843149df6260838d75df66feebb11a979c",
+      "sha256": "9f7ca21e7254fea8481135d521176dddf6e540b69cf57ceef0caf0504de3f6f1"
     },
     {
       "path": "docs/ai/reviews/WIN-275-agent-work-ledger-adoption-contract-attestation.json",
-      "sha256": "8b7517861e1a5ade3a6c6a8f385866a334f7f0d08aa45ac67a6e068d02d87303"
+      "revision": "e5f9e0843149df6260838d75df66feebb11a979c",
+      "sha256": "0d0c81bf5afd7dd46d91a46bccd7f41dc4052126bf20a4eca04f867a5599e426"
     },
     {
       "path": "docs/ai/reviews/WIN-275-retention-policy-encoding-attestation.json",
-      "sha256": "14cfe7c62cc44d9191fa7727a3d9f1cd022c343c610d96bb4a572a0682fb5f95"
+      "revision": "e5f9e0843149df6260838d75df66feebb11a979c",
+      "sha256": "a3abb27dcc9d42dced604ec67c0b566d707dbf46808846c8fc3ea25f1d059cf3"
     },
     {
       "path": "docs/ai/reviews/WIN-275-local-operator-responsive-observer-attestation.json",
-      "sha256": "4ebba04d72666b1d78454834dfd8dedc81b72906ec80398b52e678f3d86a9f93"
+      "revision": "e5f9e0843149df6260838d75df66feebb11a979c",
+      "sha256": "4757b1cf4d71009a30eba9b24ab385d40dc381c3f14abcf0b54a5d879e387c2b"
     },
     {
-      "path": "docs/ai/reviews/WIN-275-hosted-shadow-proof-attestation.md"
+      "path": "docs/ai/reviews/WIN-275-hosted-shadow-proof-attestation.md",
+      "revision": "e5f9e0843149df6260838d75df66feebb11a979c",
+      "sha256": "e463e0cd355f9220204dc6498b208b46b6bb9995eb962f7032218c4615810c27"
     },
     {
-      "path": "docs/ai/handoffs/WIN-275-ledger-hash-baseline-repair.md"
+      "path": "docs/ai/handoffs/WIN-275-ledger-hash-baseline-repair.md",
+      "revision": "e5f9e0843149df6260838d75df66feebb11a979c",
+      "sha256": "0d9107ce976cbdd5fb8c23a047038d9b50e1505dc3f72906727bfce8a6ac5ca4"
     },
     {
-      "path": "docs/ai/handoffs/WIN-275-supabase-validate-playwright.md"
+      "path": "docs/ai/handoffs/WIN-275-supabase-validate-playwright.md",
+      "revision": "e5f9e0843149df6260838d75df66feebb11a979c",
+      "sha256": "b06bea2fd5fd87eb738661d436aa74d361829380ccc9123cfde12bfd40eaaeac"
     }
   ],
   "implementationEvidence": {

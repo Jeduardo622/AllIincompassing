@@ -7,14 +7,22 @@
 - branch: `codex/win-275-terminology-successor`
 - base: `37e7cbfa888ebb3b33cf895cb9638f6b6590bd5f`
 - implementation head: `e5f9e0843149df6260838d75df66feebb11a979c`
-- merged verification head before evidence refresh: `e5f9e0843149df6260838d75df66feebb11a979c`
+- original squash merge: `f3be4aaf558c6331724f1ba1439ad7d98e4000ad`
 - non-goals: production auth, runtime config, Supabase policy/schema, deployment behavior, hosted action, workflow dispatch, runtime activation, provider/model calls, or PHI-bearing fixtures
 
 ## Why This Exists
 
 The terminology branch is a presentation-only successor under `WIN-275`. It changes user-facing clinical care-plan copy from `Program` to `Domain` while the plan and design explicitly preserve internal `program*` tables, route IDs, capabilities, query keys, persisted fields, and other non-UI contracts.
 
-This handoff records the completed local verification slice. It does not authorize hosted activation, workflow dispatch, or merge; critical-lane human review and exact-head required CI remain mandatory.
+This handoff records the original local verification slice and its post-merge review state. It does not authorize hosted activation or workflow dispatch.
+
+## Post-Merge Review State
+
+- PR `#922` passed exact-head required CI at `b547ee73` and was squash-merged as `f3be4aaf558c6331724f1ba1439ad7d98e4000ad`.
+- Four non-outdated Codex review threads were found after merge.
+- The predecessor references in the machine-readable successor attestation are pinned to immutable `e5f9e0843149df6260838d75df66feebb11a979c` repository bytes.
+- This evidence repair does not change hosted authorization behavior or claim the terminology successor is fully closed.
+- Follow-up status: `review-fixes-required`.
 
 ## Predecessor References
 
@@ -26,7 +34,7 @@ This handoff records the completed local verification slice. It does not authori
 - `docs/ai/handoffs/WIN-275-ledger-hash-baseline-repair.md`
 - `docs/ai/handoffs/WIN-275-supabase-validate-playwright.md`
 
-All predecessor attestations remain unchanged in this slice.
+The predecessor bytes referenced by the successor remain historical and unchanged at the pinned revision. The rolling solo-maintainer attestation is updated only to record this successor evidence repair.
 
 ## Successor Facts Recorded
 
@@ -75,9 +83,9 @@ The current terminology branch changes `src/components/ClientDetails/ProgramsGoa
 - Repository hard gate: `NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local` passed in `389s`
 - Responsive closure: both Dashboard correction-modal render paths now provide 44px choice-row and Close-button hit areas, and the observer measures the associated native checkbox/radio label area
 - CI regression closure: the two domain empty-state tests now wait through authentication hydration before asserting the settled React Query result; `npm run test:ci` passed with `4178` tests across `484` files
-- Blocked checks: local `npm run ci:playwright` requires unavailable PW admin credentials; exact-head CI requires this evidence refresh to be pushed
-- Result: `pass-with-blocked-checks`
-- Residual risk: local credential-backed `ci:playwright` remains unavailable; exact-head CI and critical-lane human review remain required
+- Historical blocked check: local `npm run ci:playwright` required unavailable PW admin credentials; PR `#922` later passed the hosted exact-head browser gate.
+- Current result: `pass-with-review-follow-up-required`
+- Residual risk: four post-merge review findings require follow-up; this artifact repair remains subject to fresh exact-head CI, `verify-change`, `pr-hygiene`, and critical-lane human review.
 
 Specialist results:
 
@@ -92,3 +100,18 @@ Specialist results:
 - `docs/ai/reviews/WIN-275-clinical-domain-terminology-successor-attestation.json`
 - `docs/ai/reviews/WIN-275-solo-maintainer-attestation.json`
 - `docs/ai/handoffs/WIN-275-clinical-domain-terminology-successor.md`
+
+## 2026-08-12 Attestation Repair Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- files touched: successor attestation, rolling solo-maintainer attestation, this handoff, and the hosted-proof contract test
+- required agents: specification, architecture, implementation, code review, test, security, and DevOps
+- required checks: `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run ci:verify-coverage`, `npm run build`, `npm run test:routes:tier0`, `npm run ci:playwright`, `verify-change`, and `pr-hygiene`
+- executed checks: focused hosted-proof contract `38/38`; policy, lint, typecheck, `test:ci` `4236/4236`, coverage `92.81%`, build, and tier-0 routes `220/220` passed
+- transient retry evidence: the first full suite run had five unrelated concurrent test failures; isolated `TherapistOnboarding` passed `7/7`, and the immediate full `test:ci` retry passed `4236/4236`
+- blocked checks: local `npm run ci:playwright` stopped at preflight because `PW_SUPERADMIN_*` or `PW_ADMIN_*` credentials are unavailable; exact-head CI remains required
+- reviewer: code and security re-review approved with no findings; DevOps confirmed hosted workflow behavior is unchanged and fail-closed after one handoff correction
+- result: `pass-with-blocked-checks`
+- residual risk: the four post-merge UI review findings remain for the stacked follow-up PR; critical-lane owner review and exact-head CI are mandatory
+- pr handoff: ready after Linear linkage, commit, push, and `pr-hygiene`

@@ -64,9 +64,10 @@
   },
   "terminologySuccessorAttestation": {
     "path": "docs/ai/reviews/WIN-275-clinical-domain-terminology-successor-attestation.json",
-    "sha256": "c93bb25e09c1f7f80b2a952a8b1c3f1e0c416e1cdbf4d02896b0aa3b55a934f9",
+    "sha256": "45a2996d1a246f5d7767834c1fed12bf9d70af78e6518a86f8848745512bf8c0",
     "originalImplementationHeadCommit": "e5f9e0843149df6260838d75df66feebb11a979c",
-    "implementationHeadCommit": "2fb23276af27355d14e98a8d202e21cbc9b01ff9",
+    "initialReviewFixImplementationHeadCommit": "2fb23276af27355d14e98a8d202e21cbc9b01ff9",
+    "implementationHeadCommit": "93aed703592e357fe8835bd0ea5023268202532b",
     "mergedVerificationHeadCommit": "f3be4aaf558c6331724f1ba1439ad7d98e4000ad",
     "hostedActionAuthorized": false
   },
@@ -110,6 +111,18 @@
     "responsive-closure-security-engineer": {
       "agentId": "019ff29d-0687-7e60-a659-535a66c25a49",
       "verdict": "APPROVE"
+    },
+    "final-review-fix-code-review-engineer": {
+      "agentId": "019ff8fa-7e2f-7512-8be3-893ef801ec95",
+      "verdict": "APPROVE"
+    },
+    "final-review-fix-test-engineer": {
+      "agentId": "019ff8fa-80e7-74f1-9328-e051d057c66a",
+      "verdict": "PASS_AFTER_COVERAGE_EXPANSION"
+    },
+    "final-review-fix-security-engineer": {
+      "agentId": "019ff8fa-8513-7853-8e66-13f52f61bd51",
+      "verdict": "APPROVE"
     }
   },
   "protectedSurfaceHashes": {
@@ -130,7 +143,7 @@
     "docs/ai/handoffs/agent-work-ledger-adoption-contract.md": "d200e34d9516117ea21c10a950de30bc8e3c8870552dff9382ab8fb38664fe62",
     "docs/ops/agent-work-ledger-caller-adoption.md": "85a23906a650b0f8929dbae58096e3d688780fe27c6f25dbe5b3f49b68984a1e",
     "src/components/ClientDetails/IehpFbaLayoutReview.tsx": "8fe6c210cc1719efce43fad12b2af38815dd75a92b17e4878da12211f0394209",
-    "src/components/ClientDetails/ProgramsGoalsTab.tsx": "093d2287e9c2e9b01b40f00b93cfaa7b35d4f1dcc2037408f83b5cba1c0de859",
+    "src/components/ClientDetails/ProgramsGoalsTab.tsx": "a452018e40c35e57ecd7fea67c100591396731e662d6b00d68a7dff23807d3a1",
     "src/components/__tests__/IehpFbaLayoutReview.test.tsx": "06f5a04b356347fe75bc3bf7f389017f46b381a09af3b4702a440414c759ef2e",
     "src/lib/__tests__/agent-work-ledger.test.ts": "20850c876406328c2f8a09ee78f70ed83f379e7130b3e30dede8f50af5972814",
     "src/lib/agent-work-ledger.ts": "77f4eb775c6744bc55588ee3ab126978796470bfae1691ff06fe762aa29ad0a6",

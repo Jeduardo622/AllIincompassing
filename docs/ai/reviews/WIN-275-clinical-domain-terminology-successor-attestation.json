@@ -5,7 +5,7 @@
   "successorKey": "clinical-domain-terminology",
   "repository": "Jeduardo622/AllIincompassing",
   "createdAt": "2026-08-11T11:35:27.4621824-07:00",
-  "status": "POST_MERGE_REVIEW_GAPS_IDENTIFIED",
+  "status": "FINAL_REVIEW_FIXES_CI_PENDING",
   "authorization": {
     "uiOnlyEvidence": true,
     "hostedAction": false,
@@ -50,11 +50,13 @@
     ]
   },
   "branchContext": {
-    "branch": "codex/win-275-terminology-ui-review-fixes",
+    "branch": "codex/win-275-attestation-contract-repair",
+    "mergedUiBranch": "codex/win-275-terminology-ui-review-fixes",
     "originalBranch": "codex/win-275-terminology-successor",
     "baseMergeCommit": "37e7cbfa888ebb3b33cf895cb9638f6b6590bd5f",
     "originalImplementationHeadCommit": "e5f9e0843149df6260838d75df66feebb11a979c",
-    "implementationHeadCommit": "2fb23276af27355d14e98a8d202e21cbc9b01ff9",
+    "initialReviewFixImplementationHeadCommit": "2fb23276af27355d14e98a8d202e21cbc9b01ff9",
+    "implementationHeadCommit": "93aed703592e357fe8835bd0ea5023268202532b",
     "mergedVerificationHeadCommit": "f3be4aaf558c6331724f1ba1439ad7d98e4000ad"
   },
   "successorAgents": {
@@ -125,10 +127,22 @@
     "review-fix-security-engineer": {
       "agentId": "019ff8d8-5fc5-7321-b98e-134d07008c90",
       "status": "APPROVE"
+    },
+    "final-review-fix-code-review-engineer": {
+      "agentId": "019ff8fa-7e2f-7512-8be3-893ef801ec95",
+      "status": "APPROVE"
+    },
+    "final-review-fix-test-engineer": {
+      "agentId": "019ff8fa-80e7-74f1-9328-e051d057c66a",
+      "status": "PASS_AFTER_COVERAGE_EXPANSION"
+    },
+    "final-review-fix-security-engineer": {
+      "agentId": "019ff8fa-8513-7853-8e66-13f52f61bd51",
+      "status": "APPROVE"
     }
   },
   "verification": {
-    "result": "pass-with-review-follow-up-required",
+    "result": "pass-with-exact-head-ci-pending",
     "passed": [
       "npm run lint",
       "npm run typecheck",
@@ -141,11 +155,15 @@
       "npm run test:ci: 4178 tests across 484 files",
       "npm run ci:verify-coverage: 92.81 percent line coverage",
       "NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local",
-      "PR #922 exact-head required CI at b547ee73"
+      "PR #922 exact-head required CI at b547ee73",
+      "final review-fix component tests: 147 tests",
+      "final review-fix focused hosted-proof contract: 38 tests",
+      "final review-fix responsive observer: four of four route and viewport results"
     ],
     "failed": [],
     "blocked": [
-      "Four non-outdated Codex review threads require follow-up PRs before this successor is fully closed"
+      "Credential-backed local npm run ci:playwright remains unavailable",
+      "PR #934 exact-head required CI must pass after the final review-fix evidence refresh"
     ]
   },
   "predecessorReferences": [
@@ -221,7 +239,7 @@
       "path": "src/components/ClientDetails/ProgramsGoalsTab.tsx",
       "algorithm": "sha256",
       "canonicalization": "UTF-8 text with CRLF normalized to LF, matching tests/agentWorkLedgerHostedShadowProof.test.ts",
-      "canonicalSha256": "093d2287e9c2e9b01b40f00b93cfaa7b35d4f1dcc2037408f83b5cba1c0de859"
+      "canonicalSha256": "a452018e40c35e57ecd7fea67c100591396731e662d6b00d68a7dff23807d3a1"
     }
   },
   "expectedHashDrift": {
@@ -230,8 +248,8 @@
     "driftedProtectedSurfaceHashes": [
       {
         "path": "src/components/ClientDetails/ProgramsGoalsTab.tsx",
-        "manifestSha256": "fbc032c2dddca32dd846ce1a89e80fdd0cb45500bb31f21c773cc2c33dd74fa4",
-        "currentBranchCanonicalSha256": "093d2287e9c2e9b01b40f00b93cfaa7b35d4f1dcc2037408f83b5cba1c0de859"
+        "manifestSha256": "093d2287e9c2e9b01b40f00b93cfaa7b35d4f1dcc2037408f83b5cba1c0de859",
+        "currentBranchCanonicalSha256": "a452018e40c35e57ecd7fea67c100591396731e662d6b00d68a7dff23807d3a1"
       }
     ],
     "noManifestUpdatePerformed": false

@@ -129,3 +129,16 @@ Specialist results:
 - responsive observer: `4/4` passed at desktop `1440x900` and mobile `390x844`; sanitized evidence is under `artifacts/responsive-ui-observer/route-e1da5b24224600e4b86f943f21a449b421da6772c554c840aecbaab450cb8fcf.*` and `artifacts/responsive-ui-observer/route-b8269c2977ef848259bf5694da1ebe4e7a041d55cb00a9e9fd3689b0c23f675f.*`
 - blocked checks: local full-suite coverage worker stability and credential-backed `npm run ci:playwright`; exact-head CI remains required
 - residual risk: stacked PR must merge only after evidence PR `#934`, exact-head CI, and owner review
+
+## 2026-08-12 Final Codex Review-Fix Card
+
+- immutable implementation head: `93aed703592e357fe8835bd0ea5023268202532b`
+- changes: preserve cached domains/goals after background refetch failures with a non-blocking warning; normalize identifier-shaped legacy errors such as `program_id`
+- focused tests: `AddSessionNoteModal.test.tsx` and `ProgramsGoalsTab.test.tsx` passed `147/147`, including independent query-refetch failures/recovery and four identifier variants
+- focused hosted-proof contract before evidence refresh: `38/38`
+- responsive observer: `4/4` passed for `/clients/test-client` and `/schedule` at `1440x900` and `390x844`
+- policy: the implementation commit hook passed `npm run ci:check-focused`
+- specialist review: code and security approved with no findings; test review passed after both requested coverage expansions
+- merged stack: PR `#935` merged into the still-open evidence PR `#934`; PR `#934` is the remaining critical-lane merge boundary
+- blocked checks: credential-backed local `npm run ci:playwright` and PR `#934` exact-head CI after this evidence refresh
+- residual risk: critical-lane owner review and exact-head required CI remain mandatory; internal `program*` identifiers and backend contracts remain intentionally unchanged

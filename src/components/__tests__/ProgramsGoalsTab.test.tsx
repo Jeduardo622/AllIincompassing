@@ -987,12 +987,14 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(screen.getByRole("button", { name: "Create Care Plan Domain" })).toBeInTheDocument();
   });
 
-  it("presents legacy program API errors using domain terminology", async () => {
+  it.each(["program_id", "programId", "programIds", "program_ids"])(
+    "presents legacy %s API errors using domain terminology",
+    async (legacyIdentifier) => {
     vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
       const method = (init?.method ?? "GET").toUpperCase();
       if (method === "POST" && path === "/api/programs") {
         return new Response(
-          JSON.stringify({ error: "Failed to create program: program_id is not in scope for this organization" }),
+          JSON.stringify({ error: `Failed to create program: ${legacyIdentifier} is not in scope for this organization` }),
           { status: 500 },
         );
       }
@@ -1016,7 +1018,8 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     expect(vi.mocked(showError).mock.calls.at(-1)?.[0]).toEqual(
       expect.objectContaining({ message: "Failed to create domain: domain is not in scope for this organization" }),
     );
-  });
+    },
+  );
 
   it("unlocks goal and note creation after creating a program while the programs query is still loading", async () => {
     vi.mocked(callApi).mockImplementation((path: string, init?: RequestInit) => {

@@ -124,7 +124,7 @@ Commands:
 
 ```powershell
 npm test -- --run tests/payroll-timekeeping-capture-migration.test.ts tests/integration/payroll-timekeeping-tenant-rls.contract.test.ts tests/payroll-timekeeping-security-runner.test.ts
-$env:PAYROLL_LOCAL_DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:54322/postgres'; node scripts/payroll-timekeeping-security-contract.mjs
+$env:PAYROLL_LOCAL_DATABASE_URL='****'; node scripts/payroll-timekeeping-security-contract.mjs
 ```
 
 Observed failures before the migration fix:

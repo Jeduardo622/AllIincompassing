@@ -16,7 +16,7 @@ Static contract:
 Harness command:
 
 ```powershell
-$env:PAYROLL_LOCAL_DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:54322/postgres'; npm run payroll:timesheet-derive-contract
+$env:PAYROLL_LOCAL_DATABASE_URL='****'; npm run payroll:timesheet-derive-contract
 ```
 
 Harness result:

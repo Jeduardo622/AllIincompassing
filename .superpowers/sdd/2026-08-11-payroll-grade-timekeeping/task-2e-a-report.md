@@ -40,7 +40,7 @@ Commands and observed failures during TDD:
 
 ```powershell
 npm test -- --run tests/payroll-session-lifecycle-context-migration.test.ts tests/integration/payroll-timekeeping-tenant-rls.contract.test.ts tests/payroll-timekeeping-security-runner.test.ts
-$env:PAYROLL_LOCAL_DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:54322/postgres'; node scripts/payroll-timekeeping-security-contract.mjs
+$env:PAYROLL_LOCAL_DATABASE_URL='****'; node scripts/payroll-timekeeping-security-contract.mjs
 ```
 
 - Initial static suite failed because the new migration/test contract did not exist.
@@ -58,7 +58,7 @@ Commands:
 ```powershell
 npm test -- --run tests/payroll-session-lifecycle-context-migration.test.ts tests/integration/payroll-timekeeping-tenant-rls.contract.test.ts tests/payroll-timekeeping-security-runner.test.ts
 npx supabase db reset --local --yes
-$env:PAYROLL_LOCAL_DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:54322/postgres'; node scripts/payroll-timekeeping-security-contract.mjs
+$env:PAYROLL_LOCAL_DATABASE_URL='****'; node scripts/payroll-timekeeping-security-contract.mjs
 npm run typegen:local
 npm run ci:check-focused
 npm run typecheck
@@ -94,7 +94,7 @@ Results:
 - Executed checks:
   - `npm test -- --run tests/payroll-session-lifecycle-context-migration.test.ts tests/integration/payroll-timekeeping-tenant-rls.contract.test.ts tests/payroll-timekeeping-security-runner.test.ts` -> `pass`
   - `npx supabase db reset --local --yes` -> `pass`
-  - `node scripts/payroll-timekeeping-security-contract.mjs` with `PAYROLL_LOCAL_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres` -> `pass`
+  - `node scripts/payroll-timekeeping-security-contract.mjs` with `PAYROLL_LOCAL_DATABASE_URL=****` -> `pass`
   - `npm run typegen:local` -> `pass`
   - `npm run ci:check-focused` -> `pass`
   - `npm run typecheck` -> `pass`
@@ -141,7 +141,7 @@ Fix-round verification:
 
 - `npm test -- --run tests/payroll-session-lifecycle-context-migration.test.ts tests/integration/payroll-timekeeping-tenant-rls.contract.test.ts tests/payroll-timekeeping-security-runner.test.ts` -> pass, `3` files / `24` tests.
 - `npx supabase db reset --local --yes` -> pass; replayed through `20260812103000_payroll_session_lifecycle_context.sql` on local Docker Supabase.
-- `PAYROLL_LOCAL_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres node scripts/payroll-timekeeping-security-contract.mjs` -> pass, synthetic exact-loopback contract.
+- `PAYROLL_LOCAL_DATABASE_URL=**** node scripts/payroll-timekeeping-security-contract.mjs` -> pass, synthetic exact-loopback contract.
 - `npm run typegen:local` -> pass; no generated type diff because RPC signatures are unchanged.
 - `npm run ci:check-focused` -> pass; protected DB-backed checks requiring `SUPABASE_DB_URL` remained explicitly skipped by the policy runner.
 - `npm run typecheck` -> pass.

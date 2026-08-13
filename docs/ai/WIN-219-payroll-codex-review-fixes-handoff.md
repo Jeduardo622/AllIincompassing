@@ -88,7 +88,7 @@ Implementation and local verification are complete. The isolated Supabase previe
 - required checks: focused regression tests, `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run ci:verify-coverage`, `npm run validate:tenant`, `npm run test:routes:tier0`, `npm run ci:playwright`, `npm run build`, responsive observer for `/time`, `/time/review`, and `/payroll`
 - executed checks:
   - focused page, hook, server, migration, and observer tests: pass
-  - `PAYROLL_LOCAL_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres npx vitest run tests/payroll-approval-workflow-rpc.test.ts`: pass, 26 tests
+  - `PAYROLL_LOCAL_DATABASE_URL=**** npx vitest run tests/payroll-approval-workflow-rpc.test.ts`: pass, 26 tests
   - exact responsive regression batch: pass, 4 files and 52 tests
   - follow-up Codex regression batch for concurrent blocker state and namespaced evidence cards: pass after fixture correction, 5 files and 82 tests; the final payroll-only rerun passed 2 files and 33 tests
   - second exact-head Codex regressions for shared Edge 401 handling and Time Review surface readiness: pass independently, API 36 tests, observer runtime 18 tests, and production harness 3 tests; a prior parallel browser run caused an unrelated schedule harness timeout, and the exact harness then passed independently

@@ -15,8 +15,10 @@ const checkedInCiWorkflow = readFileSync(
 const tempDirs: string[] = [];
 const AI_AGENT_PATH_PATTERN =
   "^supabase/functions/(ai-agent-optimized/|_shared/(database|auth|org|logging|cors|supabaseEnv|requestAuthHeaders)\\.ts$|lib/http/error\\.ts$)";
-const PAYROLL_FUNCTION_SCOPE =
-  "sessions-book,sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf,session-notes-pdf-status,session-notes-pdf-download,programs,goals,goal-targets,program-notes,payroll-timesheets,payroll-administration,payroll-approvals,payroll-export";
+const DEPLOYED_FUNCTION_SCOPE =
+  "sessions-book,sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf,session-notes-pdf-status,session-notes-pdf-download,programs,goals,goal-targets,program-notes";
+const PENDING_PAYROLL_FUNCTION_SCOPE =
+  "payroll-timesheets,payroll-administration,payroll-approvals,payroll-export";
 const MAIN_PUSH_IF = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
 const PAYROLL_APPROVAL_ACKNOWLEDGEMENT = "I_APPROVE_WIN_219_PAYROLL_ACTIVATION";
 const PAYROLL_OWNER_DISPATCH_GUARD =
@@ -187,7 +189,8 @@ const ciWorkflow = ({
           done <<< "\${changed_files}"
           echo "ai_agent_changed=\${ai_agent_changed}" >> "\${GITHUB_OUTPUT}"`,
   policyExtra = "",
-  parityScope = PAYROLL_FUNCTION_SCOPE,
+  parityScope = DEPLOYED_FUNCTION_SCOPE,
+  pendingParityScope = PENDING_PAYROLL_FUNCTION_SCOPE,
   runtimeParityRestriction = `(${MAIN_PUSH_IF}) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && ${PAYROLL_OWNER_DISPATCH_GUARD} && inputs.approval_acknowledgement == '${PAYROLL_APPROVAL_ACKNOWLEDGEMENT}' && (inputs.activate_payroll_timesheets == true || inputs.activate_payroll_administration == true || inputs.activate_payroll_approvals == true || inputs.activate_payroll_export == true))`,
   deployRestriction = "github.event_name == 'push' && github.ref == 'refs/heads/main'",
   deployNeeds = [
@@ -359,6 +362,7 @@ ${aiAgentDiffHandling}
       - run: npm run ci:check-focused
         env:
           SUPABASE_FUNCTION_PARITY_SCOPE: "${parityScope}"
+          SUPABASE_PENDING_FUNCTION_PARITY_SCOPE: "${pendingParityScope}"
 ${policyExtra}
 
   tenant_safety:
@@ -1357,17 +1361,17 @@ describe("check-session-deploy-safety", () => {
     );
   });
 
-  test("rejects policy parity scope when payroll-timesheets is missing", () => {
+  test("rejects policy parity scopes when payroll-timesheets is missing", () => {
     const fixtureRoot = makeFixture({
       ci: {
-        parityScope:
-          "sessions-book,sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf,session-notes-pdf-status,session-notes-pdf-download,programs,goals,goal-targets,program-notes",
+        pendingParityScope:
+          "payroll-administration,payroll-approvals,payroll-export",
       },
     });
     const result = runCheck(fixtureRoot);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("SUPABASE_FUNCTION_PARITY_SCOPE must include payroll-timesheets");
+    expect(result.stderr).toContain("Supabase function parity scopes must include payroll-timesheets");
   });
 
   test("rejects deploy_payroll_timesheets when it can run automatically on pushes to refs/heads/main", () => {
@@ -1560,43 +1564,71 @@ describe("check-session-deploy-safety", () => {
     );
   });
 
-  test("rejects policy parity scope when payroll-administration is missing", () => {
+  test("rejects policy parity scopes when payroll-administration is missing", () => {
     const fixtureRoot = makeFixture({
       ci: {
-        parityScope:
-          "sessions-book,sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf,session-notes-pdf-status,session-notes-pdf-download,programs,goals,goal-targets,program-notes,payroll-timesheets",
+        pendingParityScope:
+          "payroll-timesheets,payroll-approvals,payroll-export",
       },
     });
     const result = runCheck(fixtureRoot);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("SUPABASE_FUNCTION_PARITY_SCOPE must include payroll-administration");
+    expect(result.stderr).toContain("Supabase function parity scopes must include payroll-administration");
   });
 
-  test("rejects policy parity scope when payroll-approvals is missing", () => {
+  test("rejects policy parity scopes when payroll-approvals is missing", () => {
     const fixtureRoot = makeFixture({
       ci: {
-        parityScope:
-          "sessions-book,sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf,session-notes-pdf-status,session-notes-pdf-download,programs,goals,goal-targets,program-notes,payroll-timesheets,payroll-administration",
+        pendingParityScope:
+          "payroll-timesheets,payroll-administration,payroll-export",
       },
     });
     const result = runCheck(fixtureRoot);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("SUPABASE_FUNCTION_PARITY_SCOPE must include payroll-approvals");
+    expect(result.stderr).toContain("Supabase function parity scopes must include payroll-approvals");
   });
 
-  test("rejects policy parity scope when payroll-export is missing", () => {
+  test("rejects policy parity scopes when payroll-export is missing", () => {
     const fixtureRoot = makeFixture({
       ci: {
-        parityScope:
-          "sessions-book,sessions-hold,sessions-confirm,sessions-start,sessions-cancel,generate-session-notes-pdf,session-notes-pdf-status,session-notes-pdf-download,programs,goals,goal-targets,program-notes,payroll-timesheets,payroll-administration,payroll-approvals",
+        pendingParityScope:
+          "payroll-timesheets,payroll-administration,payroll-approvals",
       },
     });
     const result = runCheck(fixtureRoot);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("SUPABASE_FUNCTION_PARITY_SCOPE must include payroll-export");
+    expect(result.stderr).toContain("Supabase function parity scopes must include payroll-export");
+  });
+
+  test("rejects a payroll function listed in both deployed and pending parity scopes", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        parityScope: `${DEPLOYED_FUNCTION_SCOPE},payroll-timesheets`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "payroll-timesheets must not appear in both deployed and pending Supabase function parity scopes",
+    );
+  });
+
+  test("rejects unrelated functions in the pending payroll parity scope", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        pendingParityScope: `${PENDING_PAYROLL_FUNCTION_SCOPE},sessions-book`,
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "SUPABASE_PENDING_FUNCTION_PARITY_SCOPE may contain only protected payroll bootstrap functions",
+    );
   });
 
   test("rejects a missing default-false payroll-approvals workflow dispatch input", () => {

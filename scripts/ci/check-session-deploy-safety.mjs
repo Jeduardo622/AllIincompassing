@@ -166,10 +166,15 @@ const PAYROLL_DEPLOY_NEEDS = [
   "auth_browser_smoke",
 ];
 const AUTH_SMOKE_NEEDS = ["policy", "change_scope", "deploy_session_edge"];
-const PAYROLL_FUNCTION_PARITY_SCOPE_ENTRY = "payroll-timesheets";
-const PAYROLL_EXPORT_FUNCTION_PARITY_SCOPE_ENTRY = "payroll-export";
-const PAYROLL_APPROVALS_FUNCTION_PARITY_SCOPE_ENTRY = "payroll-approvals";
-const PAYROLL_ADMINISTRATION_FUNCTION_PARITY_SCOPE_ENTRY = "payroll-administration";
+const PROTECTED_PAYROLL_FUNCTION_PARITY_ENTRIES = [
+  "payroll-timesheets",
+  "payroll-administration",
+  "payroll-approvals",
+  "payroll-export",
+];
+const PROTECTED_PAYROLL_FUNCTION_PARITY_ENTRY_SET = new Set(
+  PROTECTED_PAYROLL_FUNCTION_PARITY_ENTRIES,
+);
 export const AI_AGENT_BUNDLE_PATH_PATTERN =
   "^supabase/functions/(ai-agent-optimized/|_shared/(database|auth|org|logging|cors|supabaseEnv|requestAuthHeaders)\\.ts$|lib/http/error\\.ts$)";
 const AI_AGENT_BUNDLE_PATH_REGEX = new RegExp(AI_AGENT_BUNDLE_PATH_PATTERN);
@@ -1026,17 +1031,30 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
       .split(",")
       .map((entry) => entry.trim())
       .filter(Boolean);
-    if (!scopeEntries.includes(PAYROLL_FUNCTION_PARITY_SCOPE_ENTRY)) {
-      violations.push("SUPABASE_FUNCTION_PARITY_SCOPE must include payroll-timesheets");
+    const pendingScope = parityStep?.env?.SUPABASE_PENDING_FUNCTION_PARITY_SCOPE ?? "";
+    const pendingEntries = pendingScope
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    const unsupportedPendingEntries = pendingEntries.filter(
+      (entry) => !PROTECTED_PAYROLL_FUNCTION_PARITY_ENTRY_SET.has(entry),
+    );
+    if (unsupportedPendingEntries.length > 0) {
+      violations.push(
+        "SUPABASE_PENDING_FUNCTION_PARITY_SCOPE may contain only protected payroll bootstrap functions",
+      );
     }
-    if (!scopeEntries.includes(PAYROLL_EXPORT_FUNCTION_PARITY_SCOPE_ENTRY)) {
-      violations.push("SUPABASE_FUNCTION_PARITY_SCOPE must include payroll-export");
-    }
-    if (!scopeEntries.includes(PAYROLL_APPROVALS_FUNCTION_PARITY_SCOPE_ENTRY)) {
-      violations.push("SUPABASE_FUNCTION_PARITY_SCOPE must include payroll-approvals");
-    }
-    if (!scopeEntries.includes(PAYROLL_ADMINISTRATION_FUNCTION_PARITY_SCOPE_ENTRY)) {
-      violations.push("SUPABASE_FUNCTION_PARITY_SCOPE must include payroll-administration");
+    for (const functionName of PROTECTED_PAYROLL_FUNCTION_PARITY_ENTRIES) {
+      const isDeployed = scopeEntries.includes(functionName);
+      const isPending = pendingEntries.includes(functionName);
+      if (!isDeployed && !isPending) {
+        violations.push(`Supabase function parity scopes must include ${functionName}`);
+      }
+      if (isDeployed && isPending) {
+        violations.push(
+          `${functionName} must not appear in both deployed and pending Supabase function parity scopes`,
+        );
+      }
     }
   }
 

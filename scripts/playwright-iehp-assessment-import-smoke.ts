@@ -180,15 +180,16 @@ const pause = async (ms: number): Promise<void> => {
   await new Promise((resolve) => setTimeout(resolve, ms));
 };
 
-const buildMonochromeScanImageDataUrl = async (args: {
+const buildRasterScanImageDataUrl = async (args: {
   page: import('playwright').Page;
+  colorMode: 'black-and-white' | 'grayscale';
   jpegQuality: number;
 }): Promise<string> => {
   const screenshotBuffer = await args.page.screenshot({ type: 'png' });
   const screenshotBase64 = screenshotBuffer.toString('base64');
 
   return args.page.evaluate(
-    async ({ base64, quality }) => {
+    async ({ base64, colorMode, quality }) => {
       const image = new Image();
       image.decoding = 'async';
       image.src = `data:image/png;base64,${base64}`;
@@ -207,17 +208,19 @@ const buildMonochromeScanImageDataUrl = async (args: {
       const { data } = imageData;
       for (let index = 0; index < data.length; index += 4) {
         const luminance = Math.round(data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114);
-        const monochrome = luminance < 192 ? 0 : 255;
-        data[index] = monochrome;
-        data[index + 1] = monochrome;
-        data[index + 2] = monochrome;
+        const normalized = colorMode === 'black-and-white'
+          ? (luminance < 192 ? 0 : 255)
+          : luminance;
+        data[index] = normalized;
+        data[index + 1] = normalized;
+        data[index + 2] = normalized;
         data[index + 3] = 255;
       }
       context.putImageData(imageData, 0, 0);
 
       return canvas.toDataURL('image/jpeg', quality / 100);
     },
-    { base64: screenshotBase64, quality: args.jpegQuality },
+    { base64: screenshotBase64, colorMode: args.colorMode, quality: args.jpegQuality },
   );
 };
 
@@ -1382,7 +1385,12 @@ async function run() {
           await generatorPage.setContent(buildIehpPdfMiniMatrixHtml(caseDefinition));
           let uploadPdfBuffer: Buffer;
           if (caseDefinition.renderMode === 'raster-scan') {
-            await generatorPage.setViewportSize({ width: 2550, height: 3300 });
+            const scanWidth = Math.round(caseDefinition.scan.dpi * 8.5);
+            const scanHeight = caseDefinition.scan.dpi * 11;
+            const scanFontSize = Math.round(54 * (caseDefinition.scan.dpi / 300));
+            const scanPaddingTop = Math.round(240 * (caseDefinition.scan.dpi / 300));
+            const scanPaddingSides = Math.round(220 * (caseDefinition.scan.dpi / 300));
+            await generatorPage.setViewportSize({ width: scanWidth, height: scanHeight });
             await generatorPage.setContent(`
               <!doctype html>
               <html lang="en">
@@ -1393,15 +1401,15 @@ async function run() {
                     html, body {
                       margin: 0;
                       padding: 0;
-                      width: 2550px;
-                      height: 3300px;
+                      width: ${scanWidth}px;
+                      height: ${scanHeight}px;
                       background: white;
                     }
 
                     body {
                       color: black;
                       font-family: Arial, sans-serif;
-                      font-size: 54px;
+                      font-size: ${scanFontSize}px;
                       line-height: 1.4;
                     }
 
@@ -1409,7 +1417,7 @@ async function run() {
                       box-sizing: border-box;
                       width: 100%;
                       min-height: 100%;
-                      padding: 240px 220px;
+                      padding: ${scanPaddingTop}px ${scanPaddingSides}px;
                       transform: rotate(${caseDefinition.scan.rotationDegrees}deg);
                       transform-origin: center center;
                     }
@@ -1423,8 +1431,9 @@ async function run() {
                 </body>
               </html>
             `);
-            const monochromeScanDataUrl = await buildMonochromeScanImageDataUrl({
+            const rasterScanDataUrl = await buildRasterScanImageDataUrl({
               page: generatorPage,
+              colorMode: caseDefinition.scan.colorMode,
               jpegQuality: caseDefinition.scan.jpegQuality,
             });
             const rasterPdfPage = await context.newPage();
@@ -1457,7 +1466,7 @@ async function run() {
                     </style>
                   </head>
                   <body>
-                    <img alt="${caseDefinition.id}" src="${monochromeScanDataUrl}" />
+                    <img alt="${caseDefinition.id}" src="${rasterScanDataUrl}" />
                   </body>
                 </html>
               `);

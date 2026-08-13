@@ -204,6 +204,7 @@ const buildPayrollAdministrationMock = (overrides: Record<string, unknown> = {})
     error: null,
     variables: undefined,
   },
+  resolvePayrollBlockerStates: [],
   ...overrides,
 });
 
@@ -597,8 +598,21 @@ describe("Payroll page", () => {
         variables: {
           snapshotId: "88888888-8888-4888-8888-888888888888",
           snapshotHash: "a".repeat(64),
+          blockerType: "timekeeping_exception",
+          blockerId: "99999999-9999-4999-8999-999999999999",
         },
       },
+      resolvePayrollBlockerStates: [{
+        status: "error",
+        error: new Error("Resolve failed."),
+        submittedAt: 1,
+        variables: {
+          snapshotId: "88888888-8888-4888-8888-888888888888",
+          snapshotHash: "a".repeat(64),
+          blockerType: "timekeeping_exception",
+          blockerId: "99999999-9999-4999-8999-999999999999",
+        },
+      }],
     }));
     rerender(
       <MemoryRouter initialEntries={["/payroll"]}>
@@ -637,11 +651,24 @@ describe("Payroll page", () => {
         variables: {
           snapshotId: "88888888-8888-4888-8888-888888888888",
           snapshotHash: "a".repeat(64),
+          blockerType: "timekeeping_exception",
+          blockerId: "99999999-9999-4999-8999-999999999999",
         },
       },
+      resolvePayrollBlockerStates: [{
+        status: "error",
+        error: new Error("Resolve failed."),
+        submittedAt: 1,
+        variables: {
+          snapshotId: "88888888-8888-4888-8888-888888888888",
+          snapshotHash: "a".repeat(64),
+          blockerType: "timekeeping_exception",
+          blockerId: "99999999-9999-4999-8999-999999999999",
+        },
+      }],
     }));
 
-    renderPage();
+    const { rerender } = renderPage();
     await user.click(screen.getByRole("button", { name: "Exceptions" }));
     const reasonField = screen.getByLabelText(/resolve reason for timekeeping_exception/i);
     await user.type(reasonField, "Keep this operator rationale.");
@@ -653,6 +680,40 @@ describe("Payroll page", () => {
 
     await user.click(screen.getByRole("button", { name: "Approvals" }));
     await user.click(screen.getByRole("button", { name: /employee 1002/i }));
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      reviewQueueQuery: {
+        data: { ...reviewQueue, queue: [...reviewQueue.queue, secondQueueItem] },
+        isLoading: false,
+        isError: false,
+        error: null,
+      },
+      reviewDetailsQuery: {
+        data: {
+          ...reviewDetails,
+          snapshotId: secondQueueItem.snapshot.id,
+          snapshotHash: secondQueueItem.snapshot.hash,
+        },
+        isLoading: false,
+        isError: false,
+        error: null,
+      },
+      resolvePayrollBlockerStates: [{
+        status: "error",
+        error: new Error("Resolve failed."),
+        submittedAt: 1,
+        variables: {
+          snapshotId: reviewDetails.snapshotId,
+          snapshotHash: reviewDetails.snapshotHash,
+          blockerType: reviewDetails.blockers[0].blockerType,
+          blockerId: reviewDetails.blockers[0].blockerId,
+        },
+      }],
+    }));
+    rerender(
+      <MemoryRouter initialEntries={["/payroll"]}>
+        <Payroll />
+      </MemoryRouter>,
+    );
     await user.click(screen.getByRole("button", { name: "Exceptions" }));
 
     expect(screen.queryByText(/resolve failed\./i)).not.toBeInTheDocument();
@@ -703,15 +764,121 @@ describe("Payroll page", () => {
           blockerId: reviewDetails.blockers[0].blockerId,
         },
       },
+      resolvePayrollBlockerStates: [{
+        status: "pending",
+        error: null,
+        submittedAt: 1,
+        variables: {
+          snapshotId: reviewDetails.snapshotId,
+          snapshotHash: reviewDetails.snapshotHash,
+          blockerType: reviewDetails.blockers[0].blockerType,
+          blockerId: reviewDetails.blockers[0].blockerId,
+        },
+      }],
     }));
 
-    renderPage();
+    const { rerender } = renderPage();
     await user.click(screen.getByRole("button", { name: "Approvals" }));
     await user.click(screen.getByRole("button", { name: /employee 1002/i }));
     await user.click(screen.getByRole("button", { name: "Exceptions" }));
     await user.type(screen.getByLabelText(/resolve reason for timekeeping_exception/i), "Resolve the second blocker.");
 
     expect(screen.getByRole("button", { name: /resolve timekeeping_exception/i })).toBeEnabled();
+
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      reviewQueueQuery: {
+        data: { ...reviewQueue, queue: [...reviewQueue.queue, secondQueueItem] },
+        isLoading: false,
+        isError: false,
+        error: null,
+      },
+      reviewDetailsQuery: {
+        data: secondReviewDetails,
+        isLoading: false,
+        isError: false,
+        error: null,
+      },
+      resolvePayrollBlockerMutation: {
+        mutateAsync: vi.fn(),
+        isPending: true,
+        error: null,
+      },
+      resolvePayrollBlockerStates: [
+        {
+          status: "pending",
+          error: null,
+          submittedAt: 1,
+          variables: {
+            snapshotId: reviewDetails.snapshotId,
+            snapshotHash: reviewDetails.snapshotHash,
+            blockerType: reviewDetails.blockers[0].blockerType,
+            blockerId: reviewDetails.blockers[0].blockerId,
+          },
+        },
+        {
+          status: "pending",
+          error: null,
+          submittedAt: 2,
+          variables: {
+            snapshotId: secondReviewDetails.snapshotId,
+            snapshotHash: secondReviewDetails.snapshotHash,
+            blockerType: secondReviewDetails.blockers[0].blockerType,
+            blockerId: secondReviewDetails.blockers[0].blockerId,
+          },
+        },
+      ],
+    }));
+    rerender(
+      <MemoryRouter initialEntries={["/payroll"]}>
+        <Payroll />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("button", { name: /resolve timekeeping_exception/i })).toBeDisabled();
+  });
+
+  it("keeps errors scoped to each blocker when same-snapshot resolutions overlap", async () => {
+    const secondBlocker = {
+      ...reviewDetails.blockers[0],
+      blockerId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    };
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      reviewDetailsQuery: {
+        data: { ...reviewDetails, blockers: [...reviewDetails.blockers, secondBlocker] },
+        isLoading: false,
+        isError: false,
+        error: null,
+      },
+      resolvePayrollBlockerStates: [
+        {
+          status: "error",
+          error: new Error("First blocker failed."),
+          submittedAt: 10,
+          variables: {
+            snapshotId: reviewDetails.snapshotId,
+            snapshotHash: reviewDetails.snapshotHash,
+            blockerType: reviewDetails.blockers[0].blockerType,
+            blockerId: reviewDetails.blockers[0].blockerId,
+          },
+        },
+        {
+          status: "success",
+          error: null,
+          submittedAt: 20,
+          variables: {
+            snapshotId: reviewDetails.snapshotId,
+            snapshotHash: reviewDetails.snapshotHash,
+            blockerType: secondBlocker.blockerType,
+            blockerId: secondBlocker.blockerId,
+          },
+        },
+      ],
+    }));
+
+    renderPage();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Exceptions" }));
+
+    expect(screen.getByText("First blocker failed.")).toBeInTheDocument();
   });
 
   it("requires an operator-entered reopen reason and submits the exact rationale", async () => {

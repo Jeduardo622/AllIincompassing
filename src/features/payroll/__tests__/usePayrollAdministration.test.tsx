@@ -58,6 +58,9 @@ function Probe({ selectedReview = firstReview }: { selectedReview?: { snapshotId
     <div>
       <span>{payrollAdministration.administrationQuery.data?.state ?? "loading"}</span>
       <span data-testid="review-details-status">{payrollAdministration.reviewDetailsQuery.status}</span>
+      <span data-testid="pending-resolve-count">
+        {payrollAdministration.resolvePayrollBlockerStates.filter((state) => state.status === "pending").length}
+      </span>
       <button
         type="button"
         onClick={() => void payrollAdministration.administrationActionMutation.mutateAsync({
@@ -109,6 +112,21 @@ function Probe({ selectedReview = firstReview }: { selectedReview?: { snapshotId
         })}
       >
         resolve
+      </button>
+      <button
+        type="button"
+        onClick={() => void payrollAdministration.resolvePayrollBlockerMutation.mutateAsync({
+          ...scope,
+          idempotencyKey: "resolve-key-2",
+          snapshotId: "11111111-1111-1111-1111-111111111111",
+          snapshotHash: "a".repeat(64),
+          blockerType: "timekeeping_exception",
+          blockerId: "66666666-6666-4666-8666-666666666666",
+          resolution: "resolved",
+          reason: "Resolved the second blocker.",
+        })}
+      >
+        resolve-second
       </button>
     </div>
   );
@@ -302,6 +320,29 @@ describe("usePayrollAdministration", () => {
     expect(invalidateSpy).not.toHaveBeenCalledWith(expect.objectContaining({ queryKey: replacementDetailsKey }));
     expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: payrollAdministrationQueryKey("org-1", "user-1", "2026-08-12") }));
     expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: payrollAdministrationQueueKey("org-1", "user-1", "2026-08-12") }));
+  });
+
+  it("retains independent pending state for concurrent blocker resolutions", async () => {
+    const settlers: Array<(value: Awaited<ReturnType<typeof resolvePayrollBlocker>>) => void> = [];
+    vi.mocked(resolvePayrollBlocker).mockImplementation(() => new Promise((resolve) => {
+      settlers.push(resolve);
+    }) as ReturnType<typeof resolvePayrollBlocker>);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <Probe />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("ok");
+    screen.getByRole("button", { name: "resolve", exact: true }).click();
+    screen.getByRole("button", { name: "resolve-second" }).click();
+
+    await waitFor(() => expect(screen.getByTestId("pending-resolve-count")).toHaveTextContent("2"));
+    expect(vi.mocked(resolvePayrollBlocker)).toHaveBeenCalledTimes(2);
+
+    settlers.forEach((settle) => settle({} as Awaited<ReturnType<typeof resolvePayrollBlocker>>));
+    await waitFor(() => expect(screen.getByTestId("pending-resolve-count")).toHaveTextContent("0"));
   });
 
   it("waits for authoritative administration capabilities before loading review details", async () => {

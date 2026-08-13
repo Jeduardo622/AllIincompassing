@@ -343,6 +343,8 @@ describe('responsive UI observer browser runtime', () => {
       expect(result.failureCodes).toEqual([]);
       const evidence = JSON.parse(await readFile(result.evidencePath, 'utf8')) as Record<string, unknown>;
       expect(evidence.scenarioId).toBe('payroll-time-review');
+      expect(evidence.screenshotPath).toBe(result.screenshotPath);
+      expect(evidence.evidencePath).toBe(result.evidencePath);
       expect(JSON.stringify(evidence)).not.toContain('hourlyRateCents');
       expect(JSON.stringify(evidence)).not.toContain('blockerId');
     }

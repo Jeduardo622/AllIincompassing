@@ -779,21 +779,14 @@ function ExceptionsTab({
   selectedReview,
   canResolveExceptions,
   onResolveBlocker,
-  pendingResolve,
-  resolveError,
+  resolveStates,
 }: {
   reviewQueueQuery: ReturnType<typeof usePayrollAdministration>["reviewQueueQuery"];
   reviewDetailsQuery: ReturnType<typeof usePayrollAdministration>["reviewDetailsQuery"];
   selectedReview: ReviewSelection;
   canResolveExceptions: boolean;
   onResolveBlocker: (input: { snapshotId: string; snapshotHash: string; blockerType: string; blockerId: string; reason: string }) => Promise<unknown>;
-  pendingResolve: {
-    snapshotId: string;
-    snapshotHash: string;
-    blockerType: string;
-    blockerId: string;
-  } | null;
-  resolveError: unknown;
+  resolveStates: ReturnType<typeof usePayrollAdministration>["resolvePayrollBlockerStates"];
 }) {
   if (reviewQueueQuery.isLoading) {
     return (
@@ -851,8 +844,15 @@ function ExceptionsTab({
               <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">No blocker details are available for this snapshot.</p>
             ) : (
               <ul className="mt-3 space-y-2">
-                {reviewDetails.blockers.map((blocker, index) => (
-                  <li key={`${blocker.blockerType}-${blocker.blockerId}-${index}`} className="rounded-xl border border-gray-100 px-3 py-2 text-sm dark:border-gray-800">
+                {reviewDetails.blockers.map((blocker, index) => {
+                  const resolveState = resolveStates.reduce<(typeof resolveStates)[number] | undefined>((latest, state) => {
+                    const matchesBlocker = state.variables?.snapshotId === reviewDetails.snapshotId
+                      && state.variables.snapshotHash === reviewDetails.snapshotHash
+                      && state.variables.blockerType === blocker.blockerType
+                      && state.variables.blockerId === blocker.blockerId;
+                    return matchesBlocker && (!latest || state.submittedAt > latest.submittedAt) ? state : latest;
+                  }, undefined);
+                  return <li key={`${blocker.blockerType}-${blocker.blockerId}-${index}`} className="rounded-xl border border-gray-100 px-3 py-2 text-sm dark:border-gray-800">
                     <p className="font-medium text-gray-900 dark:text-white">{blocker.blockerType}</p>
                     <p className="mt-1 text-gray-600 dark:text-gray-300">{blocker.state}</p>
                     {canResolveExceptions && blocker.state !== "resolved" ? (
@@ -862,19 +862,15 @@ function ExceptionsTab({
                         snapshotHash={reviewDetails.snapshotHash}
                         blockerType={blocker.blockerType}
                         blockerId={blocker.blockerId}
-                        pending={Boolean(pendingResolve
-                          && pendingResolve.snapshotId === reviewDetails.snapshotId
-                          && pendingResolve.snapshotHash === reviewDetails.snapshotHash
-                          && pendingResolve.blockerType === blocker.blockerType
-                          && pendingResolve.blockerId === blocker.blockerId)}
+                        pending={resolveState?.status === "pending"}
+                        error={resolveState?.status === "error" ? resolveState.error : null}
                         onResolveBlocker={onResolveBlocker}
                       />
                     ) : null}
-                  </li>
-                ))}
+                  </li>;
+                })}
               </ul>
             )}
-            {canResolveExceptions ? <div className="mt-3"><MutationError error={resolveError} /></div> : null}
           </div>
         ) : null}
         <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 px-3 py-3 text-sm text-gray-700 dark:border-gray-800 dark:bg-dark">
@@ -893,6 +889,7 @@ function ResolveBlockerControl({
   blockerType,
   blockerId,
   pending,
+  error,
   onResolveBlocker,
 }: {
   snapshotId: string;
@@ -900,6 +897,7 @@ function ResolveBlockerControl({
   blockerType: string;
   blockerId: string;
   pending: boolean;
+  error: unknown;
   onResolveBlocker: (input: { snapshotId: string; snapshotHash: string; blockerType: string; blockerId: string; reason: string }) => Promise<unknown>;
 }) {
   const [reason, setReason] = useState("");
@@ -939,6 +937,7 @@ function ResolveBlockerControl({
         disabled={pending || !trimmedReason}
         onClick={() => void submitResolve()}
       />
+      <MutationError error={error} />
     </div>
   );
 }
@@ -1193,6 +1192,7 @@ export function Payroll() {
     administrationActionMutation,
     lockPayrollTimesheetMutation,
     resolvePayrollBlockerMutation,
+    resolvePayrollBlockerStates,
     reopenPayrollTimesheetMutation,
   } = usePayrollAdministration(scope, {
     enabled: Boolean(organizationId && user?.id),
@@ -1203,16 +1203,6 @@ export function Payroll() {
     createPayrollExportMutation,
     downloadPayrollExportMutation,
   } = usePayrollExport(scope);
-  const resolveErrorForSelectedReview = selectedReview
-    && resolvePayrollBlockerMutation.variables?.snapshotId === selectedReview.snapshotId
-    && resolvePayrollBlockerMutation.variables.snapshotHash === selectedReview.snapshotHash
-    ? resolvePayrollBlockerMutation.error
-    : null;
-  const pendingResolve = resolvePayrollBlockerMutation.isPending
-    && resolvePayrollBlockerMutation.variables
-    ? resolvePayrollBlockerMutation.variables
-    : null;
-
   useEffect(() => {
     const firstSelectable = reviewQueueQuery.data?.queue.find((item) => item.snapshot.id && item.snapshot.hash);
     if (!firstSelectable?.snapshot.id || !firstSelectable.snapshot.hash) {
@@ -1346,8 +1336,7 @@ export function Payroll() {
             resolution: "resolved",
             reason,
           })}
-          pendingResolve={pendingResolve}
-          resolveError={resolveErrorForSelectedReview}
+          resolveStates={resolvePayrollBlockerStates}
         />
       ) : null}
 

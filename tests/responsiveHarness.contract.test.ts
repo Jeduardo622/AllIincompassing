@@ -286,6 +286,8 @@ describe("responsive harness contract", () => {
       expect(result.failureCodes).toEqual([]);
       const evidence = JSON.parse(readFileSync(result.evidencePath, "utf8")) as Record<string, unknown>;
       expect(evidence.scenarioId).toBe("payroll-time-review");
+      expect(evidence.screenshotPath).toBe(result.screenshotPath);
+      expect(evidence.evidencePath).toBe(result.evidencePath);
       rmSync(result.screenshotPath, { force: true });
       rmSync(result.evidencePath, { force: true });
     }

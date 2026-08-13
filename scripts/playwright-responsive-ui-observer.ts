@@ -910,7 +910,7 @@ const observeRouteAtViewport = async (
     });
     const screenshotHash = sha256(screenshotBuffer);
 
-    const evidenceSeed = buildEvidenceCard({
+    const baseEvidenceSeed = buildEvidenceCard({
       route,
       viewportName: viewport.name,
       result: failures.length > 0 ? 'fail' : 'pass',
@@ -920,26 +920,28 @@ const observeRouteAtViewport = async (
       evidenceHash: 'sha256:pending',
       scenario: parsedArgs.scenario,
     });
+    const evidenceSeed = {
+      ...baseEvidenceSeed,
+      screenshotPath: artifactPathForRun(
+        baseEvidenceSeed.screenshotPath,
+        parsedArgs.artifactRunId,
+      ),
+      evidencePath: artifactPathForRun(
+        baseEvidenceSeed.evidencePath,
+        parsedArgs.artifactRunId,
+      ),
+    };
     const evidenceHash = sha256(JSON.stringify(evidenceSeed));
-    const evidenceCard = buildEvidenceCard({
-      route,
-      viewportName: viewport.name,
-      result: failures.length > 0 ? 'fail' : 'pass',
-      failures,
-      metrics,
-      screenshotHash,
-      evidenceHash,
-      scenario: parsedArgs.scenario,
-    });
+    const evidenceCard = {
+      ...evidenceSeed,
+      hashes: {
+        ...evidenceSeed.hashes,
+        evidence: evidenceHash,
+      },
+    };
 
-    const screenshotRelativePath = artifactPathForRun(
-      evidenceCard.screenshotPath,
-      parsedArgs.artifactRunId,
-    );
-    const evidenceRelativePath = artifactPathForRun(
-      evidenceCard.evidencePath,
-      parsedArgs.artifactRunId,
-    );
+    const screenshotRelativePath = evidenceCard.screenshotPath;
+    const evidenceRelativePath = evidenceCard.evidencePath;
     const screenshotPath = artifactAbsolutePath(screenshotRelativePath);
     const evidencePath = artifactAbsolutePath(evidenceRelativePath);
     try {

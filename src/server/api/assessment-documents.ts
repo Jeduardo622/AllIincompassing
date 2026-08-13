@@ -194,6 +194,9 @@ interface ExtractionFieldResult {
 
 interface ExtractionFunctionResponse {
   error?: string;
+  code?: string;
+  stage?: string;
+  upstream_status?: number | null;
   extraction_provider?: string;
   adobe_element_count?: number | null;
   adobe_table_count?: number | null;
@@ -215,6 +218,32 @@ interface ExtractionFunctionResponse {
   extracted_count: number;
   unresolved_count: number;
 }
+
+const ADOBE_DIAGNOSTIC_STAGES = new Set([
+  "configuration",
+  "token",
+  "asset_creation",
+  "asset_upload",
+  "job_submission",
+  "job_poll",
+  "result_download",
+  "result_parse",
+  "unknown",
+]);
+
+export const sanitizeAdobeExtractionDiagnostics = (
+  response: Pick<ExtractionFunctionResponse, "stage" | "upstream_status"> | null | undefined,
+): { stage: string | null; upstreamStatus: number | null } => ({
+  stage: typeof response?.stage === "string" && ADOBE_DIAGNOSTIC_STAGES.has(response.stage)
+    ? response.stage
+    : null,
+  upstreamStatus: typeof response?.upstream_status === "number" &&
+      Number.isInteger(response.upstream_status) &&
+      response.upstream_status >= 100 &&
+      response.upstream_status <= 599
+    ? response.upstream_status
+    : null,
+});
 
 const extractionFieldResultSchema = z.object({
   placeholder_key: z.string().min(1),
@@ -291,13 +320,23 @@ class ExtractionWorkflowError extends Error {
   readonly reasonCode: string;
   readonly status?: number;
   readonly publicMessage: string;
+  readonly adobeStage: string | null;
+  readonly adobeUpstreamStatus: number | null;
 
-  constructor(reasonCode: string, message = reasonCode, status?: number, publicMessage = "Field extraction failed. Review checklist manually.") {
+  constructor(
+    reasonCode: string,
+    message = reasonCode,
+    status?: number,
+    publicMessage = "Field extraction failed. Review checklist manually.",
+    adobeDiagnostics?: { stage: string | null; upstreamStatus: number | null },
+  ) {
     super(message);
     this.name = "ExtractionWorkflowError";
     this.reasonCode = reasonCode;
     this.status = status;
     this.publicMessage = publicMessage;
+    this.adobeStage = adobeDiagnostics?.stage ?? null;
+    this.adobeUpstreamStatus = adobeDiagnostics?.upstreamStatus ?? null;
   }
 }
 
@@ -623,6 +662,10 @@ const persistExtractionFailure = async (args: {
       event_payload: {
         reason_code: error.reasonCode,
         status: error.status ?? null,
+        ...(error.adobeStage ? { adobe_stage: error.adobeStage } : {}),
+        ...(error.adobeUpstreamStatus !== null
+          ? { adobe_upstream_status: error.adobeUpstreamStatus }
+          : {}),
       },
     }),
   });
@@ -925,7 +968,14 @@ const runCaloptimaExtractionWorkflow = async (args: CaloptimaExtractionWorkflowA
       typeof extractionResult.data?.error === "string" && extractionResult.data.error.trim().length > 0
         ? extractionResult.data.error.trim()
         : "edge_extraction_failed";
-    throw new ExtractionWorkflowError("edge_extraction_failed", edgeError, extractionResult.status);
+    const adobeDiagnostics = sanitizeAdobeExtractionDiagnostics(extractionResult.data);
+    throw new ExtractionWorkflowError(
+      "edge_extraction_failed",
+      edgeError,
+      extractionResult.status,
+      "Field extraction failed. Review checklist manually.",
+      adobeDiagnostics,
+    );
   } catch (error) {
     const workflowError = asExtractionWorkflowError(error, signal);
     serverLogger.error("assessment-documents extraction workflow failed", {

@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { assessmentDocumentsExtractionBackgroundHandler, assessmentDocumentsHandler } from "../api/assessment-documents";
+import {
+  assessmentDocumentsExtractionBackgroundHandler,
+  assessmentDocumentsHandler,
+  sanitizeAdobeExtractionDiagnostics,
+} from "../api/assessment-documents";
 import { handler as assessmentDocumentsNetlifyHandler } from "../../../netlify/functions/assessment-documents";
 
 vi.mock("../api/shared", async () => {
@@ -33,6 +37,17 @@ const ORIGINAL_SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const ORIGINAL_FETCH = globalThis.fetch;
 
 describe("assessmentDocumentsHandler", () => {
+  it("discards unknown Adobe stages and invalid upstream statuses", () => {
+    expect(sanitizeAdobeExtractionDiagnostics({ stage: "provider_body", upstream_status: 99 })).toStrictEqual({
+      stage: null,
+      upstreamStatus: null,
+    });
+    expect(sanitizeAdobeExtractionDiagnostics({ stage: "token", upstream_status: 600 })).toStrictEqual({
+      stage: "token",
+      upstreamStatus: null,
+    });
+  });
+
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(currentUserCanManageProgramsGoals).mockResolvedValue({ allowed: true, upstreamError: false });
@@ -3498,7 +3513,13 @@ describe("assessmentDocumentsHandler", () => {
         return {
           ok: false,
           status: 502,
-          data: { error: "Adobe PDF extraction failed. Review checklist manually." },
+          data: {
+            error: "Adobe PDF extraction failed. Review checklist manually.",
+            code: "adobe_pdf_extract_failed",
+            stage: "token",
+            upstream_status: 401,
+            provider_body: "must-not-be-persisted",
+          },
         };
       }
       if (method === "PATCH" && url.includes("/rest/v1/assessment_documents?id=eq.doc-extract-non-ok")) {
@@ -3589,8 +3610,13 @@ describe("assessmentDocumentsHandler", () => {
       event_payload: {
         reason_code: "edge_extraction_failed",
         status: 502,
+        adobe_stage: "token",
+        adobe_upstream_status: 401,
       },
     });
+    expect(JSON.stringify(extractionFailedReviewEventPayload)).not.toContain(
+      "must-not-be-persisted",
+    );
     expect(extractionFailedReviewEventPayload).not.toHaveProperty("notes");
     expect(extractionFailedReviewEventPayload).not.toHaveProperty("extracted_count");
     expect(extractionFailedReviewEventPayload).not.toHaveProperty("unresolved_count");

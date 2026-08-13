@@ -283,32 +283,32 @@ export const IEHP_SKILLS_BEHAVIORS_PROOF_CASE: IehpSkillsBehaviorsProofCase = {
 export const IEHP_GENERATED_DOCX_PARITY_PROOF_CASE: IehpGeneratedDocxParityProofCase = {
   id: 'generated-docx-parity',
   expectedSectionHeadings: [
-    'I. IDENTIFICATION',
+    'Functional Behavioral Assessment Report',
     'Referral Date:',
     'Assessor/Certification:',
-    'II. BEHAVIORS',
-    'III. BACKGROUND INFORMATION',
-    'IV. BHT SCHOOL HOURS',
-    'HEALTH AND MEDICAL',
-    'CURRENT SERVICES AND ACTIVITIES',
-    'INTERVENTION HISTORY',
-    'V. BHT AVAILABILITY',
-    "VI. MEMBER'S ENVIRONMENTAL ANALYSIS:",
-    'VII. DESCRIPTION OF ASSESSMENT PROCEDURES:',
-    'PREFERENCE ASSESSMENT',
-    'Preference Areas: Potential Reinforcers:',
-    'VIII. ADAPTIVE AND FUNCTIONAL MEASURE SUMMARIES',
-    'TARGET BEHAVIORS:',
-    'REPLACEMENT BEHAVIORS:',
-    'SAFETY/CRISIS PROCEDURE',
-    'XI. PARENT EDUCATION',
-    'COORDINATION OF CARE:',
-    'XIII. DISCHARGE CRITERIA:',
-    'TRANSITION OF CARE:',
-    'TEACHING INTERVENTION STRATEGIES',
-    'FAMILY INVOLVEMENT',
-    'XIV. RECOMMENDATIONS:',
-    'REPORT COMPLETED BY:',
+    'BEHAVIORS:',
+    'BACKGROUND INFORMATION:',
+    'BHT (School Hours)',
+    'Health and Medical -',
+    'Current Services and Activities-',
+    'Intervention History -',
+    'BHT Availability',
+    "MEMBER'S ENVIRONMENTAL ANALYSIS:",
+    'DESCRIPTION OF ASSESSMENT PROCEDURES:',
+    'Preference Assessment- Within this section the assessor will state the preference assessment administered to the Member during the assessment.',
+    'Preference Areas:',
+    'ASSESSMENT MEAURES:',
+    'Target Behaviors',
+    'Replacement Behavior(s):',
+    'Safety Procedure/Crisis Plan-',
+    'Parent Education:',
+    'Coordination of Care:',
+    'Discharge, Transition and Exit Plans:',
+    'Transition Planning:',
+    'Teaching Intervention Strategies - Within this section list all teaching procedures and methodologies used to the teach skill deficits and replacement behaviors. Include strategies on generalization, maintenance, thinning schedules of reinforcement, transition to natural mediators, and relapse prevention.',
+    "Family Involvement: Within this section of the report provider will outline parent involvement and participation within the therapy session. Provider will include a statement on the expected level of participation as outlined within the BHT IEHP Policy. Provider will outline the parent training and education approach for teaching the parent goals. Providers will include a plan on how the provider will address parental involvement within therapy sessions. Parent education goals will be listed below. Parent Participation is not an educational goal; it is an expectation. A Parent should have AT LEAST 2 Parent Education Goals.",
+    'Clinical Recommendations',
+    'Report completed by: The Health plan requires the treatment plan to be developed by a BCBA per APL 23-010',
   ],
   expectedBehaviorSkillTerms: [
     'Functional Communication',
@@ -985,7 +985,9 @@ export const deriveIehpGeneratedDocxParityManifest = (args: {
   };
 };
 
-const normalizeParityText = (value: string): string => value.toLowerCase().replace(/\s+/g, ' ').trim();
+const normalizeParityText = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+const normalizeParitySectionHeading = (value: string): string =>
+  normalizeParityText(value.replace(/^\s*[ivxlcdm]+\.\s*/i, ''));
 
 export const assertIehpGeneratedDocxTextParity = (args: {
   generatedDocxText: string;
@@ -993,12 +995,20 @@ export const assertIehpGeneratedDocxTextParity = (args: {
   proofCase?: IehpGeneratedDocxParityProofCase;
 }): IehpGeneratedDocxParityAssertion => {
   const proofCase = args.proofCase ?? IEHP_GENERATED_DOCX_PARITY_PROOF_CASE;
-  const normalizedOutput = normalizeParityText(args.generatedDocxText);
-  const countMatches = (values: readonly string[]): number =>
-    values.filter((value) => normalizedOutput.includes(normalizeParityText(value))).length;
+  const normalizedOutputParagraphs = args.generatedDocxText
+    .split(/\r?\n+/)
+    .map(normalizeParitySectionHeading)
+    .filter((value) => value.length > 0);
+  const countMatches = (values: readonly string[], normalizeExpected = normalizeParityText): number =>
+    values.filter((value) => {
+      const normalizedExpected = normalizeExpected(value);
+      return normalizedOutputParagraphs.some((paragraph) => paragraph.includes(normalizedExpected));
+    }).length;
 
   const matchedNameCount = countMatches(args.sourceManifest.names);
-  const matchedSectionHeadingCount = countMatches(proofCase.expectedSectionHeadings);
+  const matchedSectionHeadingCount = proofCase.expectedSectionHeadings.filter((heading) =>
+    normalizedOutputParagraphs.includes(normalizeParitySectionHeading(heading)),
+  ).length;
   const matchedNarrativeTermCount = countMatches(proofCase.expectedNarrativeTerms);
 
   if (matchedNameCount !== args.sourceManifest.totalNames) {

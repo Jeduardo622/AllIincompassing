@@ -5,7 +5,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { assertIehpDocumentChecklistField } from '../../scripts/lib/iehp-assessment-import-smoke';
+import {
+  IEHP_GENERATED_DOCX_PARITY_PROOF_CASE,
+  assertIehpDocumentChecklistField,
+  assertIehpGeneratedDocxTextParity,
+} from '../../scripts/lib/iehp-assessment-import-smoke';
 
 import {
   assertIehpAssessorPhoneChecklist,
@@ -1373,6 +1377,38 @@ describe('generated DOCX artifact containment', () => {
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }
+  });
+
+  it('matches every representative heading against the bundled generated IEHP DOCX template', async () => {
+    const templateBuffer = readFileSync(
+      path.resolve('supabase/functions/generate-assessment-plan-docx/fill_docs/Updated FBA -IEHP.docx'),
+    );
+    const generatedDocxText = await readSyntheticGeneratedDocxText(templateBuffer);
+
+    expect(
+      assertIehpGeneratedDocxTextParity({
+        generatedDocxText,
+        sourceManifest: {
+          sectionCount: 1,
+          version: 1,
+          names: [],
+          totalNames: 0,
+          behaviorCount: 0,
+          skillCount: 0,
+          matchedCount: 0,
+          detailedOnlyCount: 0,
+          summaryOnlyOrAmbiguousCount: 0,
+        },
+        proofCase: {
+          ...IEHP_GENERATED_DOCX_PARITY_PROOF_CASE,
+          expectedNarrativeTerms: [],
+        },
+      }),
+    ).toMatchObject({
+      expectedSectionHeadingCount: 26,
+      matchedSectionHeadingCount: 26,
+      allExpectedContentPresent: true,
+    });
   });
 });
 

@@ -55,7 +55,9 @@
 - The runner now waits on the restored review when it is already visible and selects the uploaded assessment only when restoration did not occur.
 - Exact-head CI run `31654537699` confirmed the immediate branch was still too early because the assessment queue could remain in its loading state after reload.
 - The runner now waits for either the restored review or the specific uploaded assessment before branching, and fails closed if neither appears within the bounded wait.
-- Focused regression coverage executes both restoration branches, delayed queue readiness, and the fail-closed timeout; `109/109` focused tests pass.
+- Exact-head CI run `31655791717` reached generated DOCX comparison and exposed stale literal heading matching: Word formatting splits text across XML runs, auto-numbering is not literal, and several generated-template labels differ from the source PDF headings.
+- Parity now requires paragraph-level exact semantic matches against the generated IEHP template headings while tolerating Word-run fragmentation and non-literal numbering. Parsed skill/behavior names and source narratives remain independently mandatory.
+- Focused regression coverage executes both restoration branches, delayed queue readiness, fail-closed timeout, Word-run fragmentation, non-literal numbering, and heading/name/narrative cross-paragraph collision negatives; `114/114` focused tests pass. The committed IEHP output template matches all `26/26` representative headings under the corrected contract.
 - The next exact-head hosted run remains the decisive Adobe-backed verification for this fix.
 
 ## Review and PR Hygiene

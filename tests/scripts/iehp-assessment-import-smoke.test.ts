@@ -293,9 +293,6 @@ describe('IEHP assessment import smoke helpers', () => {
   it('renders a dedicated synthetic IEHP generated-docx parity PDF fixture with full extraction headings and deterministic terms', () => {
     const html = buildIehpGeneratedDocxParityPdfHtml(IEHP_GENERATED_DOCX_PARITY_PROOF_CASE);
 
-    for (const heading of IEHP_GENERATED_DOCX_PARITY_PROOF_CASE.expectedSectionHeadings) {
-      expect(html).toContain(heading);
-    }
     for (const term of IEHP_GENERATED_DOCX_PARITY_PROOF_CASE.expectedBehaviorSkillTerms) {
       expect(html).toContain(term);
     }
@@ -734,6 +731,79 @@ describe('assertIehpGeneratedDocxTextParity', () => {
       matchedNarrativeTermCount: 2,
       allExpectedContentPresent: true,
     });
+  });
+
+  it('matches section headings across Word run fragmentation and non-literal numbering', () => {
+    const fragmentedProofCase = {
+      ...proofCase,
+      expectedSectionHeadings: ['II. BEHAVIORS', 'Assessor/Certification:', 'Safety Procedure/Crisis Plan'],
+    };
+    const fragmentedText = [
+      'BEHAVIORS :',
+      'Assessor /C ertification :',
+      'Safety Procedure/Crisis Plan-',
+      ...proofCase.expectedNarrativeTerms,
+      ...sourceManifest.names,
+    ].join('\n');
+
+    expect(
+      assertIehpGeneratedDocxTextParity({
+        generatedDocxText: fragmentedText,
+        sourceManifest,
+        proofCase: fragmentedProofCase,
+      }),
+    ).toMatchObject({
+      matchedSectionHeadingCount: 3,
+      allExpectedContentPresent: true,
+    });
+  });
+
+  it('does not satisfy missing headings with related body text or later behavior headings', () => {
+    const collisionProofCase = {
+      ...proofCase,
+      expectedSectionHeadings: [
+        'II. BEHAVIORS',
+        'ASSESSMENT MEAURES:',
+        'Discharge, Transition and Exit Plans:',
+        'Transition Planning:',
+      ],
+    };
+    const collisionText = [
+      'TARGET BEHAVIORS:',
+      'REPLACEMENT BEHAVIORS:',
+      'Assessment Summary:',
+      'Discharge criteria are described in this body paragraph.',
+      'Transition planning includes fading service intensity.',
+      ...proofCase.expectedNarrativeTerms,
+      ...sourceManifest.names,
+    ].join('\n');
+
+    expect(() =>
+      assertIehpGeneratedDocxTextParity({
+        generatedDocxText: collisionText,
+        sourceManifest,
+        proofCase: collisionProofCase,
+      }),
+    ).toThrow('representative IEHP section heading');
+  });
+
+  it.each([
+    {
+      label: 'skill or behavior name',
+      text: completeText.replace('Behavior One', 'Behavior\nOne'),
+    },
+    {
+      label: 'source narrative',
+      text: completeText.replace('Synthetic narrative two', 'Synthetic narrative\ntwo'),
+    },
+  ])('does not join adjacent paragraphs to satisfy a missing $label', ({ text }) => {
+    expect(() =>
+      assertIehpGeneratedDocxTextParity({
+        generatedDocxText: text,
+        sourceManifest,
+        proofCase,
+      }),
+    ).toThrow('IEHP generated DOCX parity expected');
   });
 
   it.each([

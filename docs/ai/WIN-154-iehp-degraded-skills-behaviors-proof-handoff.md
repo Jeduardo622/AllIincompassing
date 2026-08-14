@@ -107,3 +107,13 @@ The PR is not ready to merge until the owner-dispatched workflow succeeds agains
 - public artifacts contain no raw phone values, fixture text, HTML, data URLs, screenshots, private paths, or error logs
 
 Human review remains required before merge.
+
+## Post-Merge Proof Recovery
+
+- PR `#944` was merged as `f682c3d7fd0944e8f70d1237b1183fd52fe548d8` before the protected Adobe proof was dispatched.
+- Workflow run `31812510109` used the correct former PR head, PR number, owner identity, and approval acknowledgement, but failed closed during `Validate owner approval and open PR head` because PR `#944` was no longer open.
+- The hosted Adobe job was skipped, so that run provides no extraction, Skills and Behaviors, aggregate, or cleanup evidence.
+- Recovery is a docs-only draft PR from the merged `main` tree. It must remain open while the repository owner dispatches `.github/workflows/iehp-pdf-mini-matrix-proof.yml` against the recovery PR's exact 40-character head SHA and PR number.
+- Do not merge the recovery PR until the curated artifacts satisfy every item in **Hosted Acceptance** above.
+
+This recovery does not change or weaken the workflow's immutable open-PR guard, application behavior, extraction code, Adobe configuration, secrets, or deployment behavior.

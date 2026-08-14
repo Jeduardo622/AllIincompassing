@@ -107,3 +107,35 @@ The PR is not ready to merge until the owner-dispatched workflow succeeds agains
 - public artifacts contain no raw phone values, fixture text, HTML, data URLs, screenshots, private paths, or error logs
 
 Human review remains required before merge.
+
+## Final Hosted Proof Result
+
+- Date: August 14, 2026
+- Result: `passed`
+- Implementation PR: `#944`, merged as `f682c3d7fd0944e8f70d1237b1183fd52fe548d8`
+- Final proof run: `31814785273`
+- Validated proof-target PR: `#945`
+- Validated SHA: `25f2a2e2a1154bc604a31f4e49080e171a351cae`
+- Validated base commit: `03667002b1b27a06bef35cd39c6fa615bc7ab3c8`
+- Immutable preview: `https://6a7f327e569d640008745ad3--velvety-cendol-dae4d6.netlify.app`
+
+Final curated evidence proved:
+
+- `totalCases: 8`
+- `passedCases: 8`
+- `cleanupVerifiedCases: 8`
+- `skillsBehaviorsVerifiedCases: 1`
+- exact canonical eight-case order
+- degraded Skills and Behaviors case ID `skills-behaviors-proof-300dpi-monochrome-rotated-2deg`
+- behavior, skill, needs-review, detailed-only, parent exclusion, and provenance assertions all true
+- every case reached `extracted` with zero program and goal drafts
+- no raw phones, fixture strings, HTML or data URLs, screenshots, private paths, or error fields in curated artifacts
+
+Artifact SHA-256:
+
+- `aggregate.json`: `5ee8d8acbfb684baa7af4ed6048e891f79595c8376f55504279b307493a93a8e`
+- `cases.json`: `79e3dfeb06a80fa8dd1ccbf2673e95d2d05dd630d1a293a33c1a72d2a6045312`
+- `run-metadata.json`: `9a279b7a833b5e8947728d4eae1993b32fce5960d478345a033b8a34b9c2e63c`
+- `run-status.json`: `533f6adfaeb82b0ddbe47f8970b80efc2e2515d88a23b7d42216805518889e2a`
+
+Proof-target PR `#945` was closed without merge after unrelated PR `#947` advanced `main`. The proof run and its immutable artifacts remain valid for the tested implementation. This docs-only evidence update supersedes the pending hosted-proof language above and is not a new Adobe proof target; it does not require another protected workflow dispatch.

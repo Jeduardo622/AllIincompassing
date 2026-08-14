@@ -74,6 +74,10 @@ describe("openScheduleSessionModalFromCalendar", () => {
     expect(navigated.searchParams.get("scheduleModal")).toBe("edit");
     expect(navigated.searchParams.get("scheduleSessionId")).toBe(target.sessionId);
     expect(navigated.searchParams.get("scheduleExp")).toBe(String(expiresAtMs));
+    expect(vi.mocked(page.goto).mock.calls[0]?.[1]).toEqual({
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
     expect(dialog.waitFor).toHaveBeenCalledWith({ state: "visible", timeout: 30_000 });
   });
 
@@ -173,6 +177,10 @@ describe("openScheduleSessionModalFromCalendar", () => {
       allowLockedTherapist: true,
     });
 
+    expect(vi.mocked(page.goto).mock.calls[0]?.[1]).toEqual({
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
     expect(events).toEqual(["week-click", "summary-click", "client-select", "next-click", "card-click"]);
     expect(card.waitFor).toHaveBeenCalledTimes(2);
   });

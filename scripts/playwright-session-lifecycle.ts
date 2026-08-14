@@ -1071,7 +1071,7 @@ async function chooseSessionTargetsExcluding(
 async function bookSession(page: Page, token: string, strictMode: boolean, actorUserId: string): Promise<LifecycleIds> {
   const scheduleUrl = `${getEnv("PW_BASE_URL", "https://app.allincompassing.ai")}/schedule`;
   await page.goto(scheduleUrl, {
-    waitUntil: "networkidle",
+    waitUntil: "domcontentloaded",
     timeout: 60000,
   });
   await page.waitForSelector("text=Schedule", { timeout: 15_000 }).catch(() => undefined);
@@ -1835,7 +1835,7 @@ async function startSessionViaScheduleModal(
       await editDialog.waitFor({ state: "hidden", timeout: 90_000 }).catch(() => undefined);
     }
   }
-  await page.goto(scheduleUrl, { waitUntil: "networkidle", timeout: 60000 });
+  await page.goto(scheduleUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
 }
 
 async function markTerminalViaScheduleModal(

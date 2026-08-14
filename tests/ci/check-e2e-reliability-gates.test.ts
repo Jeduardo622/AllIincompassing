@@ -280,6 +280,21 @@ describe("check-e2e-reliability-gates", () => {
     expect(blockedClose).toContain('openScheduleSessionModalFromCalendar(activePage, `${base}/schedule`, booked,');
   });
 
+  test("required Schedule session navigation does not block on global network idle", () => {
+    for (const relativePath of [
+      "scripts/lib/playwright-inprogress-session-setup.ts",
+      "scripts/lib/playwright-schedule-session-modal.ts",
+      "scripts/playwright-session-lifecycle.ts",
+      "scripts/playwright-session-note-measurement-roundtrip.ts",
+      "scripts/playwright-session-capture-adhoc-upsert.ts",
+    ]) {
+      const content = readFileSync(path.join(repoRoot, relativePath), "utf8");
+      expect(content, relativePath).not.toMatch(
+        /\b(?:page|activePage)\.goto\([\s\S]{0,220}?waitUntil:\s*["']networkidle["']/,
+      );
+    }
+  });
+
   test("session lifecycle records a controlled Schedule state before rejecting credentials", () => {
     const lifecycle = readFileSync(
       path.join(repoRoot, "scripts", "playwright-session-lifecycle.ts"),

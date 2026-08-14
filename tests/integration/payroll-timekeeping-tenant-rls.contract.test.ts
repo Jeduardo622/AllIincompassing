@@ -34,6 +34,17 @@ const sessionLifecycleAdditiveSql = readFileSync(
   path.join(process.cwd(), "supabase", "migrations", sessionLifecycleAdditiveMigrationName),
   "utf8",
 );
+const sessionLifecyclePrecedenceRepairMigrationName =
+  "20260814183500_payroll_session_context_disabled_precedence.sql";
+const sessionLifecyclePrecedenceRepairSql = readFileSync(
+  path.join(
+    process.cwd(),
+    "supabase",
+    "migrations",
+    sessionLifecyclePrecedenceRepairMigrationName,
+  ),
+  "utf8",
+);
 const approvalMigrationName =
   readdirSync(path.join(process.cwd(), "supabase", "migrations")).find((name) =>
     name.endsWith("payroll_approval_workflow.sql"),
@@ -70,7 +81,7 @@ const managerAssignmentAdvisorRemediationSql =
         "utf8",
       )
     : "";
-const sessionLifecycleSql = `${sessionLifecycleBaseSql}\n${sessionLifecycleAdditiveSql}`;
+const sessionLifecycleSql = `${sessionLifecycleBaseSql}\n${sessionLifecycleAdditiveSql}\n${sessionLifecyclePrecedenceRepairSql}`;
 const functionDefinition = (qualifiedName: string): string => {
   const matches = `${sql}\n${captureSql}\n${sessionLifecycleSql}\n${approvalSql}\n${reviewReadModelsSql}`.match(
     new RegExp(
@@ -102,7 +113,7 @@ describe("payroll timekeeping tenant and RLS contract", () => {
     );
   });
 
-  it("keeps the bounded Task 2E lifecycle base migration and adds a scoped disabled-state override without widening raw source-event access", () => {
+  it("keeps the bounded Task 2E lifecycle history and adds a capability-gated disabled-state precedence repair", () => {
     expect(sessionLifecycleBaseSql).toMatch(
       /@migration-dependencies:\s*20260811214856_payroll_timekeeping_capture_read_model\.sql/i,
     );
@@ -117,6 +128,15 @@ describe("payroll timekeeping tenant and RLS contract", () => {
     );
     expect(sessionLifecycleAdditiveSql).toMatch(
       /grant execute on function public\.get_session_payroll_context\(uuid\) to authenticated/i,
+    );
+    expect(sessionLifecyclePrecedenceRepairSql).toMatch(
+      /@migration-dependencies:\s*20260812113000_payroll_session_lifecycle_context_disabled_state\.sql/i,
+    );
+    expect(sessionLifecyclePrecedenceRepairSql).toMatch(
+      /v_can_record_assigned\s*:=\s*app\.payroll_actor_has_capability\([\s\S]*?'session_attendance\.record_assigned'/i,
+    );
+    expect(sessionLifecyclePrecedenceRepairSql).toMatch(
+      /v_feature_flag_found is true[\s\S]*?v_can_record_assigned[\s\S]*?'state',\s*'feature_disabled'/i,
     );
     expect(sessionLifecycleSql).not.toMatch(
       /grant execute on function public\.get_session_payroll_context\(uuid\) to authenticated,\s*service_role/i,

@@ -6,7 +6,7 @@ import {
 } from "../../scripts/ci/check-runtime-migration-parity.mjs";
 
 describe("check-runtime-migration-parity", () => {
-  it("includes the payroll security repair and advisor remediation migrations in the explicit WIN-219 contract", () => {
+  it("includes the payroll security repair and latest advisor/session repairs in the explicit WIN-219 contract", () => {
     const entries = WIN_219_PAYROLL_MIGRATION_CONTRACT.split(",");
 
     expect(entries).toContain(
@@ -14,6 +14,9 @@ describe("check-runtime-migration-parity", () => {
     );
     expect(entries).toContain(
       "20260814172117|payroll_manager_assignment_advisor_remediation",
+    );
+    expect(entries).toContain(
+      "20260814183500|payroll_session_context_disabled_precedence",
     );
   });
 

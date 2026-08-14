@@ -380,7 +380,7 @@ ${runtimeParityRestriction ? `    if: ${runtimeParityRestriction}
       - env:
           MIGRATION_PARITY_BASE_SHA: \${{ needs.change_scope.outputs.base_sha }}
           MIGRATION_PARITY_HEAD_SHA: \${{ needs.change_scope.outputs.head_sha }}
-          MIGRATION_PARITY_REQUIRED_MIGRATIONS: "20260811214856|payroll_timekeeping_capture_read_model,20260812060529|payroll_timesheet_snapshots,20260812103000|payroll_session_lifecycle_context,20260812113000|payroll_session_lifecycle_context_disabled_state,20260812122436|payroll_approval_workflow,20260812141324|payroll_review_read_models,20260812153628|payroll_administration,20260812185531|payroll_approval_workflow_repair,20260812212854|payroll_timesheet_period_contract_repair,20260812230837|payroll_export_ledger,20260813013000|payroll_approval_codex_review_fixes,20260813103000|payroll_security_repair,20260814172117|payroll_manager_assignment_advisor_remediation,20260814183500|payroll_session_context_disabled_precedence,20260814191200|payroll_session_context_enabled_authority_repair,20260814205000|profile_insert_sync_bypass"
+          MIGRATION_PARITY_REQUIRED_MIGRATIONS: "20260811214856|payroll_timekeeping_capture_read_model,20260812060529|payroll_timesheet_snapshots,20260812103000|payroll_session_lifecycle_context,20260812113000|payroll_session_lifecycle_context_disabled_state,20260812122436|payroll_approval_workflow,20260812141324|payroll_review_read_models,20260812153628|payroll_administration,20260812185531|payroll_approval_workflow_repair,20260812212854|payroll_timesheet_period_contract_repair,20260812230837|payroll_export_ledger,20260813013000|payroll_approval_codex_review_fixes,20260813103000|payroll_security_repair,20260814172117|payroll_manager_assignment_advisor_remediation,20260814183500|payroll_session_context_disabled_precedence,20260814191200|payroll_session_context_enabled_authority_repair,20260814205000|profile_insert_sync_bypass,20260814213754|session_audit_created_by_typo_repair"
           ACTIVATE_PAYROLL_TIMESHEETS: \${{ inputs.activate_payroll_timesheets || false }}
           ACTIVATE_PAYROLL_EXPORT: \${{ inputs.activate_payroll_export || false }}
           ACTIVATE_PAYROLL_APPROVALS: \${{ inputs.activate_payroll_approvals || false }}
@@ -1976,6 +1976,32 @@ describe("check-session-deploy-safety", () => {
       workflowPath,
       current.replace(
         ",20260814205000|profile_insert_sync_bypass",
+        "",
+      ),
+      "utf8",
+    );
+
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "runtime_migration_parity must run the merge-range checker with change_scope SHAs, the explicit WIN-219 payroll migration contract, activation flags, and SUPABASE_DB_URL",
+    );
+  });
+
+  test("rejects runtime_migration_parity when the explicit contract omits session_audit_created_by_typo_repair", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        workflowComment:
+          "# session audit created-by typo repair parity regression fixture",
+      },
+    });
+    const workflowPath = path.join(fixtureRoot, ".github", "workflows", "ci.yml");
+    const current = readFileSync(workflowPath, "utf8");
+    writeFileSync(
+      workflowPath,
+      current.replace(
+        ",20260814213754|session_audit_created_by_typo_repair",
         "",
       ),
       "utf8",

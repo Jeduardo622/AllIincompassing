@@ -22,6 +22,7 @@ export const WIN_219_PAYROLL_MIGRATION_CONTRACT = [
   "20260814183500|payroll_session_context_disabled_precedence",
   "20260814191200|payroll_session_context_enabled_authority_repair",
   "20260814205000|profile_insert_sync_bypass",
+  "20260814213754|session_audit_created_by_typo_repair",
 ].join(",");
 
 const baseSha = process.env.MIGRATION_PARITY_BASE_SHA ?? process.env.GITHUB_EVENT_BEFORE ?? "";

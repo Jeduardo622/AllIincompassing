@@ -24,6 +24,9 @@ describe("check-runtime-migration-parity", () => {
     expect(entries).toContain(
       "20260814205000|profile_insert_sync_bypass",
     );
+    expect(entries).toContain(
+      "20260814213754|session_audit_created_by_typo_repair",
+    );
   });
 
   it("fails closed for manual payroll activation when the explicit WIN-219 migration contract is missing", () => {

@@ -17,11 +17,16 @@ import {
   cleanupVerificationColumn,
   cleanupSmokeAdminRows,
   discoverSmokeAdminCleanupTargets,
+  ensureSmokeAdminRoleMapping,
   getMissingProvisionSecrets,
+  isRunOwnedSmokeAdminActor,
   resolveSmokeAdminOrganizationId,
   resolveCleanupSmokeAdminEmail,
+  readTrackedSmokeSessionIds,
   serializeError,
   shouldSkipForSecretlessPullRequest,
+  trackSmokeSessionId,
+  validateTrackedSmokeSessionOwnership,
   writeGitHubEnv,
 } from '../../scripts/provision-ci-smoke-admin';
 
@@ -75,6 +80,95 @@ describe('provision-ci-smoke-admin safeguards', () => {
     await expect(
       resolveSmokeAdminOrganizationId(client as never, 'schedule@example.com'),
     ).resolves.toBe('5238e88b-6198-4862-80a2-dbe15bbeabdd');
+  });
+
+  it('reasserts and verifies the synthetic admin profile tenant binding', async () => {
+    const calls: string[] = [];
+    const client = {
+      from: (table: string) => {
+        if (table === 'roles') {
+          return {
+            select: () => ({
+              eq: () => ({ maybeSingle: async () => ({ data: { id: 'role-super-admin' }, error: null }) }),
+            }),
+          };
+        }
+        if (table === 'profiles') {
+          return {
+            upsert: async (payload: Record<string, unknown>) => {
+              calls.push(`profile-upsert:${String(payload.organization_id)}`);
+              return { error: null };
+            },
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: {
+                    organization_id: '5238e88b-6198-4862-80a2-dbe15bbeabdd',
+                    is_active: true,
+                    role: 'super_admin',
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        return {
+          upsert: async () => {
+            calls.push('user-role-upsert');
+            return { error: null };
+          },
+        };
+      },
+    };
+
+    await expect(ensureSmokeAdminRoleMapping(
+      client as never,
+      'd4c6b27f-f11c-42c9-b8ff-58b906f3f395',
+      'playwright.ci.auth_browser_smoke.1.1@example.com',
+      'super_admin',
+      '5238e88b-6198-4862-80a2-dbe15bbeabdd',
+    )).resolves.toBeUndefined();
+    expect(calls).toEqual([
+      'profile-upsert:5238e88b-6198-4862-80a2-dbe15bbeabdd',
+      'user-role-upsert',
+    ]);
+  });
+
+  it('fails closed when the synthetic profile tenant binding does not persist', async () => {
+    const client = {
+      from: (table: string) => {
+        if (table === 'roles') {
+          return {
+            select: () => ({
+              eq: () => ({ maybeSingle: async () => ({ data: { id: 'role-super-admin' }, error: null }) }),
+            }),
+          };
+        }
+        if (table === 'profiles') {
+          return {
+            upsert: async () => ({ error: null }),
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: { organization_id: null, is_active: true, role: 'super_admin' },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        return { upsert: async () => ({ error: null }) };
+      },
+    };
+
+    await expect(ensureSmokeAdminRoleMapping(
+      client as never,
+      'd4c6b27f-f11c-42c9-b8ff-58b906f3f395',
+      'playwright.ci.auth_browser_smoke.1.1@example.com',
+      'super_admin',
+      '5238e88b-6198-4862-80a2-dbe15bbeabdd',
+    )).rejects.toThrow('Synthetic smoke admin profile tenant binding did not persist');
   });
 
   it('fails closed when a requested tenant scope cannot resolve to one profile organization', async () => {
@@ -436,6 +530,74 @@ describe('provision-ci-smoke-admin safeguards', () => {
     expect(packageJson.scripts?.['ci:playwright']).toContain('playwright:preflight');
     expect(sessionStep).toContain('SUPABASE_SERVICE_ROLE_KEY');
     expect(provisionStep).toContain('CI_SMOKE_ADMIN_SCOPE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}');
+  });
+
+  it('tracks exact run-owned session ids for cleanup even when created_by is null', () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), 'smoke-session-tracking-'));
+    const env = {
+      RUNNER_TEMP: tmp,
+      GITHUB_RUN_ID: '31835386027',
+      GITHUB_RUN_ATTEMPT: '1',
+      GITHUB_JOB: 'auth_browser_smoke',
+    } as NodeJS.ProcessEnv;
+    const first = '63a0e4ae-0b24-4e8b-8c22-ea6c79ad7fe0';
+    const second = '73a0e4ae-0b24-4e8b-8c22-ea6c79ad7fe1';
+
+    try {
+      trackSmokeSessionId(first, env);
+      trackSmokeSessionId(second, env);
+      trackSmokeSessionId(first, env);
+      expect(readTrackedSmokeSessionIds(env)).toEqual([first, second]);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('only classifies the exact provisioned synthetic actor as run-owned', () => {
+    const env = { PW_SUPERADMIN_USER_ID: 'd4c6b27f-f11c-42c9-b8ff-58b906f3f395' } as NodeJS.ProcessEnv;
+    expect(isRunOwnedSmokeAdminActor('d4c6b27f-f11c-42c9-b8ff-58b906f3f395', env)).toBe(true);
+    expect(isRunOwnedSmokeAdminActor('63a0e4ae-0b24-4e8b-8c22-ea6c79ad7fe0', env)).toBe(false);
+  });
+
+  it('accepts tracked cleanup ids only when every session is bound to the run-owned actor', async () => {
+    const userId = 'd4c6b27f-f11c-42c9-b8ff-58b906f3f395';
+    const sessionId = '63a0e4ae-0b24-4e8b-8c22-ea6c79ad7fe0';
+    const client = {
+      from: () => ({
+        select: () => ({
+          in: async () => ({ data: [{ id: sessionId, created_by: userId }], error: null }),
+        }),
+      }),
+    };
+    await expect(validateTrackedSmokeSessionOwnership(client as never, userId, [sessionId])).resolves.toEqual([sessionId]);
+  });
+
+  it('rejects a tracked cleanup id that is not bound to the run-owned actor', async () => {
+    const userId = 'd4c6b27f-f11c-42c9-b8ff-58b906f3f395';
+    const sessionId = '63a0e4ae-0b24-4e8b-8c22-ea6c79ad7fe0';
+    const client = {
+      from: () => ({
+        select: () => ({
+          in: async () => ({ data: [{ id: sessionId, created_by: null }], error: null }),
+        }),
+      }),
+    };
+    await expect(validateTrackedSmokeSessionOwnership(client as never, userId, [sessionId])).rejects.toThrow(
+      'Tracked synthetic session ownership verification failed',
+    );
+  });
+
+  it('reasserts the run-owned synthetic tenant mapping after booking and before session start', () => {
+    const lifecycleScript = readFileSync(
+      path.join(process.cwd(), 'scripts/playwright-session-lifecycle.ts'),
+      'utf8',
+    );
+    const booking = lifecycleScript.indexOf('Object.assign(ids, booked)');
+    const reassertion = lifecycleScript.lastIndexOf('ensureSyntheticLifecycleActorScope');
+    const sessionStart = lifecycleScript.indexOf('startSessionViaScheduleModal(activePage');
+
+    expect(reassertion).toBeGreaterThan(booking);
+    expect(sessionStart).toBeGreaterThan(reassertion);
   });
 
   it('preserves the secretless pull_request skip path for provisioning and cleanup', () => {

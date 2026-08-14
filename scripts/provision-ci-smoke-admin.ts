@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
+import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 type RoleName = 'super_admin';
@@ -182,7 +183,7 @@ export const resolveSmokeAdminOrganizationId = async (
   return profile.organization_id;
 };
 
-const ensureRoleMapping = async (
+export const ensureSmokeAdminRoleMapping = async (
   client: SupabaseClient,
   userId: string,
   email: string,
@@ -231,6 +232,22 @@ const ensureRoleMapping = async (
   if (userRoleError) {
     throw userRoleError;
   }
+
+  const { data: persistedProfile, error: persistedProfileError } = await client
+    .from('profiles')
+    .select('organization_id,is_active,role')
+    .eq('id', userId)
+    .maybeSingle();
+  if (persistedProfileError) {
+    throw new Error(`Synthetic smoke admin profile verification failed: ${serializeError(persistedProfileError)}`);
+  }
+  if (
+    persistedProfile?.organization_id !== organizationId
+    || persistedProfile.is_active !== true
+    || persistedProfile.role !== role
+  ) {
+    throw new Error('Synthetic smoke admin profile tenant binding did not persist.');
+  }
 };
 
 export const writeGitHubEnv = (email: string, password: string, userId: string): void => {
@@ -251,6 +268,76 @@ export const resolveCleanupSmokeAdminEmail = (): string => (
   || process.env.PW_SUPERADMIN_EMAIL?.trim()
   || buildDefaultSmokeAdminEmail()
 ).toLowerCase();
+
+const resolveSmokeSessionTrackingPath = (env: NodeJS.ProcessEnv = process.env): string | null => {
+  const runnerTemp = env.RUNNER_TEMP?.trim();
+  const runId = env.GITHUB_RUN_ID?.trim();
+  const runAttempt = env.GITHUB_RUN_ATTEMPT?.trim();
+  const job = env.GITHUB_JOB?.trim();
+  if (!runnerTemp || !runId || !runAttempt || !job) {
+    return null;
+  }
+  return path.join(runnerTemp, `ci-smoke-session-ids-${job}-${runId}-${runAttempt}.txt`);
+};
+
+export const trackSmokeSessionId = (
+  sessionId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): void => {
+  if (!UUID_PATTERN.test(sessionId)) {
+    throw new Error('Refusing to track an invalid synthetic session id.');
+  }
+  const trackingPath = resolveSmokeSessionTrackingPath(env);
+  if (!trackingPath) {
+    return;
+  }
+  appendFileSync(trackingPath, `${sessionId}\n`, { encoding: 'utf8' });
+};
+
+export const readTrackedSmokeSessionIds = (
+  env: NodeJS.ProcessEnv = process.env,
+): string[] => {
+  const trackingPath = resolveSmokeSessionTrackingPath(env);
+  if (!trackingPath || !existsSync(trackingPath)) {
+    return [];
+  }
+  const values = readFileSync(trackingPath, 'utf8')
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (values.some((value) => !UUID_PATTERN.test(value))) {
+    throw new Error('Synthetic session tracking file contains an invalid id.');
+  }
+  return Array.from(new Set(values));
+};
+
+export const isRunOwnedSmokeAdminActor = (
+  userId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean => UUID_PATTERN.test(userId)
+  && userId === env.PW_SUPERADMIN_USER_ID?.trim();
+
+export const validateTrackedSmokeSessionOwnership = async (
+  client: SupabaseClient,
+  userId: string,
+  sessionIds: string[],
+): Promise<string[]> => {
+  if (sessionIds.length === 0) {
+    return [];
+  }
+  const { data, error } = await client
+    .from('sessions')
+    .select('id,created_by')
+    .in('id', sessionIds);
+  if (error) {
+    throw new Error(`Tracked synthetic session ownership lookup failed: ${serializeError(error)}`);
+  }
+  const ownedIds = new Set((data ?? []).filter((row) => row.created_by === userId).map((row) => row.id));
+  if (ownedIds.size !== sessionIds.length || sessionIds.some((sessionId) => !ownedIds.has(sessionId))) {
+    throw new Error('Tracked synthetic session ownership verification failed.');
+  }
+  return sessionIds;
+};
 
 const extractCleanupTargetIds = (
   rows: Array<{ id?: unknown }> | null,
@@ -392,7 +479,7 @@ const provision = async (): Promise<void> => {
     if (error) {
       throw error;
     }
-    await ensureRoleMapping(client, existing.id, email, 'super_admin', organizationId);
+    await ensureSmokeAdminRoleMapping(client, existing.id, email, 'super_admin', organizationId);
     writeGitHubEnv(email, password, existing.id);
     console.log(JSON.stringify({ ok: true, action: 'updated', email, userId: existing.id }));
     return;
@@ -413,7 +500,7 @@ const provision = async (): Promise<void> => {
     throw new Error('Supabase did not return a created smoke user.');
   }
 
-  await ensureRoleMapping(client, data.user.id, email, 'super_admin', organizationId);
+  await ensureSmokeAdminRoleMapping(client, data.user.id, email, 'super_admin', organizationId);
   writeGitHubEnv(email, password, data.user.id);
   console.log(JSON.stringify({ ok: true, action: 'created', email, userId: data.user.id }));
 };
@@ -439,7 +526,19 @@ const cleanup = async (): Promise<void> => {
   const user = userData.user;
   assertSmokeAdminOwnership(user, email);
 
-  const cleanupTargets = await discoverSmokeAdminCleanupTargets(client, userId);
+  const discoveredTargets = await discoverSmokeAdminCleanupTargets(client, userId);
+  const trackedSessionIds = await validateTrackedSmokeSessionOwnership(
+    client,
+    userId,
+    readTrackedSmokeSessionIds(),
+  );
+  const cleanupTargets = {
+    ...discoveredTargets,
+    sessionIds: Array.from(new Set([
+      ...discoveredTargets.sessionIds,
+      ...trackedSessionIds,
+    ])),
+  };
   await cleanupSmokeAdminRows(client, userId, cleanupTargets);
 
   const { error } = await client.auth.admin.deleteUser(userId);

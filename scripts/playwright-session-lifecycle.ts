@@ -31,6 +31,12 @@ import {
   selectSessionPlanControls,
 } from "./lib/playwright-session-plan-controls";
 import { buildServiceRoleFallbackSessionInsert } from "./lib/playwright-inprogress-session-setup";
+import {
+  assertDedicatedSmokeEmail,
+  ensureSmokeAdminRoleMapping,
+  isRunOwnedSmokeAdminActor,
+  trackSmokeSessionId,
+} from "./provision-ci-smoke-admin";
 
 export { buildSessionPlanControlSelectors } from "./lib/playwright-session-plan-controls";
 
@@ -175,6 +181,65 @@ const getActorUserIdFromToken = (token: string): string => {
     throw new Error("Unable to resolve authenticated actor user id from lifecycle access token.");
   }
   return subject;
+};
+
+export const ensureSyntheticLifecycleActorScope = async (params: {
+  actorUserId: string;
+  actorEmail: string;
+  sessionId: string;
+}): Promise<void> => {
+  const expectedActorUserId = getEnv("PW_SUPERADMIN_USER_ID");
+  if (params.actorUserId !== expectedActorUserId) {
+    throw new Error("Refusing to reassert tenant scope for a non-run-owned smoke actor.");
+  }
+  assertDedicatedSmokeEmail(params.actorEmail);
+
+  const adminClient = createClient(
+    getEnv("VITE_SUPABASE_URL"),
+    getEnv("SUPABASE_SERVICE_ROLE_KEY"),
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false,
+      },
+    },
+  );
+  const { data: sessionRow, error: sessionError } = await adminClient
+    .from("sessions")
+    .select("organization_id,created_by")
+    .eq("id", params.sessionId)
+    .maybeSingle();
+  if (sessionError || typeof sessionRow?.organization_id !== "string") {
+    throw new Error(
+      `Unable to resolve synthetic lifecycle session tenant: ${sessionError?.message ?? "missing organization"}`,
+    );
+  }
+  if (sessionRow.created_by !== null && sessionRow.created_by !== params.actorUserId) {
+    throw new Error("Refusing to claim a lifecycle session owned by another actor.");
+  }
+  if (sessionRow.created_by === null) {
+    const { data: claimedSession, error: claimError } = await adminClient
+      .from("sessions")
+      .update({ created_by: params.actorUserId })
+      .eq("id", params.sessionId)
+      .is("created_by", null)
+      .select("id,created_by")
+      .maybeSingle();
+    if (claimError || claimedSession?.created_by !== params.actorUserId) {
+      throw new Error(
+        `Unable to bind lifecycle session cleanup ownership: ${claimError?.message ?? "ownership changed"}`,
+      );
+    }
+  }
+
+  await ensureSmokeAdminRoleMapping(
+    adminClient,
+    params.actorUserId,
+    params.actorEmail,
+    "super_admin",
+    sessionRow.organization_id,
+  );
 };
 
 async function fetchRuntimeProjectRef(page: Page, baseUrl: string): Promise<string | null> {
@@ -1983,6 +2048,15 @@ export async function run() {
       }
     }
     Object.assign(ids, booked);
+    if (isRunOwnedSmokeAdminActor(actorUserId)) {
+      await withStepTimeout("reassert synthetic actor tenant scope", () =>
+        ensureSyntheticLifecycleActorScope({
+          actorUserId,
+          actorEmail: authenticatedCredential.email,
+          sessionId: booked.sessionId,
+        }));
+      trackSmokeSessionId(booked.sessionId);
+    }
     const scheduleUrl = `${base}/schedule`;
     await withStepTimeout("start-session-modal", () =>
       startSessionViaScheduleModal(activePage, scheduleUrl, booked, token, strictParityMode));

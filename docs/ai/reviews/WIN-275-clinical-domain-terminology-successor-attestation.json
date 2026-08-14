@@ -5,7 +5,7 @@
   "successorKey": "clinical-domain-terminology",
   "repository": "Jeduardo622/AllIincompassing",
   "createdAt": "2026-08-11T11:35:27.4621824-07:00",
-  "status": "PASS_WITH_CI_PENDING",
+  "status": "FINAL_REVIEW_FIXES_CI_PENDING",
   "authorization": {
     "uiOnlyEvidence": true,
     "hostedAction": false,
@@ -50,10 +50,14 @@
     ]
   },
   "branchContext": {
-    "branch": "codex/win-275-terminology-successor",
+    "branch": "codex/win-275-attestation-contract-repair",
+    "mergedUiBranch": "codex/win-275-terminology-ui-review-fixes",
+    "originalBranch": "codex/win-275-terminology-successor",
     "baseMergeCommit": "37e7cbfa888ebb3b33cf895cb9638f6b6590bd5f",
-    "implementationHeadCommit": "e5f9e0843149df6260838d75df66feebb11a979c",
-    "mergedVerificationHeadCommit": "e5f9e0843149df6260838d75df66feebb11a979c"
+    "originalImplementationHeadCommit": "e5f9e0843149df6260838d75df66feebb11a979c",
+    "initialReviewFixImplementationHeadCommit": "2fb23276af27355d14e98a8d202e21cbc9b01ff9",
+    "implementationHeadCommit": "93aed703592e357fe8835bd0ea5023268202532b",
+    "mergedVerificationHeadCommit": "f3be4aaf558c6331724f1ba1439ad7d98e4000ad"
   },
   "successorAgents": {
     "specification-engineer": {
@@ -111,10 +115,34 @@
     "responsive-closure-security-engineer": {
       "agentId": "019ff29d-0687-7e60-a659-535a66c25a49",
       "status": "APPROVE"
+    },
+    "review-fix-code-review-engineer": {
+      "agentId": "019ff8d8-5a76-70a2-8117-2f84f6f436ea",
+      "status": "APPROVE"
+    },
+    "review-fix-test-engineer": {
+      "agentId": "019ff8d8-5c33-78f1-a833-b13bc1bb2747",
+      "status": "PASS_WITH_LOCAL_FULL_SUITE_RESOURCE_BLOCKER"
+    },
+    "review-fix-security-engineer": {
+      "agentId": "019ff8d8-5fc5-7321-b98e-134d07008c90",
+      "status": "APPROVE"
+    },
+    "final-review-fix-code-review-engineer": {
+      "agentId": "019ff8fa-7e2f-7512-8be3-893ef801ec95",
+      "status": "APPROVE"
+    },
+    "final-review-fix-test-engineer": {
+      "agentId": "019ff8fa-80e7-74f1-9328-e051d057c66a",
+      "status": "PASS_AFTER_COVERAGE_EXPANSION"
+    },
+    "final-review-fix-security-engineer": {
+      "agentId": "019ff8fa-8513-7853-8e66-13f52f61bd51",
+      "status": "APPROVE"
     }
   },
   "verification": {
-    "result": "pass-with-blocked-checks",
+    "result": "pass-with-exact-head-ci-pending",
     "passed": [
       "npm run lint",
       "npm run typecheck",
@@ -126,39 +154,53 @@
       "npm run test:routes:tier0: 220 tests",
       "npm run test:ci: 4178 tests across 484 files",
       "npm run ci:verify-coverage: 92.81 percent line coverage",
-      "NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local"
+      "NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local",
+      "PR #922 exact-head required CI at b547ee73",
+      "final review-fix component tests: 147 tests",
+      "final review-fix focused hosted-proof contract: 38 tests",
+      "final review-fix responsive observer: four of four route and viewport results"
     ],
     "failed": [],
     "blocked": [
-      "npm run ci:playwright requires PW_ADMIN or PW_SUPERADMIN credentials and stopped at preflight locally",
-      "exact-head CI requires this evidence refresh to be committed and pushed"
+      "Credential-backed local npm run ci:playwright remains unavailable",
+      "PR #934 exact-head required CI must pass after the final review-fix evidence refresh"
     ]
   },
   "predecessorReferences": [
     {
       "path": "docs/ai/reviews/WIN-275-solo-maintainer-attestation.json",
-      "sha256": "53e83bd78fef02c24dbd4bf8fbd66bdd4f92c38b44f0edfd61d9aceb1b5aa322"
+      "revision": "e5f9e0843149df6260838d75df66feebb11a979c",
+      "sha256": "9f7ca21e7254fea8481135d521176dddf6e540b69cf57ceef0caf0504de3f6f1"
     },
     {
       "path": "docs/ai/reviews/WIN-275-agent-work-ledger-adoption-contract-attestation.json",
-      "sha256": "8b7517861e1a5ade3a6c6a8f385866a334f7f0d08aa45ac67a6e068d02d87303"
+      "revision": "e5f9e0843149df6260838d75df66feebb11a979c",
+      "sha256": "0d0c81bf5afd7dd46d91a46bccd7f41dc4052126bf20a4eca04f867a5599e426"
     },
     {
       "path": "docs/ai/reviews/WIN-275-retention-policy-encoding-attestation.json",
-      "sha256": "14cfe7c62cc44d9191fa7727a3d9f1cd022c343c610d96bb4a572a0682fb5f95"
+      "revision": "e5f9e0843149df6260838d75df66feebb11a979c",
+      "sha256": "a3abb27dcc9d42dced604ec67c0b566d707dbf46808846c8fc3ea25f1d059cf3"
     },
     {
       "path": "docs/ai/reviews/WIN-275-local-operator-responsive-observer-attestation.json",
-      "sha256": "4ebba04d72666b1d78454834dfd8dedc81b72906ec80398b52e678f3d86a9f93"
+      "revision": "e5f9e0843149df6260838d75df66feebb11a979c",
+      "sha256": "4757b1cf4d71009a30eba9b24ab385d40dc381c3f14abcf0b54a5d879e387c2b"
     },
     {
-      "path": "docs/ai/reviews/WIN-275-hosted-shadow-proof-attestation.md"
+      "path": "docs/ai/reviews/WIN-275-hosted-shadow-proof-attestation.md",
+      "revision": "e5f9e0843149df6260838d75df66feebb11a979c",
+      "sha256": "e463e0cd355f9220204dc6498b208b46b6bb9995eb962f7032218c4615810c27"
     },
     {
-      "path": "docs/ai/handoffs/WIN-275-ledger-hash-baseline-repair.md"
+      "path": "docs/ai/handoffs/WIN-275-ledger-hash-baseline-repair.md",
+      "revision": "e5f9e0843149df6260838d75df66feebb11a979c",
+      "sha256": "0d9107ce976cbdd5fb8c23a047038d9b50e1505dc3f72906727bfce8a6ac5ca4"
     },
     {
-      "path": "docs/ai/handoffs/WIN-275-supabase-validate-playwright.md"
+      "path": "docs/ai/handoffs/WIN-275-supabase-validate-playwright.md",
+      "revision": "e5f9e0843149df6260838d75df66feebb11a979c",
+      "sha256": "b06bea2fd5fd87eb738661d436aa74d361829380ccc9123cfde12bfd40eaaeac"
     }
   ],
   "implementationEvidence": {
@@ -197,7 +239,7 @@
       "path": "src/components/ClientDetails/ProgramsGoalsTab.tsx",
       "algorithm": "sha256",
       "canonicalization": "UTF-8 text with CRLF normalized to LF, matching tests/agentWorkLedgerHostedShadowProof.test.ts",
-      "canonicalSha256": "b35c8c719a68cdba9be9183b99a5a690da26d097bb12915c354243102b4bdea6"
+      "canonicalSha256": "a452018e40c35e57ecd7fea67c100591396731e662d6b00d68a7dff23807d3a1"
     }
   },
   "expectedHashDrift": {
@@ -206,8 +248,8 @@
     "driftedProtectedSurfaceHashes": [
       {
         "path": "src/components/ClientDetails/ProgramsGoalsTab.tsx",
-        "manifestSha256": "fbc032c2dddca32dd846ce1a89e80fdd0cb45500bb31f21c773cc2c33dd74fa4",
-        "currentBranchCanonicalSha256": "b35c8c719a68cdba9be9183b99a5a690da26d097bb12915c354243102b4bdea6"
+        "manifestSha256": "093d2287e9c2e9b01b40f00b93cfaa7b35d4f1dcc2037408f83b5cba1c0de859",
+        "currentBranchCanonicalSha256": "a452018e40c35e57ecd7fea67c100591396731e662d6b00d68a7dff23807d3a1"
       }
     ],
     "noManifestUpdatePerformed": false

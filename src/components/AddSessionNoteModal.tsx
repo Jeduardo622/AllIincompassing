@@ -112,7 +112,13 @@ export function AddSessionNoteModal({
   // Programs — still loaded for goal group headers (display only).
   // The program <select> has been removed; goals are now fetched client-wide.
   // ---------------------------------------------------------------------------
-  const { data: programs = [], isLoading: isLoadingPrograms } = useQuery({
+  const {
+    data: programs = [],
+    isLoading: isLoadingPrograms,
+    isLoadingError: isProgramsLoadingError,
+    isRefetchError: isProgramsRefetchError,
+    refetch: refetchPrograms,
+  } = useQuery({
     queryKey: ['client-programs', clientId, organizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
       if (!clientId || !organizationId) {
@@ -134,7 +140,13 @@ export function AddSessionNoteModal({
   });
 
   // Client-scoped goals query — fetches all goals regardless of program.
-  const { data: goals = [], isLoading: isLoadingGoals } = useQuery({
+  const {
+    data: goals = [],
+    isLoading: isLoadingGoals,
+    isLoadingError: isGoalsLoadingError,
+    isRefetchError: isGoalsRefetchError,
+    refetch: refetchGoals,
+  } = useQuery({
     queryKey: ['client-goals', clientId, organizationId ?? 'MISSING_ORG'],
     queryFn: async () => {
       if (!clientId || !organizationId) {
@@ -165,6 +177,8 @@ export function AddSessionNoteModal({
     () => programs.some((program) => program.status === 'active'),
     [programs],
   );
+  const hasDomainGoalLoadingError = isProgramsLoadingError || isGoalsLoadingError;
+  const hasDomainGoalRefetchError = isProgramsRefetchError || isGoalsRefetchError;
 
   // Goals grouped by program_id, ordered by the programs array.
   const goalsByProgram = useMemo(() => {
@@ -552,6 +566,11 @@ export function AddSessionNoteModal({
 
     if (hasSessions && !selectedSessionId && !isEditingUnlinkedNote) {
       showError('Select a scheduled session to link this note.');
+      return;
+    }
+
+    if (hasDomainGoalLoadingError) {
+      showError('Retry loading domains and goals before logging this note.');
       return;
     }
 
@@ -1204,8 +1223,24 @@ export function AddSessionNoteModal({
 
           <div>
             <p className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Domains &amp; Goals</p>
+            {hasDomainGoalRefetchError && (
+              <p className="mb-2 text-sm text-amber-700 dark:text-amber-300" role="status">
+                Could not refresh domains and goals. Showing the most recently loaded data.
+              </p>
+            )}
             {isLoadingGoals || isLoadingPrograms ? (
               <div className="text-sm text-gray-500 dark:text-gray-400">Loading goals…</div>
+            ) : hasDomainGoalLoadingError ? (
+              <div className="space-y-2 text-sm text-red-700 dark:text-red-300" role="alert">
+                <p>Unable to load domains and goals.</p>
+                <button
+                  type="button"
+                  onClick={() => void Promise.all([refetchPrograms(), refetchGoals()])}
+                  className="rounded-md border border-red-300 px-3 py-2 text-sm font-medium hover:bg-red-50 dark:border-red-700 dark:hover:bg-red-950/30"
+                >
+                  Retry loading domains and goals
+                </button>
+              </div>
             ) : availableGoals.length === 0 ? (
               <div className="space-y-1 text-sm text-gray-500 dark:text-gray-400">
                 <p>
@@ -1280,7 +1315,7 @@ export function AddSessionNoteModal({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={isSaving}
+            disabled={isSaving || hasDomainGoalLoadingError}
             className="flex min-h-11 w-full items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[10rem]"
           >
             {isSaving ? 'Saving…' : 'Save Note'}

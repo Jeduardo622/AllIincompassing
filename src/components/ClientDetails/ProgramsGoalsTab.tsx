@@ -619,6 +619,16 @@ const callEdgeWithSupabaseFallback = async (params: {
   }
 };
 
+const presentCarePlanDomainError = (message: string) =>
+  message
+    .replace(/\bprogram(?:_ids?|Ids?)\b/gi, (identifier) =>
+      identifier.startsWith("P") ? "Domain" : "domain",
+    )
+    .replace(/\bPrograms\b/g, "Domains")
+    .replace(/\bProgram\b/g, "Domain")
+    .replace(/\bprograms\b/g, "domains")
+    .replace(/\bprogram\b/g, "domain");
+
 const isSupportedAssessmentFile = (file: File): boolean => {
   const lowerFileName = file.name.trim().toLowerCase();
   return SUPPORTED_ASSESSMENT_FILE_EXTENSIONS.some((extension) => lowerFileName.endsWith(extension));
@@ -2756,7 +2766,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         timeoutMessage: "Create domain request timed out. Please retry.",
       });
       if (!response.ok) {
-        throw new Error(await parseApiErrorMessage(response, "Failed to create domain."));
+        throw new Error(presentCarePlanDomainError(await parseApiErrorMessage(response, "Failed to create domain.")));
       }
       return parseJson<Program>(response);
     },
@@ -2808,7 +2818,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
         timeoutMessage: "Update domain request timed out. Please retry.",
       });
       if (!response.ok) {
-        throw new Error(await parseApiErrorMessage(response, "Failed to update domain."));
+        throw new Error(presentCarePlanDomainError(await parseApiErrorMessage(response, "Failed to update domain.")));
       }
       return parseJson<Program>(response);
     },
@@ -3736,7 +3746,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                   disabled={!programNameValue || createProgram.isLoading}
                   className="w-full px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {createProgram.isLoading ? "Creating..." : "Create Domain"}
+                  {createProgram.isLoading ? "Creating..." : "Create Care Plan Domain"}
                 </button>
                 {programsQueryError instanceof Error && (
                   <p className="text-xs text-amber-700 dark:text-amber-300">
@@ -4810,7 +4820,7 @@ export function ProgramsGoalsTab({ client }: ProgramsGoalsTabProps) {
                     disabled={!newGoalDomainNameValue || createGoalDomain.isLoading}
                     className="mt-2 w-full rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                   >
-                    {createGoalDomain.isLoading ? "Creating domain..." : "Create Domain"}
+                    {createGoalDomain.isLoading ? "Creating domain..." : "Create Goal Domain"}
                   </button>
                 </div>
               )}

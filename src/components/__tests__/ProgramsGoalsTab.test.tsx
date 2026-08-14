@@ -984,8 +984,42 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     expect(await screen.findByRole("heading", { name: /Add Domain/i })).toBeInTheDocument();
     expect(screen.getByText("Loading existing domains. You can still add a new domain below.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Create Domain" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create Care Plan Domain" })).toBeInTheDocument();
   });
+
+  it.each(["program_id", "programId", "programIds", "program_ids"])(
+    "presents legacy %s API errors using domain terminology",
+    async (legacyIdentifier) => {
+    vi.mocked(callApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "POST" && path === "/api/programs") {
+        return new Response(
+          JSON.stringify({ error: `Failed to create program: ${legacyIdentifier} is not in scope for this organization` }),
+          { status: 500 },
+        );
+      }
+      if (method === "GET" && path.startsWith("/api/programs?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/goals?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/program-notes?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-documents?")) return new Response(JSON.stringify([]), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-checklist?")) return new Response(JSON.stringify({ items: [], structured_sections: [] }), { status: 200 });
+      if (method === "GET" && path.startsWith("/api/assessment-drafts?")) return new Response(JSON.stringify({ programs: [], goals: [] }), { status: 200 });
+      return new Response(JSON.stringify({ error: "Not handled in test" }), { status: 500 });
+    });
+
+    renderWithProviders(<ProgramsGoalsTab client={buildClient()} />, {
+      auth: { role: "midtier", organizationId: ORG_ID, accessToken: "test-access-token" },
+    });
+
+    fireEvent.change(await screen.findByPlaceholderText("Domain name"), { target: { value: "Communication" } });
+    await user.click(screen.getByRole("button", { name: "Create Care Plan Domain" }));
+
+    await waitFor(() => expect(showError).toHaveBeenCalled());
+    expect(vi.mocked(showError).mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({ message: "Failed to create domain: domain is not in scope for this organization" }),
+    );
+    },
+  );
 
   it("unlocks goal and note creation after creating a program while the programs query is still loading", async () => {
     vi.mocked(callApi).mockImplementation((path: string, init?: RequestInit) => {
@@ -1031,7 +1065,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     fireEvent.change(await screen.findByPlaceholderText("Domain name"), {
       target: { value: "Communication Program" },
     });
-    await user.click(screen.getAllByRole("button", { name: "Create Domain" })[0]);
+    await user.click(screen.getByRole("button", { name: "Create Care Plan Domain" }));
 
     await waitFor(() => {
       expect(showSuccess).toHaveBeenCalledWith("Domain created");
@@ -1804,7 +1838,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     const programNameInput = await screen.findByPlaceholderText("Domain name");
     fireEvent.change(programNameInput, { target: { value: "Communication Program" } });
-    await user.click(screen.getAllByRole("button", { name: "Create Domain" })[0]);
+    await user.click(screen.getByRole("button", { name: "Create Care Plan Domain" }));
 
     await waitFor(() => {
       expect(showSuccess).toHaveBeenCalledWith("Domain created");
@@ -1818,7 +1852,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     });
     await user.selectOptions(screen.getByLabelText("Domain"), "__create_new_domain__");
     await user.type(screen.getByLabelText("New domain name *"), "Social Communication");
-    await user.click(screen.getAllByRole("button", { name: "Create Domain" })[1]);
+    await user.click(screen.getByRole("button", { name: "Create Goal Domain" }));
 
     await waitFor(() => {
       expect(goalDomainInsert).toHaveBeenCalledWith([
@@ -3050,7 +3084,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
     fireEvent.change(await screen.findByPlaceholderText("Domain name"), {
       target: { value: "Communication Program" },
     });
-    await user.click(screen.getAllByRole("button", { name: "Create Domain" })[0]);
+    await user.click(screen.getByRole("button", { name: "Create Care Plan Domain" }));
 
     await waitFor(() => {
       expect(showSuccess).toHaveBeenCalledWith("Domain created");
@@ -3626,7 +3660,7 @@ describe("ProgramsGoalsTab", { timeout: 15_000 }, () => {
 
     const programNameInput = await screen.findByPlaceholderText("Domain name");
     await user.type(programNameInput, "Fallback Program");
-    await user.click(screen.getAllByRole("button", { name: "Create Domain" })[0]);
+    await user.click(screen.getByRole("button", { name: "Create Care Plan Domain" }));
 
     await waitFor(() => {
       expect(showSuccess).toHaveBeenCalledWith("Domain created");

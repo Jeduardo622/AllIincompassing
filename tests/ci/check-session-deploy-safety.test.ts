@@ -380,7 +380,7 @@ ${runtimeParityRestriction ? `    if: ${runtimeParityRestriction}
       - env:
           MIGRATION_PARITY_BASE_SHA: \${{ needs.change_scope.outputs.base_sha }}
           MIGRATION_PARITY_HEAD_SHA: \${{ needs.change_scope.outputs.head_sha }}
-          MIGRATION_PARITY_REQUIRED_MIGRATIONS: "20260811214856|payroll_timekeeping_capture_read_model,20260812060529|payroll_timesheet_snapshots,20260812103000|payroll_session_lifecycle_context,20260812113000|payroll_session_lifecycle_context_disabled_state,20260812122436|payroll_approval_workflow,20260812141324|payroll_review_read_models,20260812153628|payroll_administration,20260812185531|payroll_approval_workflow_repair,20260812212854|payroll_timesheet_period_contract_repair,20260812230837|payroll_export_ledger,20260813013000|payroll_approval_codex_review_fixes,20260813103000|payroll_security_repair"
+          MIGRATION_PARITY_REQUIRED_MIGRATIONS: "20260811214856|payroll_timekeeping_capture_read_model,20260812060529|payroll_timesheet_snapshots,20260812103000|payroll_session_lifecycle_context,20260812113000|payroll_session_lifecycle_context_disabled_state,20260812122436|payroll_approval_workflow,20260812141324|payroll_review_read_models,20260812153628|payroll_administration,20260812185531|payroll_approval_workflow_repair,20260812212854|payroll_timesheet_period_contract_repair,20260812230837|payroll_export_ledger,20260813013000|payroll_approval_codex_review_fixes,20260813103000|payroll_security_repair,20260814172117|payroll_manager_assignment_advisor_remediation"
           ACTIVATE_PAYROLL_TIMESHEETS: \${{ inputs.activate_payroll_timesheets || false }}
           ACTIVATE_PAYROLL_EXPORT: \${{ inputs.activate_payroll_export || false }}
           ACTIVATE_PAYROLL_APPROVALS: \${{ inputs.activate_payroll_approvals || false }}
@@ -1937,7 +1937,7 @@ describe("check-session-deploy-safety", () => {
     );
   });
 
-  test("rejects runtime_migration_parity when the explicit contract omits payroll_security_repair", () => {
+  test("rejects runtime_migration_parity when the explicit contract omits payroll_manager_assignment_advisor_remediation", () => {
     const fixtureRoot = makeFixture({
       ci: {
         workflowComment:
@@ -1948,7 +1948,10 @@ describe("check-session-deploy-safety", () => {
     const current = readFileSync(workflowPath, "utf8");
     writeFileSync(
       workflowPath,
-      current.replace(",20260813103000|payroll_security_repair", ""),
+      current.replace(
+        ",20260814172117|payroll_manager_assignment_advisor_remediation",
+        "",
+      ),
       "utf8",
     );
 

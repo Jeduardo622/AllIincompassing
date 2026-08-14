@@ -18,6 +18,7 @@ export const WIN_219_PAYROLL_MIGRATION_CONTRACT = [
   "20260812230837|payroll_export_ledger",
   "20260813013000|payroll_approval_codex_review_fixes",
   "20260813103000|payroll_security_repair",
+  "20260814172117|payroll_manager_assignment_advisor_remediation",
 ].join(",");
 
 const baseSha = process.env.MIGRATION_PARITY_BASE_SHA ?? process.env.GITHUB_EVENT_BEFORE ?? "";

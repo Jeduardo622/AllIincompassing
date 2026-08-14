@@ -54,6 +54,22 @@ const reviewReadModelsSql = reviewReadModelsMigrationName
       "utf8",
     )
   : "";
+const managerAssignmentAdvisorRemediationMigrationName =
+  readdirSync(path.join(process.cwd(), "supabase", "migrations")).find((name) =>
+    name.endsWith("payroll_manager_assignment_advisor_remediation.sql"),
+  ) ?? "";
+const managerAssignmentAdvisorRemediationSql =
+  managerAssignmentAdvisorRemediationMigrationName
+    ? readFileSync(
+        path.join(
+          process.cwd(),
+          "supabase",
+          "migrations",
+          managerAssignmentAdvisorRemediationMigrationName,
+        ),
+        "utf8",
+      )
+    : "";
 const sessionLifecycleSql = `${sessionLifecycleBaseSql}\n${sessionLifecycleAdditiveSql}`;
 const functionDefinition = (qualifiedName: string): string => {
   const matches = `${sql}\n${captureSql}\n${sessionLifecycleSql}\n${approvalSql}\n${reviewReadModelsSql}`.match(
@@ -204,6 +220,27 @@ describe("payroll timekeeping tenant and RLS contract", () => {
     const mutationReceipts = policyDefinition("payroll_mutation_receipts_authenticated_select");
     expect(mutationReceipts).toMatch(/app\.payroll_actor_in_organization\(organization_id\)/i);
     expect(mutationReceipts).toMatch(/actor_user_id = auth\.uid\(\)/i);
+  });
+
+  it("keeps the foundation policy shape while the effective remediation policy uses initplan-safe auth uid evaluation", () => {
+    const foundationManagerAssignments = policyDefinition(
+      "employee_manager_assignments_authenticated_select",
+    );
+
+    expect(foundationManagerAssignments).toMatch(
+      /app\.payroll_actor_in_organization\(organization_id\)/i,
+    );
+    expect(foundationManagerAssignments).toMatch(/manager_user_id = auth\.uid\(\)/i);
+    expect(foundationManagerAssignments).toMatch(/time\.review_assigned/i);
+    expect(foundationManagerAssignments).toMatch(/time\.approve_assigned/i);
+    expect(foundationManagerAssignments).toMatch(/payroll\.configure_employment/i);
+
+    expect(managerAssignmentAdvisorRemediationSql).toMatch(
+      /alter policy employee_manager_assignments_authenticated_select\s+on public\.employee_manager_assignments\s+using\s*\(\s*\(\s*app\.payroll_actor_in_organization\(organization_id\)\s+and manager_user_id = \(select auth\.uid\(\)\)\s+and\s+\(\s*app\.payroll_actor_has_capability\(organization_id,\s*'time\.review_assigned'\)\s+or app\.payroll_actor_has_capability\(organization_id,\s*'time\.approve_assigned'\)\s*\)\s*\)\s+or app\.payroll_actor_has_capability\(organization_id,\s*'payroll\.configure_employment'\)\s*\);/i,
+    );
+    expect(managerAssignmentAdvisorRemediationSql).not.toMatch(
+      /payroll\.resolve_exceptions|payroll\.view_compensation|time\.view_self/i,
+    );
   });
 
   it("rejects metadata-only and profiles.role-only authority", () => {

@@ -525,3 +525,65 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - reviewer: software architecture, security, Supabase, and test preflight agents approved the bounded apply; PR #947 supplied the merged human-reviewed source artifact.
 - result: `pass-with-blocked-checks`
 - residual risk: future representative workload should confirm planner use; separately route the remaining composite/manager FK notices and RLS init-plan warning rather than broadening this completed index slice.
+
+## Manager Assignment Advisor Remediation PR
+
+- Date: 2026-08-14
+- Branch: `codex/win-219-manager-assignment-advisor-remediation`
+- Classification: `high-risk human-reviewed`
+- Lane: `critical`
+- Scope: add the two exact missing FK-leading btree indexes on `public.employee_manager_assignments`, change only `manager_user_id = auth.uid()` to `manager_user_id = (select auth.uid())` in `employee_manager_assignments_authenticated_select`, and extend the existing WIN-219 runtime-migration parity contract with this migration.
+- Non-goals: no hosted migration apply, merge, deployment, payroll activation, capability grant, data mutation, unused-index cleanup, other advisor remediation, PHI/customer-row access, or historical migration edit.
+
+### Hosted Read-Only Preflight
+
+- Supabase project `wnnjeqheqxxyrgsjmygy` was `ACTIVE_HEALTHY` on PostgreSQL 17.6.1.
+- Hosted migration `20260814164939/payroll_manager_assignment_lookup_index` was present.
+- `public.employee_manager_assignments` had `0` rows, a `0`-byte heap, and `32768` total bytes; plain transactional index creation therefore has a small but nonzero write-lock risk.
+- RLS was enabled and forced. The table retained one permissive `SELECT` policy for `authenticated`; ACLs remained `authenticated=SELECT` with no authenticated write or anon access.
+- The performance advisor returned the two scoped unindexed-FK notices and the scoped `auth_rls_initplan` warning. Security advisors returned no notice for the target table.
+- Hosted `pg_constraint`, `pg_index`, `pg_class`, and `pg_indexes` evidence showed no valid/ready index whose leading keys matched `(employment_profile_id, organization_id)` or `(manager_user_id)`. The existing organization-first index remained valid/ready and did not cover either sequence.
+- The exact hosted policy predicate still contained the unchanged organization/capability branches and direct `manager_user_id = auth.uid()` evaluation.
+
+### Implementation And Review
+
+- New migration: `20260814172117_payroll_manager_assignment_advisor_remediation.sql`.
+- Indexes: `employee_manager_assignments_employment_profile_org_idx` on `(employment_profile_id, organization_id)` and `employee_manager_assignments_manager_user_id_idx` on `(manager_user_id)`; both identifiers are under 63 bytes.
+- Policy: one transactional `ALTER POLICY ... USING` preserves policy name, role, command, permissiveness, policy count, grants, enabled/forced RLS, organization gate, manager match, and the `time.review_assigned`, `time.approve_assigned`, and `payroll.configure_employment` branches.
+- Runtime parity: the migration identifier is mirrored in `.github/workflows/ci.yml`, `check-runtime-migration-parity.mjs`, and the fail-closed session deploy safety contract without changing dispatch, activation, deployment, or secret behavior.
+- Independent specification, architecture, code, security, performance, test, Supabase, and DevOps reviews completed. One fix round added the atomic wrapper, executable rollback guidance, effective-policy tenant/RLS assertion, and explicit runtime-parity inclusion; scoped re-reviews approved every finding.
+
+### Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: database/RLS/migration/tenant isolation and protected CI runtime-migration parity
+- required checks:
+  - focused manager-assignment advisor remediation migration test
+  - existing payroll foundation, approval, security-repair, manager-index, tenant/RLS, and migration-parity tests
+  - `npm run ci:check-focused`
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm run test:ci`
+  - `npm run validate:tenant`
+  - `npm run build`
+  - `npm run verify:local`
+  - `git diff --check`
+- executed checks:
+  - focused RED: pass as test evidence; 3 expected failures proved the migration, two FK indexes, and scalar-subquery policy rewrite were absent
+  - focused GREEN after review fixes: pass; 11 files / 303 tests
+  - `npm run ci:check-focused`: pass; one new migration validated
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run validate:tenant`: pass
+  - `npm run build`: pass
+  - `git diff --check`: pass
+  - `npm run test:ci`: fail locally; two runs exhausted the default Node heap after broad test progress, and an 8 GB retry ended on Vitest worker `Timeout calling "onTaskUpdate"`; no application assertion failure was reported
+  - `npm run verify:local`: fail at its embedded `npm run test:ci` step with the same local aggregate-runner failure; its preceding policy, lint, and typecheck steps passed
+- blocked checks:
+  - DB-backed sensitive-table overlap, privileged-function grant, and preview-drift subchecks -> local `SUPABASE_DB_URL`/`DATABASE_URL` was not configured; no `.env*` file was read
+  - exact-head aggregate adjudication -> pending GitHub PR CI
+- result: `fail` pending exact-head CI; local infrastructure failures are not treated as passes
+- reviewer: code, security, performance, test, Supabase, and DevOps re-reviews approved the final diff; human critical-lane review remains mandatory
+- residual risk: plain index creation briefly blocks writes and adds future write/storage overhead; the table must be rechecked immediately before any separately authorized hosted apply. Exact-head CI must resolve the local aggregate-runner failure before merge.
+- hosted apply status: `not authorized`; the migration has not been applied to hosted Supabase.

@@ -45,6 +45,17 @@ const sessionLifecyclePrecedenceRepairSql = readFileSync(
   ),
   "utf8",
 );
+const sessionLifecycleEnabledAuthorityRepairMigrationName =
+  "20260814191200_payroll_session_context_enabled_authority_repair.sql";
+const sessionLifecycleEnabledAuthorityRepairSql = readFileSync(
+  path.join(
+    process.cwd(),
+    "supabase",
+    "migrations",
+    sessionLifecycleEnabledAuthorityRepairMigrationName,
+  ),
+  "utf8",
+);
 const approvalMigrationName =
   readdirSync(path.join(process.cwd(), "supabase", "migrations")).find((name) =>
     name.endsWith("payroll_approval_workflow.sql"),
@@ -81,7 +92,7 @@ const managerAssignmentAdvisorRemediationSql =
         "utf8",
       )
     : "";
-const sessionLifecycleSql = `${sessionLifecycleBaseSql}\n${sessionLifecycleAdditiveSql}\n${sessionLifecyclePrecedenceRepairSql}`;
+const sessionLifecycleSql = `${sessionLifecycleBaseSql}\n${sessionLifecycleAdditiveSql}\n${sessionLifecyclePrecedenceRepairSql}\n${sessionLifecycleEnabledAuthorityRepairSql}`;
 const functionDefinition = (qualifiedName: string): string => {
   const matches = `${sql}\n${captureSql}\n${sessionLifecycleSql}\n${approvalSql}\n${reviewReadModelsSql}`.match(
     new RegExp(
@@ -137,6 +148,15 @@ describe("payroll timekeeping tenant and RLS contract", () => {
     );
     expect(sessionLifecyclePrecedenceRepairSql).toMatch(
       /v_feature_flag_found is true[\s\S]*?v_can_record_assigned[\s\S]*?'state',\s*'feature_disabled'/i,
+    );
+    expect(sessionLifecycleEnabledAuthorityRepairSql).toMatch(
+      /@migration-dependencies:\s*20260814183500_payroll_session_context_disabled_precedence\.sql/i,
+    );
+    expect(sessionLifecycleEnabledAuthorityRepairSql).toMatch(
+      /v_actor_is_assigned_employee\s*:=\s*v_employment\.user_id\s*=\s*v_actor/i,
+    );
+    expect(sessionLifecycleEnabledAuthorityRepairSql).not.toMatch(
+      /v_actor_is_assigned_employee\s*:=\s*v_session\.therapist_id\s*=\s*v_actor/i,
     );
     expect(sessionLifecycleSql).not.toMatch(
       /grant execute on function public\.get_session_payroll_context\(uuid\) to authenticated,\s*service_role/i,

@@ -8,7 +8,9 @@ import path from 'node:path';
 
 import {
   assertDedicatedSmokeEmail,
+  assertSmokeAdminScopeConfigured,
   assertSmokeAdminOwnership,
+  buildSmokeAdminUserMetadata,
   buildSmokeAdminOwnershipMetadata,
   buildSmokeAdminCleanupSteps,
   buildDefaultSmokeAdminEmail,
@@ -16,6 +18,7 @@ import {
   cleanupSmokeAdminRows,
   discoverSmokeAdminCleanupTargets,
   getMissingProvisionSecrets,
+  resolveSmokeAdminOrganizationId,
   resolveCleanupSmokeAdminEmail,
   serializeError,
   shouldSkipForSecretlessPullRequest,
@@ -23,6 +26,79 @@ import {
 } from '../../scripts/provision-ci-smoke-admin';
 
 describe('provision-ci-smoke-admin safeguards', () => {
+  it('requires explicit tenant scope for the auth browser smoke job only', () => {
+    expect(() => assertSmokeAdminScopeConfigured({ GITHUB_JOB: 'auth_browser_smoke' })).toThrow(
+      'CI_SMOKE_ADMIN_SCOPE_EMAIL is required for auth_browser_smoke.',
+    );
+    expect(() => assertSmokeAdminScopeConfigured({
+      GITHUB_JOB: 'auth_browser_smoke',
+      CI_SMOKE_ADMIN_SCOPE_EMAIL: 'schedule@example.com',
+    })).not.toThrow();
+    expect(() => assertSmokeAdminScopeConfigured({ GITHUB_JOB: 'iehp_assessment_import_smoke' })).not.toThrow();
+  });
+
+  it('builds matching profile-resolution metadata from the resolved tenant scope', () => {
+    expect(buildSmokeAdminUserMetadata('5238e88b-6198-4862-80a2-dbe15bbeabdd')).toMatchObject({
+      role: 'super_admin',
+      signup_role: 'super_admin',
+      is_admin: true,
+      is_super_admin: true,
+      organization_id: '5238e88b-6198-4862-80a2-dbe15bbeabdd',
+      organizationId: '5238e88b-6198-4862-80a2-dbe15bbeabdd',
+    });
+  });
+
+  it('resolves an explicit tenant scope from the configured schedule smoke identity', async () => {
+    const client = {
+      auth: {
+        admin: {
+          listUsers: async () => ({
+            data: { users: [{ id: 'd4c6b27f-f11c-42c9-b8ff-58b906f3f395', email: 'schedule@example.com' }] },
+            error: null,
+          }),
+        },
+      },
+      from: (table: string) => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => table === 'profiles'
+              ? {
+                  data: { organization_id: '5238e88b-6198-4862-80a2-dbe15bbeabdd' },
+                  error: null,
+                }
+              : { data: null, error: { message: 'unexpected table' } },
+          }),
+        }),
+      }),
+    };
+
+    await expect(
+      resolveSmokeAdminOrganizationId(client as never, 'schedule@example.com'),
+    ).resolves.toBe('5238e88b-6198-4862-80a2-dbe15bbeabdd');
+  });
+
+  it('fails closed when a requested tenant scope cannot resolve to one profile organization', async () => {
+    const client = {
+      auth: {
+        admin: {
+          listUsers: async () => ({
+            data: { users: [{ id: 'd4c6b27f-f11c-42c9-b8ff-58b906f3f395', email: 'schedule@example.com' }] },
+            error: null,
+          }),
+        },
+      },
+      from: () => ({
+        select: () => ({
+          eq: () => ({ maybeSingle: async () => ({ data: { organization_id: null }, error: null }) }),
+        }),
+      }),
+    };
+
+    await expect(
+      resolveSmokeAdminOrganizationId(client as never, 'schedule@example.com'),
+    ).rejects.toThrow('does not resolve to one organization-scoped profile');
+  });
+
   it('uses an existing key column when verifying cleanup', () => {
     expect(cleanupVerificationColumn('session_goals')).toBe('session_id');
     expect(cleanupVerificationColumn('sessions')).toBe('id');
@@ -347,6 +423,10 @@ describe('provision-ci-smoke-admin safeguards', () => {
       workflow.indexOf('- name: Session browser smoke gate'),
       workflow.indexOf('- name: Cleanup auth smoke admin'),
     );
+    const provisionStep = workflow.slice(
+      workflow.indexOf('- name: Provision auth smoke admin'),
+      workflow.indexOf('- name: Provision synthetic BCBA smoke actor'),
+    );
 
     expect(authStep).toContain('npm run playwright:auth');
     expect(authStep).not.toContain('npm run playwright:preflight');
@@ -355,6 +435,7 @@ describe('provision-ci-smoke-admin safeguards', () => {
     expect(sessionStep).toContain('npm run ci:playwright');
     expect(packageJson.scripts?.['ci:playwright']).toContain('playwright:preflight');
     expect(sessionStep).toContain('SUPABASE_SERVICE_ROLE_KEY');
+    expect(provisionStep).toContain('CI_SMOKE_ADMIN_SCOPE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}');
   });
 
   it('preserves the secretless pull_request skip path for provisioning and cleanup', () => {
@@ -388,5 +469,8 @@ describe('provision-ci-smoke-admin safeguards', () => {
     );
 
     expect(profilePayload).not.toContain('full_name');
+    expect(profilePayload).toContain('organization_id: organizationId');
+    expect(script).toMatch(/user_metadata:\s*\{\s*\.\.\.\(existing\.user_metadata \?\? \{\}\),\s*\.\.\.metadata,/);
+    expect(script).toContain('user_metadata: metadata,');
   });
 });

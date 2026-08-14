@@ -33,6 +33,8 @@ type SmokeAdminOwnershipMetadata = {
   smoke_job: string;
 };
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export const cleanupVerificationColumn = (table: SmokeAdminCleanupStep['table']): string => (
   table === 'session_goals' ? 'session_id' : 'id'
 );
@@ -141,7 +143,52 @@ const findUserByEmail = async (client: SupabaseClient, email: string) => {
   return null;
 };
 
-const ensureRoleMapping = async (client: SupabaseClient, userId: string, email: string, role: RoleName): Promise<void> => {
+export const assertSmokeAdminScopeConfigured = (env: NodeJS.ProcessEnv = process.env): void => {
+  if (env.GITHUB_JOB === 'auth_browser_smoke' && !env.CI_SMOKE_ADMIN_SCOPE_EMAIL?.trim()) {
+    throw new Error('CI_SMOKE_ADMIN_SCOPE_EMAIL is required for auth_browser_smoke.');
+  }
+};
+
+export const buildSmokeAdminUserMetadata = (organizationId: string | null) => ({
+  role: 'super_admin',
+  signup_role: 'super_admin',
+  is_admin: true,
+  is_super_admin: true,
+  organization_id: organizationId,
+  organizationId,
+});
+
+export const resolveSmokeAdminOrganizationId = async (
+  client: SupabaseClient,
+  scopeEmail: string,
+): Promise<string> => {
+  const scopeUser = await findUserByEmail(client, scopeEmail);
+  if (!scopeUser) {
+    throw new Error('Configured smoke scope identity was not found.');
+  }
+
+  const { data: profile, error } = await client
+    .from('profiles')
+    .select('organization_id')
+    .eq('id', scopeUser.id)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`Smoke scope profile lookup failed: ${serializeError(error)}`);
+  }
+  if (typeof profile?.organization_id !== 'string' || !UUID_PATTERN.test(profile.organization_id)) {
+    throw new Error('Configured smoke scope identity does not resolve to one organization-scoped profile.');
+  }
+
+  return profile.organization_id;
+};
+
+const ensureRoleMapping = async (
+  client: SupabaseClient,
+  userId: string,
+  email: string,
+  role: RoleName,
+  organizationId: string | null,
+): Promise<void> => {
   const { data: roleRow, error: roleError } = await client
     .from('roles')
     .select('id')
@@ -163,7 +210,7 @@ const ensureRoleMapping = async (client: SupabaseClient, userId: string, email: 
       is_active: true,
       first_name: 'Playwright',
       last_name: 'CI',
-      organization_id: null,
+      organization_id: organizationId,
     },
     { onConflict: 'id' },
   );
@@ -204,8 +251,6 @@ export const resolveCleanupSmokeAdminEmail = (): string => (
   || process.env.PW_SUPERADMIN_EMAIL?.trim()
   || buildDefaultSmokeAdminEmail()
 ).toLowerCase();
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const extractCleanupTargetIds = (
   rows: Array<{ id?: unknown }> | null,
@@ -319,18 +364,16 @@ export const cleanupSmokeAdminRows = async (
 const provision = async (): Promise<void> => {
   const email = (process.env.CI_SMOKE_ADMIN_EMAIL?.trim() || buildDefaultSmokeAdminEmail()).toLowerCase();
   assertDedicatedSmokeEmail(email);
+  assertSmokeAdminScopeConfigured();
 
   const password = createPassword();
-  const metadata = {
-    role: 'super_admin',
-    signup_role: 'super_admin',
-    is_admin: true,
-    is_super_admin: true,
-    organization_id: null,
-    organizationId: null,
-  };
-  const ownershipMetadata = buildSmokeAdminOwnershipMetadata(email);
   const client = createAdminClient();
+  const scopeEmail = process.env.CI_SMOKE_ADMIN_SCOPE_EMAIL?.trim();
+  const organizationId = scopeEmail
+    ? await resolveSmokeAdminOrganizationId(client, scopeEmail)
+    : null;
+  const metadata = buildSmokeAdminUserMetadata(organizationId);
+  const ownershipMetadata = buildSmokeAdminOwnershipMetadata(email);
   const existing = await findUserByEmail(client, email);
 
   if (existing) {
@@ -349,7 +392,7 @@ const provision = async (): Promise<void> => {
     if (error) {
       throw error;
     }
-    await ensureRoleMapping(client, existing.id, email, 'super_admin');
+    await ensureRoleMapping(client, existing.id, email, 'super_admin', organizationId);
     writeGitHubEnv(email, password, existing.id);
     console.log(JSON.stringify({ ok: true, action: 'updated', email, userId: existing.id }));
     return;
@@ -370,7 +413,7 @@ const provision = async (): Promise<void> => {
     throw new Error('Supabase did not return a created smoke user.');
   }
 
-  await ensureRoleMapping(client, data.user.id, email, 'super_admin');
+  await ensureRoleMapping(client, data.user.id, email, 'super_admin', organizationId);
   writeGitHubEnv(email, password, data.user.id);
   console.log(JSON.stringify({ ok: true, action: 'created', email, userId: data.user.id }));
 };

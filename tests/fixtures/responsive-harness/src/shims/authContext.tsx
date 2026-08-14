@@ -13,13 +13,15 @@ const harnessSession = {
 export const useAuth = () => ({
   session: harnessSession,
   user: harnessSession.user,
-  effectiveRole: "midtier",
+  loading: false,
+  profileLoading: false,
+  effectiveRole: "admin",
   hasCapability: () => true,
-  hasExactRole: (role: string) => role === "midtier",
+  hasExactRole: (role: string) => role === "admin",
   profile: {
     id: "responsive-harness-user",
     organization_id: HARNESS_ORG_ID,
-    role: "midtier",
+    role: "admin",
   },
 });
 

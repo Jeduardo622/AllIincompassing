@@ -224,4 +224,33 @@ describe("checkInProgressSessionCloseReadiness", () => {
     expect(result.requiredGoalIds).toEqual(["goal-fallback"]);
     expect(result.missingGoalIds).toEqual([]);
   });
+
+  it("revalidates an exact org-scoped terminal status match only for the requested outcome", async () => {
+    supabaseFromMock.mockImplementation((table: string) => {
+      if (table === "sessions") {
+        return createFromResponse({
+          data: [{ status: "completed" }],
+          error: null,
+        });
+      }
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    const { revalidateTerminalSessionOutcome } = await import("../sessionComplete");
+    await expect(
+      revalidateTerminalSessionOutcome({
+        sessionId: "session-3",
+        organizationId: "org-1",
+        outcome: "completed",
+      }),
+    ).resolves.toBe(true);
+
+    await expect(
+      revalidateTerminalSessionOutcome({
+        sessionId: "session-3",
+        organizationId: "org-1",
+        outcome: "no-show",
+      }),
+    ).resolves.toBe(false);
+  });
 });

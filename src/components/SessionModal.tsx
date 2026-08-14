@@ -53,7 +53,7 @@ import {
   resolveSchedulingTimeZone,
   toUtcSessionIsoString,
 } from "../features/scheduling/domain/time";
-import { startSessionFromModal } from "../features/scheduling/domain/sessionStart";
+import { startSessionFromModal, type StartSessionRequest } from "../features/scheduling/domain/sessionStart";
 import {
   getGoalMeasurementTargets,
   getGoalMeasurementFieldMeta,
@@ -437,6 +437,12 @@ export interface CloseoutDataPoint {
   linked: boolean;
 }
 
+type SessionModalStartChoice = "clock_in" | "continue_without_clock_in";
+type SessionModalStartOrchestrationResult =
+  | { kind: "started" }
+  | { kind: "clock_choice_required" };
+const SESSION_ATTENDANCE_RETRY_MESSAGE = "Attendance could not be confirmed. Reconnect and retry.";
+
 interface BuildCloseoutDataPointsArgs {
   existingTrialEvents: readonly TrialEvent[];
   pendingTrialEvents: readonly SessionCaptureTrialEventInput[];
@@ -729,6 +735,11 @@ interface SessionModalProps {
   retryActionLabel?: string | null;
   onRetryAction?: (() => void) | undefined;
   onSessionStarted?: () => void | Promise<void>;
+  onStartSessionOrchestration?: (
+    request: StartSessionRequest,
+    choice?: SessionModalStartChoice,
+  ) => Promise<SessionModalStartOrchestrationResult>;
+  onPrepareSessionClose?: (sessionId: string) => Promise<void>;
   dataCollectionOnly?: boolean;
   allowStartSession?: boolean;
   canCreateSchedules?: boolean;
@@ -736,6 +747,10 @@ interface SessionModalProps {
   isReactivating?: boolean;
   isDeletingAppointment?: boolean;
   hideGoalCaptureFields?: boolean;
+  onFinalizeBtAbaSession?: (
+    sessionId: string,
+    finalize: () => Promise<BtAbaFinalizeResult>,
+  ) => Promise<BtAbaFinalizeResult>;
   onBtAbaSessionFinalized?: (result: BtAbaFinalizeResult & { sessionId: string }) => void | Promise<void>;
 }
 
@@ -759,6 +774,8 @@ export function SessionModal({
   retryActionLabel,
   onRetryAction,
   onSessionStarted,
+  onStartSessionOrchestration,
+  onPrepareSessionClose,
   dataCollectionOnly = false,
   allowStartSession = false,
   canCreateSchedules = true,
@@ -766,6 +783,7 @@ export function SessionModal({
   isReactivating = false,
   isDeletingAppointment = false,
   hideGoalCaptureFields = false,
+  onFinalizeBtAbaSession,
   onBtAbaSessionFinalized,
 }: SessionModalProps) {
   const [isPlanSectionExpanded, setIsPlanSectionExpanded] = useState(() => !session?.id);
@@ -835,6 +853,9 @@ export function SessionModal({
   const [isDeleteSubmitting, setIsDeleteSubmitting] = useState(false);
   const [isDeleteConfirmationOpen, setIsDeleteConfirmationOpen] = useState(false);
   const [deleteAppointmentError, setDeleteAppointmentError] = useState<string | null>(null);
+  const [isLifecycleBusy, setIsLifecycleBusy] = useState(false);
+  const lifecycleBusyRef = useRef(false);
+  const [startChoicePromptRequest, setStartChoicePromptRequest] = useState<StartSessionRequest | null>(null);
   const isDataCollectionOnly = Boolean(dataCollectionOnly && session?.id);
   const canUseStartSessionAction = !isDataCollectionOnly || allowStartSession;
   const canReactivateSession = Boolean(
@@ -876,6 +897,8 @@ export function SessionModal({
     setModalStep('capture');
     setBtAbaError(null);
     setBtAbaFinalized(false);
+    setIsLifecycleBusy(false);
+    setStartChoicePromptRequest(null);
     btAbaTransitionRef.current = 'idle';
     closeoutCaptureRef.current = null;
   }, [session?.id]);
@@ -885,6 +908,8 @@ export function SessionModal({
       setIsDeleteSubmitting(false);
       setIsDeleteConfirmationOpen(false);
       setDeleteAppointmentError(null);
+      setIsLifecycleBusy(false);
+      setStartChoicePromptRequest(null);
       return;
     }
     setIsDeleteSubmitting(false);
@@ -2302,13 +2327,28 @@ export function SessionModal({
       showError("Select a domain and primary goal before starting.");
       return;
     }
+    if (isStartOrChoiceBusy || lifecycleBusyRef.current) {
+      return;
+    }
+    const request: StartSessionRequest = {
+      sessionId: session.id,
+      programId,
+      goalId,
+      goalIds: goalIds ?? [],
+    };
     try {
-      await startSessionFromModal({
-        sessionId: session.id,
-        programId,
-        goalId,
-        goalIds: goalIds ?? [],
-      });
+      lifecycleBusyRef.current = true;
+      setIsLifecycleBusy(true);
+      if (onStartSessionOrchestration) {
+        const result = await onStartSessionOrchestration(request);
+        if (result.kind === 'clock_choice_required') {
+          setStartChoicePromptRequest(request);
+          return;
+        }
+      } else {
+        await startSessionFromModal(request);
+      }
+      setStartChoicePromptRequest(null);
       showSuccess("Session started");
       await onSessionStarted?.();
       onClose();
@@ -2317,62 +2357,134 @@ export function SessionModal({
         error,
         context: { component: "SessionModal", operation: "handleStartSession" },
       });
-      showError(error instanceof Error ? error.message : "Failed to start session");
+      showError(onStartSessionOrchestration
+        ? SESSION_ATTENDANCE_RETRY_MESSAGE
+        : error instanceof Error ? error.message : "Failed to start session");
+    } finally {
+      lifecycleBusyRef.current = false;
+      setIsLifecycleBusy(false);
+    }
+  };
+
+  const handleStartChoice = async (choice: SessionModalStartChoice) => {
+    if (!onStartSessionOrchestration || !startChoicePromptRequest || isStartOrChoiceBusy || lifecycleBusyRef.current) {
+      return;
+    }
+    try {
+      lifecycleBusyRef.current = true;
+      setIsLifecycleBusy(true);
+      const result = await onStartSessionOrchestration(startChoicePromptRequest, choice);
+      if (result.kind !== 'started') {
+        return;
+      }
+      setStartChoicePromptRequest(null);
+      showSuccess("Session started");
+      await onSessionStarted?.();
+      onClose();
+    } catch (error) {
+      logger.error("Failed to start session", {
+        error,
+        context: { component: "SessionModal", operation: "handleStartChoice" },
+      });
+      showError(SESSION_ATTENDANCE_RETRY_MESSAGE);
+    } finally {
+      lifecycleBusyRef.current = false;
+      setIsLifecycleBusy(false);
     }
   };
 
   const handleCloseSession = () => {
-    if (isBtClinicalCaptureSession && session?.id) {
-      void handleSubmit(async (formData) => {
-        const transformed = await handleFormSubmit({
-          ...formData,
-          status: 'in_progress',
-          session_note_begin_closeout: true,
-        });
-        if (!transformed) return;
-        const refreshedBtAbaNote = await refetchBtAbaNoteState();
-        if (refreshedBtAbaNote.error || !refreshedBtAbaNote.data?.templateId) {
-          closeoutCaptureRef.current = null;
-          setModalStep('capture');
-          setBtAbaNoteId(null);
-          const message = refreshedBtAbaNote.error instanceof Error
-            ? refreshedBtAbaNote.error.message
-            : 'Unable to load the saved ABA session note draft.';
-          setBtAbaError(message);
-          showError(message);
-          return;
-        }
-
-        setBtAbaNoteId(refreshedBtAbaNote.data.noteId ?? null);
-        const trialEvents = transformed.session_note_trial_events ?? [];
-        closeoutCaptureRef.current = {
-          notePayload: {
-            goals_addressed: transformed.session_note_goals_addressed ?? [],
-            goal_ids: transformed.session_note_goal_ids ?? null,
-            goal_measurements: transformed.session_note_goal_measurements ?? null,
-            goal_notes: transformed.session_note_goal_notes ?? null,
-            narrative: transformed.session_note_narrative ?? '',
-          },
-          trialEvents,
-          expectedTargetVersions: trialEvents
-            .filter((event) => typeof event.expected_progression_version === 'number')
-            .map((event) => ({
-              target_id: event.target_id,
-              progression_version: event.expected_progression_version as number,
-            })),
-        };
-        setBtAbaError(null);
-        setModalStep('closeout');
-      })();
+    if (lifecycleBusyRef.current) {
       return;
     }
-    setValue('status', 'completed', { shouldDirty: true });
+    lifecycleBusyRef.current = true;
+    setIsLifecycleBusy(true);
+    const resetCloseBusy = () => {
+      lifecycleBusyRef.current = false;
+      setIsLifecycleBusy(false);
+    };
+
+    if (isBtClinicalCaptureSession && session?.id) {
+      void handleSubmit(async (formData) => {
+        try {
+          if (onPrepareSessionClose) {
+            await onPrepareSessionClose(session.id);
+          }
+        } catch {
+          showError(SESSION_ATTENDANCE_RETRY_MESSAGE);
+          resetCloseBusy();
+          return;
+        }
+        try {
+          const transformed = await handleFormSubmit({
+            ...formData,
+            status: 'in_progress',
+            session_note_begin_closeout: true,
+          });
+          if (!transformed) return;
+          const refreshedBtAbaNote = await refetchBtAbaNoteState();
+          if (refreshedBtAbaNote.error || !refreshedBtAbaNote.data?.templateId) {
+            closeoutCaptureRef.current = null;
+            setModalStep('capture');
+            setBtAbaNoteId(null);
+            const message = refreshedBtAbaNote.error instanceof Error
+              ? refreshedBtAbaNote.error.message
+              : 'Unable to load the saved ABA session note draft.';
+            setBtAbaError(message);
+            showError(message);
+            return;
+          }
+
+          setBtAbaNoteId(refreshedBtAbaNote.data.noteId ?? null);
+          const trialEvents = transformed.session_note_trial_events ?? [];
+          closeoutCaptureRef.current = {
+            notePayload: {
+              goals_addressed: transformed.session_note_goals_addressed ?? [],
+              goal_ids: transformed.session_note_goal_ids ?? null,
+              goal_measurements: transformed.session_note_goal_measurements ?? null,
+              goal_notes: transformed.session_note_goal_notes ?? null,
+              narrative: transformed.session_note_narrative ?? '',
+            },
+            trialEvents,
+            expectedTargetVersions: trialEvents
+              .filter((event) => typeof event.expected_progression_version === 'number')
+              .map((event) => ({
+                target_id: event.target_id,
+                progression_version: event.expected_progression_version as number,
+              })),
+          };
+          setBtAbaError(null);
+          setModalStep('closeout');
+        } catch (error) {
+          showError(error instanceof Error ? error.message : 'Unable to prepare session close. Please retry.');
+        } finally {
+          resetCloseBusy();
+        }
+      }, resetCloseBusy)();
+      return;
+    }
     void handleSubmit(async (formData) => {
-      await handleFormSubmit({
-        ...formData,
-        status: 'completed',
-      });
-    })();
+      try {
+        if (session?.id && onPrepareSessionClose) {
+          await onPrepareSessionClose(session.id);
+        }
+      } catch {
+        showError(SESSION_ATTENDANCE_RETRY_MESSAGE);
+        resetCloseBusy();
+        return;
+      }
+      try {
+        setValue('status', 'completed', { shouldDirty: true });
+        await handleFormSubmit({
+          ...formData,
+          status: 'completed',
+        });
+      } catch (error) {
+        showError(error instanceof Error ? error.message : 'Unable to prepare session close. Please retry.');
+      } finally {
+        resetCloseBusy();
+      }
+    }, resetCloseBusy)();
   };
 
   const persistBtAbaDraft = async (
@@ -2424,14 +2536,17 @@ export function SessionModal({
     let result: BtAbaFinalizeResult;
     try {
       const noteId = await persistBtAbaDraft(responses);
-      result = await finalizeBtAbaSessionNote({
+      const finalize = () => finalizeBtAbaSessionNote({
         sessionId: session.id,
         noteId,
-        notePayload: closeoutCaptureRef.current.notePayload,
+        notePayload: closeoutCaptureRef.current!.notePayload,
         responses,
-        trialEvents: closeoutCaptureRef.current.trialEvents,
-        expectedTargetVersions: closeoutCaptureRef.current.expectedTargetVersions,
+        trialEvents: closeoutCaptureRef.current!.trialEvents,
+        expectedTargetVersions: closeoutCaptureRef.current!.expectedTargetVersions,
       });
+      result = onFinalizeBtAbaSession
+        ? await onFinalizeBtAbaSession(session.id, finalize)
+        : await finalize();
       if (result.status !== 'completed') throw new Error('Session finalization did not complete. Please retry.');
       queryClient.setQueryData(['bt-aba-session-note', session.id], {
         noteId: result.noteId,
@@ -2442,7 +2557,9 @@ export function SessionModal({
       void queryClient.invalidateQueries({ queryKey: ['bt-aba-session-note', session.id] });
     } catch (error) {
       btAbaTransitionRef.current = 'idle';
-      const message = error instanceof Error ? error.message : 'Unable to finalize the ABA session note.';
+      const message = onFinalizeBtAbaSession
+        ? SESSION_ATTENDANCE_RETRY_MESSAGE
+        : error instanceof Error ? error.message : 'Unable to finalize the ABA session note.';
       setBtAbaError(message);
       showError(message);
       setBtAbaBusy(false);
@@ -2600,6 +2717,9 @@ export function SessionModal({
       hasGoalOptionForValue &&
       (!isDataCollectionOnly || (hasStartableCanonicalGoals && hasExactCanonicalStartGoalSet)),
   );
+  const isStartOrChoiceBusy = isLifecycleBusy || isClosing || isDependentDataLoading || isStartPlanDataLoading;
+  const isClosePreparationBusy = isLifecycleBusy || isClosing || isSubmitting || isDependentDataLoading || isLoadingAlternatives;
+  const hasStartChoicePrompt = startChoicePromptRequest !== null;
   const sessionModalMode = useMemo(() => {
     if (!session) {
       return 'create';
@@ -5425,6 +5545,33 @@ export function SessionModal({
         {modalStep === 'capture' && !isCompletedBtAbaSession ? (
         <div className="sticky bottom-0 z-10 border-t border-gray-200/80 bg-white/90 px-4 py-2 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] backdrop-blur-md dark:border-gray-700 dark:bg-dark-lighter/90 sm:px-5 sm:py-3 sm:pb-3">
           <div className="flex flex-col gap-3">
+            {hasStartChoicePrompt ? (
+              <div
+                role="status"
+                aria-live="polite"
+                className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100"
+              >
+                <p className="font-medium">Confirm how to start this session.</p>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => void handleStartChoice('clock_in')}
+                    disabled={isStartOrChoiceBusy}
+                    className="min-h-11 rounded-md border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-800 dark:bg-dark dark:text-amber-100 dark:hover:bg-amber-900/40"
+                  >
+                    Clock in and start
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleStartChoice('continue_without_clock_in')}
+                    disabled={isStartOrChoiceBusy}
+                    className="min-h-11 rounded-md border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-800 dark:bg-dark dark:text-amber-100 dark:hover:bg-amber-900/40"
+                  >
+                    Continue session without clocking in
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <div
               role="group"
               aria-label="Session actions"
@@ -5433,7 +5580,7 @@ export function SessionModal({
               <button
                 type="button"
                 onClick={handleAttemptClose}
-                disabled={isCloseInteractionDisabled}
+                disabled={isCloseInteractionDisabled || isLifecycleBusy}
                 className="min-h-11 shrink-0 rounded-full px-4 text-sm font-medium text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800 sm:min-h-11 sm:w-auto sm:rounded-md sm:border sm:border-gray-300 sm:bg-white sm:px-4 sm:text-gray-700 sm:shadow-sm sm:hover:bg-gray-50"
               >
                 Cancel
@@ -5442,7 +5589,7 @@ export function SessionModal({
                 <button
                   type="button"
                   onClick={handleStartSession}
-                  disabled={isClosing || !canStartSession || isDependentDataLoading || isStartPlanDataLoading}
+                  disabled={isStartOrChoiceBusy || !canStartSession}
                   className="min-h-11 shrink-0 rounded-full px-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40 sm:min-h-11 sm:w-auto sm:rounded-md sm:border sm:border-emerald-200 sm:bg-emerald-50/90 sm:px-4 sm:font-medium sm:text-emerald-800 sm:shadow-sm sm:hover:bg-emerald-100"
                 >
                   Start Session
@@ -5452,7 +5599,7 @@ export function SessionModal({
                 <button
                   type="button"
                   onClick={handleCloseSession}
-                  disabled={isClosing || isSubmitting || isDependentDataLoading || isLoadingAlternatives || isBtAbaNoteLoadError}
+                  disabled={isClosePreparationBusy || isBtAbaNoteLoadError}
                   className="min-h-11 shrink-0 rounded-full px-3 text-sm font-semibold text-violet-700 hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-violet-300 dark:hover:bg-violet-950/40 sm:min-h-11 sm:w-auto sm:rounded-md sm:border sm:border-violet-200 sm:bg-violet-50/90 sm:px-4 sm:font-medium sm:text-violet-800 sm:shadow-sm sm:hover:bg-violet-100"
                 >
                   Close Session

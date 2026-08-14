@@ -1,0 +1,676 @@
+import { z } from "zod";
+import {
+  isRetryablePayrollTransportError,
+  type PayrollScope,
+  type PayrollSessionAttendancePayload,
+  type PayrollTimeEventPayload,
+  type PayrollMutationSuccess,
+  validatePayrollSessionAttendancePayload,
+  validatePayrollTimeEventPayload,
+} from "./api";
+
+export interface PayrollOutboxStore {
+  put(event: PendingPayrollEvent): Promise<void>;
+  list(): Promise<PendingPayrollEvent[]>;
+  remove(storageKey: string): Promise<void>;
+  markFailed(storageKey: string, safeCode: string): Promise<void>;
+}
+
+export type PendingPayrollEvent = {
+  storageKey: string;
+  organizationId: string;
+  userId: string;
+  localDate: string;
+  idempotencyKey: string;
+  action: "record_time_event" | "record_session_attendance";
+  occurredAt: string;
+  payload: Record<string, unknown>;
+  enqueueSequence: number;
+  enqueuedAt: string;
+  state: "pending" | "replaying" | "confirmed_pending_clinical" | "needs_attention";
+  safeCode: string | null;
+  retainForClinical?: boolean;
+};
+
+type ScopedOutbox = Pick<PayrollScope, "organizationId" | "userId">;
+type EnqueuePayrollOutboxEventInput = PayrollScope & {
+  action: PendingPayrollEvent["action"];
+  idempotencyKey: string;
+  occurredAt: string;
+  payload: Record<string, unknown>;
+  retainForClinical?: boolean;
+  store: PayrollOutboxStore;
+};
+type DrainPayrollOutboxInput = ScopedOutbox & {
+  store: PayrollOutboxStore;
+  deferRetainedAttendanceKey?: string;
+  recordTimeEvent: (input: PayrollScope & { idempotencyKey: string; event: PayrollTimeEventPayload }) => Promise<PayrollMutationSuccess>;
+  recordSessionAttendance: (input: PayrollScope & { idempotencyKey: string; event: PayrollSessionAttendancePayload }) => Promise<PayrollMutationSuccess>;
+};
+type ReconfirmRetainedPayrollOutboxEventInput = ScopedOutbox & {
+  store: PayrollOutboxStore;
+  idempotencyKey: string;
+  recordSessionAttendance: (input: PayrollScope & { idempotencyKey: string; event: PayrollSessionAttendancePayload }) => Promise<PayrollMutationSuccess>;
+};
+type ClearRetainedPayrollOutboxEventInput = ScopedOutbox & {
+  store: PayrollOutboxStore;
+  idempotencyKey: string;
+  confirmedServerIdempotencyKey: string;
+};
+type FindRetainedSessionAttendanceEventInput = ScopedOutbox & {
+  store: PayrollOutboxStore;
+  sessionId: string;
+  eventType: "session_started" | "session_ended";
+};
+
+const PAYROLL_OUTBOX_DB_NAME = "allincompassing-payroll-time-outbox";
+const PAYROLL_OUTBOX_STORE_NAME = "payroll-time-events";
+const PAYROLL_OUTBOX_DB_VERSION = 2;
+const INVALID_RETAINED_PAYLOAD_SAFE_CODE = "invalid_retained_payload";
+
+const legacyRetainedSessionAttendancePayloadSchema = z.object({
+  occurredAt: z.string().min(1),
+  data: z.object({
+    eventType: z.enum(["session_started", "session_ended"]),
+    sessionId: z.string().uuid(),
+    note: z.string().optional(),
+  }).passthrough(),
+}).passthrough();
+
+const operationChains = new Map<string, Promise<void>>();
+
+const createStorageKey = (scope: ScopedOutbox, idempotencyKey: string): string =>
+  JSON.stringify([scope.organizationId, scope.userId, idempotencyKey]);
+
+const runScopedOperation = <T>(
+  scope: ScopedOutbox,
+  operation: () => Promise<T>,
+): Promise<T> => {
+  const scopeKey = JSON.stringify([scope.organizationId, scope.userId]);
+  const previous = operationChains.get(scopeKey) ?? Promise.resolve();
+  const current = previous.then(operation, operation);
+  const tail = current.then(
+    () => undefined,
+    () => undefined,
+  );
+  operationChains.set(scopeKey, tail);
+  void tail.then(() => {
+    if (operationChains.get(scopeKey) === tail) {
+      operationChains.delete(scopeKey);
+    }
+  });
+  return current;
+};
+
+const isMatchingScope = (event: PendingPayrollEvent, scope: ScopedOutbox): boolean =>
+  event.organizationId === scope.organizationId && event.userId === scope.userId;
+
+const sortOutboxEvents = (events: PendingPayrollEvent[]): PendingPayrollEvent[] =>
+  [...events].sort((left, right) =>
+    left.enqueueSequence - right.enqueueSequence ||
+    left.enqueuedAt.localeCompare(right.enqueuedAt) ||
+    left.idempotencyKey.localeCompare(right.idempotencyKey)
+  );
+
+const assertNonEmptyKey = (idempotencyKey: string): string => {
+  const trimmed = idempotencyKey.trim();
+  if (!trimmed) {
+    throw new Error("A non-empty payroll idempotency key is required.");
+  }
+  return trimmed;
+};
+
+const validateOutboxPayload = (
+  action: PendingPayrollEvent["action"],
+  payload: Record<string, unknown>,
+): Record<string, unknown> => {
+  if (action === "record_time_event") {
+    return validatePayrollTimeEventPayload(payload as PayrollTimeEventPayload) as Record<string, unknown>;
+  }
+  return validatePayrollSessionAttendancePayload(payload as PayrollSessionAttendancePayload) as Record<string, unknown>;
+};
+
+const canonicalizeRetainedSessionAttendancePayload = (
+  payload: Record<string, unknown>,
+): Record<string, unknown> => {
+  const validated = legacyRetainedSessionAttendancePayloadSchema.parse(payload);
+  const data = {
+    eventType: validated.data.eventType,
+    sessionId: validated.data.sessionId,
+    ...(validated.data.note === undefined ? {} : { note: validated.data.note }),
+  };
+
+  return {
+    occurredAt: validated.occurredAt,
+    data,
+  };
+};
+
+const isRetainedSessionAttendanceEvent = (event: PendingPayrollEvent): boolean =>
+  event.action === "record_session_attendance" && event.retainForClinical === true;
+
+const buildInvalidRetainedPayloadError = (): Error => Object.assign(
+  new Error("Retained attendance payload is invalid and requires attention."),
+  { code: INVALID_RETAINED_PAYLOAD_SAFE_CODE },
+);
+
+const buildDuplicateRetainedAttendanceError = (): Error =>
+  new Error("Multiple retained payroll attendance events matched the requested scope.");
+
+const normalizeStoredEvent = (event: PendingPayrollEvent): PendingPayrollEvent => {
+  const normalized = {
+    ...event,
+    storageKey: event.storageKey || createStorageKey(event, event.idempotencyKey),
+    retainForClinical: event.retainForClinical === true,
+  };
+  if (!isRetainedSessionAttendanceEvent(normalized)) {
+    return normalized;
+  }
+
+  try {
+    return {
+      ...normalized,
+      payload: canonicalizeRetainedSessionAttendancePayload(normalized.payload),
+    };
+  } catch {
+    return {
+      ...normalized,
+      payload: {},
+      state: "needs_attention",
+      safeCode: INVALID_RETAINED_PAYLOAD_SAFE_CODE,
+    };
+  }
+};
+
+const withPendingState = (event: PendingPayrollEvent): PendingPayrollEvent => ({
+  ...event,
+  state: "pending",
+  safeCode: null,
+});
+
+const getNonRetryablePayrollTransportSafeCode = (error: unknown): string | null => {
+  if (isRetryablePayrollTransportError(error)) {
+    return null;
+  }
+
+  const safeCode = (error as { code?: unknown })?.code;
+  return typeof safeCode === "string" && safeCode.length > 0 ? safeCode : null;
+};
+
+const buildKeyMismatchError = (requestedKey: string, responseKey: string): Error => Object.assign(
+  new Error(`Payroll confirmation key mismatch for ${requestedKey}.`),
+  {
+    code: "idempotency_mismatch",
+    status: 502,
+    data: {
+      requestedKey,
+      responseKey: responseKey || null,
+    },
+  },
+);
+
+const assertRetainForClinicalInput = (
+  action: PendingPayrollEvent["action"],
+  retainForClinical: boolean,
+): void => {
+  if (retainForClinical && action !== "record_session_attendance") {
+    throw new Error("Clinical retention is supported only for session attendance outbox events.");
+  }
+};
+
+const isRetainedConfirmedEvent = (event: PendingPayrollEvent): boolean =>
+  isRetainedSessionAttendanceEvent(event) &&
+  event.state === "confirmed_pending_clinical";
+
+const getScopedRetainedEvent = (
+  events: PendingPayrollEvent[],
+  scope: ScopedOutbox,
+  idempotencyKey: string,
+): PendingPayrollEvent => {
+  const scopedStorageKey = createStorageKey(scope, idempotencyKey);
+  const event = events.find((candidate) => candidate.storageKey === scopedStorageKey);
+  if (!event) {
+    throw new Error("No retained payroll outbox event exists for the scoped user and key.");
+  }
+  if (event.state === "needs_attention" || event.safeCode) {
+    throw new Error("Retained payroll outbox event requires attention.");
+  }
+  if (event.action !== "record_session_attendance" || event.retainForClinical !== true) {
+    throw new Error("Retained payroll outbox event has an incompatible action.");
+  }
+  if (event.state !== "confirmed_pending_clinical") {
+    throw new Error("Retained payroll outbox event is not ready for clinical replay.");
+  }
+  return event;
+};
+
+export const createInMemoryPayrollOutboxStore = (
+  initialEvents: PendingPayrollEvent[] = [],
+): PayrollOutboxStore => {
+  const entries = new Map(
+    initialEvents.map((event) => {
+      const normalized = normalizeStoredEvent(event);
+      return [normalized.storageKey, normalized];
+    }),
+  );
+
+  return {
+    async put(event) {
+      entries.set(event.storageKey, { ...event });
+    },
+    async list() {
+      return sortOutboxEvents(Array.from(entries.values()).map((event) => ({ ...event })));
+    },
+    async remove(storageKey) {
+      entries.delete(storageKey);
+    },
+    async markFailed(storageKey, safeCode) {
+      const existing = entries.get(storageKey);
+      if (!existing) {
+        return;
+      }
+      entries.set(storageKey, {
+        ...existing,
+        state: "needs_attention",
+        safeCode,
+      });
+    },
+  };
+};
+
+const openIndexedDb = async (): Promise<IDBDatabase> => {
+  if (typeof indexedDB === "undefined") {
+    throw new Error("IndexedDB is not available in this environment.");
+  }
+
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(PAYROLL_OUTBOX_DB_NAME, PAYROLL_OUTBOX_DB_VERSION);
+    request.onerror = () => reject(request.error ?? new Error("Failed to open payroll outbox database."));
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(PAYROLL_OUTBOX_STORE_NAME)) {
+        database.createObjectStore(PAYROLL_OUTBOX_STORE_NAME, { keyPath: "storageKey" });
+        return;
+      }
+
+      const transaction = request.transaction;
+      if (!transaction) {
+        throw new Error("Payroll outbox upgrade transaction is unavailable.");
+      }
+      const existingStore = transaction.objectStore(PAYROLL_OUTBOX_STORE_NAME);
+      if (existingStore.keyPath === "storageKey") {
+        return;
+      }
+
+      const readRequest = existingStore.getAll();
+      readRequest.onerror = () => transaction.abort();
+      readRequest.onsuccess = () => {
+        const existingEvents = (readRequest.result ?? []) as PendingPayrollEvent[];
+        database.deleteObjectStore(PAYROLL_OUTBOX_STORE_NAME);
+        const migratedStore = database.createObjectStore(PAYROLL_OUTBOX_STORE_NAME, {
+          keyPath: "storageKey",
+        });
+        for (const event of existingEvents) {
+          migratedStore.put(normalizeStoredEvent(event));
+        }
+      };
+    };
+    request.onsuccess = () => resolve(request.result);
+  });
+};
+
+const runIndexedDbRequest = async <T>(
+  mode: IDBTransactionMode,
+  executor: (
+    store: IDBObjectStore,
+    setResult: (value: T) => void,
+    setRequestError: (reason: unknown) => void,
+  ) => void,
+): Promise<T> => {
+  const database = await openIndexedDb();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(PAYROLL_OUTBOX_STORE_NAME, mode);
+    const store = transaction.objectStore(PAYROLL_OUTBOX_STORE_NAME);
+    let result: T;
+    let hasResult = false;
+    let requestError: unknown;
+    let settled = false;
+
+    const closeDatabase = () => {
+      database.close();
+    };
+    const rejectTransaction = (fallback: Error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      closeDatabase();
+      reject(transaction.error ?? requestError ?? fallback);
+    };
+
+    transaction.oncomplete = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      closeDatabase();
+      if (!hasResult) {
+        reject(requestError ?? new Error("Payroll outbox IndexedDB request did not complete."));
+        return;
+      }
+      resolve(result);
+    };
+    transaction.onerror = () => {
+      rejectTransaction(new Error("Payroll outbox IndexedDB transaction failed."));
+    };
+    transaction.onabort = () => {
+      rejectTransaction(new Error("Payroll outbox IndexedDB transaction aborted."));
+    };
+
+    try {
+      executor(
+        store,
+        (value) => {
+          result = value;
+          hasResult = true;
+        },
+        (reason) => {
+          requestError = reason;
+        },
+      );
+    } catch (error) {
+      requestError = error;
+      try {
+        transaction.abort();
+      } catch {
+        rejectTransaction(new Error("Payroll outbox IndexedDB transaction failed."));
+      }
+    }
+  });
+};
+
+export const createIndexedDbPayrollOutboxStore = (): PayrollOutboxStore => ({
+  async put(event) {
+    await runIndexedDbRequest<void>("readwrite", (store, setResult, setRequestError) => {
+      const request = store.put(event);
+      request.onerror = () => setRequestError(request.error ?? new Error("Failed to persist payroll outbox event."));
+      request.onsuccess = () => setResult(undefined);
+    });
+  },
+  async list() {
+    return runIndexedDbRequest<PendingPayrollEvent[]>("readonly", (store, setResult, setRequestError) => {
+      const request = store.getAll();
+      request.onerror = () => setRequestError(request.error ?? new Error("Failed to read payroll outbox events."));
+      request.onsuccess = () => {
+        setResult(sortOutboxEvents(
+          ((request.result ?? []) as PendingPayrollEvent[]).map(normalizeStoredEvent),
+        ));
+      };
+    });
+  },
+  async remove(storageKey) {
+    await runIndexedDbRequest<void>("readwrite", (store, setResult, setRequestError) => {
+      const request = store.delete(storageKey);
+      request.onerror = () => setRequestError(request.error ?? new Error("Failed to remove payroll outbox event."));
+      request.onsuccess = () => setResult(undefined);
+    });
+  },
+  async markFailed(storageKey, safeCode) {
+    await runIndexedDbRequest<void>("readwrite", (store, setResult, setRequestError) => {
+      const readRequest = store.get(storageKey);
+      readRequest.onerror = () => setRequestError(
+        readRequest.error ?? new Error("Failed to read payroll outbox event for failure state."),
+      );
+      readRequest.onsuccess = () => {
+        const existing = readRequest.result as PendingPayrollEvent | undefined;
+        if (!existing) {
+          setResult(undefined);
+          return;
+        }
+        const writeRequest = store.put({
+          ...normalizeStoredEvent(existing),
+          state: "needs_attention",
+          safeCode,
+        });
+        writeRequest.onerror = () => setRequestError(
+          writeRequest.error ?? new Error("Failed to persist payroll outbox failure state."),
+        );
+        writeRequest.onsuccess = () => setResult(undefined);
+      };
+    });
+  },
+});
+
+export async function listPayrollOutboxEvents(
+  store: PayrollOutboxStore,
+  scope: ScopedOutbox,
+): Promise<PendingPayrollEvent[]> {
+  const events = (await store.list()).map(normalizeStoredEvent);
+  return sortOutboxEvents(events.filter((event) => isMatchingScope(event, scope)));
+}
+
+export async function recoverPayrollOutbox(
+  store: PayrollOutboxStore,
+  scope: ScopedOutbox,
+): Promise<void> {
+  return runScopedOperation(scope, async () => {
+    const events = await listPayrollOutboxEvents(store, scope);
+    for (const event of events) {
+      if (isRetainedSessionAttendanceEvent(event)) {
+        await store.put(event.state === "replaying" ? withPendingState(event) : event);
+      } else if (event.state === "replaying") {
+        await store.put(withPendingState(event));
+      }
+    }
+  });
+}
+
+export async function findRetainedSessionAttendanceEvent(
+  input: FindRetainedSessionAttendanceEventInput,
+): Promise<PendingPayrollEvent | null> {
+  const events = await listPayrollOutboxEvents(input.store, input);
+  const retained = events.filter((event) => {
+    if (!isRetainedSessionAttendanceEvent(event)) {
+      return false;
+    }
+    try {
+      const payload = canonicalizeRetainedSessionAttendancePayload(event.payload);
+      return payload.data.sessionId === input.sessionId && payload.data.eventType === input.eventType;
+    } catch {
+      return false;
+    }
+  });
+
+  if (retained.length > 1) {
+    throw buildDuplicateRetainedAttendanceError();
+  }
+
+  return retained[0] ?? null;
+}
+
+export async function enqueuePayrollOutboxEvent(
+  input: EnqueuePayrollOutboxEventInput,
+): Promise<PendingPayrollEvent> {
+  return runScopedOperation(input, async () => {
+    const idempotencyKey = assertNonEmptyKey(input.idempotencyKey);
+    const retainForClinical = input.retainForClinical === true;
+    assertRetainForClinicalInput(input.action, retainForClinical);
+    const payload = retainForClinical
+      ? canonicalizeRetainedSessionAttendancePayload(input.payload)
+      : validateOutboxPayload(input.action, input.payload);
+    const existingEvents = await input.store.list();
+    const enqueueSequence = existingEvents.reduce(
+      (maxSequence, event) => Math.max(maxSequence, event.enqueueSequence),
+      0,
+    ) + 1;
+    const pendingEvent: PendingPayrollEvent = {
+      storageKey: createStorageKey(input, idempotencyKey),
+      organizationId: input.organizationId,
+      userId: input.userId,
+      localDate: input.localDate,
+      idempotencyKey,
+      action: input.action,
+      occurredAt: input.occurredAt,
+      payload,
+      enqueueSequence,
+      enqueuedAt: new Date().toISOString(),
+      state: "pending",
+      safeCode: null,
+      retainForClinical,
+    };
+    await input.store.put(pendingEvent);
+    return pendingEvent;
+  });
+}
+
+export async function drainPayrollOutbox(
+  input: DrainPayrollOutboxInput,
+): Promise<{ confirmedKeys: string[] }> {
+  return runScopedOperation(input, async () => {
+    const confirmedKeys: string[] = [];
+    const events = await listPayrollOutboxEvents(input.store, input);
+    const deferredKey = input.deferRetainedAttendanceKey === undefined
+      ? null
+      : assertNonEmptyKey(input.deferRetainedAttendanceKey);
+
+    if (deferredKey) {
+      const deferredEvent = events.find((event) => event.idempotencyKey === deferredKey);
+      if (!deferredEvent || !isRetainedSessionAttendanceEvent(deferredEvent)) {
+        throw new Error("Deferred payroll outbox key must identify retained session attendance.");
+      }
+    }
+
+    for (const event of events) {
+      if (event.state === "needs_attention") {
+        break;
+      }
+      if (isRetainedConfirmedEvent(event)) {
+        continue;
+      }
+      if (event.idempotencyKey === deferredKey) {
+        continue;
+      }
+
+      await input.store.put({
+        ...event,
+        state: "replaying",
+        safeCode: null,
+      });
+
+      try {
+        const result = event.action === "record_time_event"
+          ? await input.recordTimeEvent({
+            organizationId: event.organizationId,
+            userId: event.userId,
+            localDate: event.localDate,
+            idempotencyKey: event.idempotencyKey,
+            event: event.payload as PayrollTimeEventPayload,
+          })
+          : await input.recordSessionAttendance({
+            organizationId: event.organizationId,
+            userId: event.userId,
+            localDate: event.localDate,
+            idempotencyKey: event.idempotencyKey,
+            event: event.payload as PayrollSessionAttendancePayload,
+          });
+
+        if (result.idempotencyKey !== event.idempotencyKey) {
+          await input.store.put(withPendingState(event));
+          break;
+        }
+
+        if (event.action === "record_session_attendance" && event.retainForClinical) {
+          await input.store.put({
+            ...event,
+            state: "confirmed_pending_clinical",
+            safeCode: null,
+          });
+        } else {
+          await input.store.remove(event.storageKey);
+        }
+        confirmedKeys.push(event.idempotencyKey);
+      } catch (error) {
+        const safeCode = getNonRetryablePayrollTransportSafeCode(error);
+        if (safeCode) {
+          await input.store.markFailed(event.storageKey, safeCode);
+          break;
+        }
+
+        await input.store.put(withPendingState(event));
+        break;
+      }
+    }
+
+    return { confirmedKeys };
+  });
+}
+
+export async function reconfirmRetainedPayrollOutboxEvent(
+  input: ReconfirmRetainedPayrollOutboxEventInput,
+): Promise<PayrollMutationSuccess> {
+  return runScopedOperation(input, async () => {
+    const idempotencyKey = assertNonEmptyKey(input.idempotencyKey);
+    const events = (await input.store.list()).map(normalizeStoredEvent);
+    const scopedStorageKey = createStorageKey(input, idempotencyKey);
+    const normalizedCandidate = events.find((candidate) => candidate.storageKey === scopedStorageKey);
+    if (normalizedCandidate?.safeCode === INVALID_RETAINED_PAYLOAD_SAFE_CODE) {
+      await input.store.put(normalizedCandidate);
+      throw buildInvalidRetainedPayloadError();
+    }
+    const event = getScopedRetainedEvent(events, input, idempotencyKey);
+    const replayPayload = canonicalizeRetainedSessionAttendancePayload(event.payload);
+
+    try {
+      const result = await input.recordSessionAttendance({
+        organizationId: event.organizationId,
+        userId: event.userId,
+        localDate: event.localDate,
+        idempotencyKey: event.idempotencyKey,
+        event: replayPayload as PayrollSessionAttendancePayload,
+      });
+
+      if (result.idempotencyKey !== event.idempotencyKey) {
+        throw buildKeyMismatchError(event.idempotencyKey, result.idempotencyKey);
+      }
+
+      await input.store.put({
+        ...event,
+        payload: replayPayload,
+        state: "confirmed_pending_clinical",
+        safeCode: null,
+      });
+      return result;
+    } catch (error) {
+      const safeCode = (error as { code?: unknown })?.code === "idempotency_mismatch"
+        ? "idempotency_mismatch"
+        : getNonRetryablePayrollTransportSafeCode(error);
+      if (safeCode) {
+        await input.store.markFailed(event.storageKey, safeCode);
+        throw error;
+      }
+
+      await input.store.put({
+        ...event,
+        state: "confirmed_pending_clinical",
+        safeCode: null,
+      });
+      throw error;
+    }
+  });
+}
+
+export async function clearRetainedPayrollOutboxEvent(
+  input: ClearRetainedPayrollOutboxEventInput,
+): Promise<void> {
+  return runScopedOperation(input, async () => {
+    const idempotencyKey = assertNonEmptyKey(input.idempotencyKey);
+    const confirmedServerIdempotencyKey = assertNonEmptyKey(input.confirmedServerIdempotencyKey);
+    if (confirmedServerIdempotencyKey !== idempotencyKey) {
+      throw new Error("Clinical success key does not match retained payroll outbox event key.");
+    }
+
+    const events = (await input.store.list()).map(normalizeStoredEvent);
+    const event = getScopedRetainedEvent(events, input, idempotencyKey);
+    await input.store.remove(event.storageKey);
+  });
+}

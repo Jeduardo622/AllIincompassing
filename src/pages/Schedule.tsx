@@ -75,6 +75,10 @@ import {
 import { filterSessionsBySelectedScope } from "../features/scheduling/domain/sessionFilters";
 import { shouldClearMissingSelection } from "../features/scheduling/domain/selectionGuard";
 import { formatSessionNoteTiming } from "../features/scheduling/domain/time";
+import { createSessionPayrollLifecycle } from "../features/scheduling/domain/sessionPayrollLifecycle";
+import { startSessionFromModal, type StartSessionRequest } from "../features/scheduling/domain/sessionStart";
+import type { CompleteSessionRequest } from "../features/scheduling/domain/sessionComplete";
+import type { PayrollScope } from "../features/payroll/api";
 
 type ScheduleDataErrorCategory =
   | "insufficient_privilege"
@@ -417,6 +421,29 @@ export const Schedule = React.memo(() => {
   const completedAwaitingFinalizationRef = useRef<Set<string>>(new Set());
   const inProgressClinicalNoteDraftRef = useRef<Map<string, InProgressClinicalNoteDraftState>>(new Map());
   const btAbaCompletedSessionsRef = useRef<Set<string>>(new Set());
+  const payrollLifecycleRef = useRef<ReturnType<typeof createSessionPayrollLifecycle> | null>(null);
+  const preparedStartsRef = useRef(new Map<string, Awaited<ReturnType<ReturnType<typeof createSessionPayrollLifecycle>["prepareStart"]>>>());
+  const preparedClosesRef = useRef(new Map<string, { kind: "session_close_preparation"; attendanceIdempotencyKey: string; occurredAt: string }>());
+
+  if (payrollLifecycleRef.current === null) {
+    payrollLifecycleRef.current = createSessionPayrollLifecycle();
+  }
+
+  useEffect(() => {
+    preparedStartsRef.current.clear();
+    preparedClosesRef.current.clear();
+  }, [activeOrganizationId, user?.id]);
+
+  const preparedSessionIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const previousSessionId = preparedSessionIdRef.current;
+    const nextSessionId = selectedSession?.id ?? null;
+    if (previousSessionId && previousSessionId !== nextSessionId) {
+      preparedStartsRef.current.delete(previousSessionId);
+      preparedClosesRef.current.delete(previousSessionId);
+    }
+    preparedSessionIdRef.current = nextSessionId;
+  }, [selectedSession?.id]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -482,6 +509,25 @@ export const Schedule = React.memo(() => {
       return "UTC";
     }
   }, []);
+
+  const buildPayrollScope = useCallback((): PayrollScope => {
+    if (!activeOrganizationId) {
+      throw new Error("Select an organization before recording session attendance.");
+    }
+    if (!user?.id) {
+      throw new Error("Sign in again before recording session attendance.");
+    }
+
+    return {
+      organizationId: activeOrganizationId,
+      userId: user.id,
+      localDate: format(new Date(), "yyyy-MM-dd"),
+    };
+  }, [activeOrganizationId, user?.id]);
+
+  const getAttendanceRetryMessage = useCallback(() => (
+    "Attendance could not be confirmed. Reconnect and retry."
+  ), []);
 
   const [recurrenceEnabled, setRecurrenceEnabled] = useState(false);
   const [advancedRecurrenceEnabled, setAdvancedRecurrenceEnabled] = useState(false);
@@ -1287,7 +1333,12 @@ export const Schedule = React.memo(() => {
       outcome: "completed" | "no-show";
       notes?: string | null;
     }) => {
-      await completeSessionFromModal({ sessionId, outcome, notes });
+      await runPreparedClose(
+        { sessionId, outcome, notes },
+        async () => {
+          await completeSessionFromModal({ sessionId, outcome, notes });
+        },
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
@@ -1513,6 +1564,10 @@ export const Schedule = React.memo(() => {
   }, []);
 
   const handleCloseSessionModal = useCallback(() => {
+    if (selectedSession?.id) {
+      preparedStartsRef.current.delete(selectedSession.id);
+      preparedClosesRef.current.delete(selectedSession.id);
+    }
     setRetryActionLabel(null);
     const params = clearScheduleModalSearchParams(searchParams);
     setSearchParams(params, { replace: true });
@@ -1520,7 +1575,7 @@ export const Schedule = React.memo(() => {
       { kind: "close-modal" },
       scheduleResetSetters,
     );
-  }, [scheduleResetSetters, searchParams, setSearchParams]);
+  }, [scheduleResetSetters, searchParams, selectedSession?.id, setSearchParams]);
 
   useEffect(() => {
     if (wasModalOpenRef.current && !isModalOpen) {
@@ -1534,6 +1589,130 @@ export const Schedule = React.memo(() => {
     queryClient.invalidateQueries({ queryKey: ["sessions"] });
     queryClient.invalidateQueries({ queryKey: ["sessions-batch"] });
   }, [queryClient]);
+
+  const handleStartSessionOrchestration = useCallback(async (
+    request: StartSessionRequest,
+    choice?: "clock_in" | "continue_without_clock_in",
+  ) => {
+    const lifecycle = payrollLifecycleRef.current!;
+    const scope = buildPayrollScope();
+    let prepared = preparedStartsRef.current.get(request.sessionId);
+
+    if (!prepared || (!choice && prepared.kind !== "clock_choice_required")) {
+      try {
+        prepared = await lifecycle.prepareStart({
+          scope,
+          sessionId: request.sessionId,
+        });
+      } catch {
+        throw new Error(getAttendanceRetryMessage());
+      }
+      if (prepared.kind === "payroll_disabled") {
+        await startSessionFromModal(request);
+        preparedStartsRef.current.delete(request.sessionId);
+        return { kind: "started" as const };
+      }
+      if (prepared.kind === "clock_choice_required" && !choice) {
+        preparedStartsRef.current.set(request.sessionId, prepared);
+        return { kind: "clock_choice_required" as const };
+      }
+    }
+
+    if (!prepared || prepared.kind === "payroll_disabled") {
+      throw new Error("Unable to prepare session attendance. Reconnect and retry.");
+    }
+
+    if (prepared.kind === "clock_choice_required") {
+      preparedStartsRef.current.set(request.sessionId, prepared);
+      if (!choice) {
+        return { kind: "clock_choice_required" as const };
+      }
+    }
+
+    const executeChoice =
+      prepared.kind === "ready"
+        ? prepared.mode
+        : choice;
+    if (!executeChoice) {
+      return { kind: "clock_choice_required" as const };
+    }
+
+    let result;
+    try {
+      result = await lifecycle.executeStart({
+        scope,
+        prepared,
+        choice: executeChoice,
+        request,
+      });
+    } catch {
+      preparedStartsRef.current.delete(request.sessionId);
+      throw new Error(getAttendanceRetryMessage());
+    }
+    if (result.kind === "attendance_not_confirmed") {
+      throw new Error(getAttendanceRetryMessage());
+    }
+
+    preparedStartsRef.current.delete(request.sessionId);
+    return { kind: "started" as const };
+  }, [buildPayrollScope, getAttendanceRetryMessage]);
+
+  const handlePrepareSessionClose = useCallback(async (sessionId: string) => {
+    const lifecycle = payrollLifecycleRef.current!;
+    let result;
+    try {
+      result = await lifecycle.prepareCloseSession({
+        scope: buildPayrollScope(),
+        sessionId,
+      });
+    } catch {
+      throw new Error(getAttendanceRetryMessage());
+    }
+    if (result.kind === "payroll_disabled") {
+      preparedClosesRef.current.delete(sessionId);
+      return;
+    }
+    if (result.kind === "attendance_not_confirmed") {
+      throw new Error(getAttendanceRetryMessage());
+    }
+    preparedClosesRef.current.set(sessionId, result.preparation);
+  }, [buildPayrollScope, getAttendanceRetryMessage]);
+
+  const runPreparedClose = useCallback(async (
+    request: CompleteSessionRequest,
+    finalizeClinicalClose: () => Promise<void>,
+  ) => {
+    const lifecycle = payrollLifecycleRef.current!;
+    let result;
+    try {
+      result = await lifecycle.completePreparedClose({
+        scope: buildPayrollScope(),
+        request,
+        preparation: preparedClosesRef.current.get(request.sessionId),
+        runClinicalClose: finalizeClinicalClose,
+      });
+    } catch {
+      throw new Error(getAttendanceRetryMessage());
+    }
+    if (result.kind === "attendance_not_confirmed") {
+      throw new Error(getAttendanceRetryMessage());
+    }
+    preparedClosesRef.current.delete(request.sessionId);
+  }, [buildPayrollScope, getAttendanceRetryMessage]);
+
+  const handleFinalizeBtAbaSession = useCallback(async (
+    sessionId: string,
+    finalize: () => Promise<{ status: "completed"; noteId: string; progressionResults: [] }>,
+  ) => {
+    let finalizedResult: Awaited<ReturnType<typeof finalize>>;
+    await runPreparedClose(
+      { sessionId, outcome: "completed" },
+      async () => {
+        finalizedResult = await finalize();
+      },
+    );
+    return finalizedResult!;
+  }, [runPreparedClose]);
 
   const handleBtAbaSessionFinalized = useCallback(async ({ sessionId }: { sessionId: string }) => {
     if (btAbaCompletedSessionsRef.current.has(sessionId)) return;
@@ -2138,6 +2317,9 @@ export const Schedule = React.memo(() => {
         retryActionLabel={retryActionLabel}
         onRetryAction={retryActionLabel ? handleOpenLinkedSessionDocumentation : undefined}
         onSessionStarted={handleSessionStarted}
+        onStartSessionOrchestration={handleStartSessionOrchestration}
+        onPrepareSessionClose={handlePrepareSessionClose}
+        onFinalizeBtAbaSession={handleFinalizeBtAbaSession}
         onBtAbaSessionFinalized={handleBtAbaSessionFinalized}
       />
     </Suspense>

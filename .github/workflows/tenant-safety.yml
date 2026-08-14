@@ -41,7 +41,7 @@ jobs:
         run: npm run -s typecheck
       - name: Run tests
         env:
-          NODE_OPTIONS: "--max-old-space-size=6144"
+          NODE_OPTIONS: "--max-old-space-size=8192"
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}

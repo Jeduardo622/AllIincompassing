@@ -352,8 +352,8 @@ describe('provision-ci-smoke-admin safeguards', () => {
     expect(authStep).not.toContain('npm run playwright:preflight');
     expect(authStep).not.toContain('SUPABASE_SECRET_KEY');
     expect(authStep).not.toContain('SUPABASE_SERVICE_ROLE_KEY');
-    expect(sessionStep).toContain('npm run ci:playwright:session-smoke');
-    expect(packageJson.scripts?.['ci:playwright:session-smoke']).toContain('playwright:preflight');
+    expect(sessionStep).toContain('npm run ci:playwright');
+    expect(packageJson.scripts?.['ci:playwright']).toContain('playwright:preflight');
     expect(sessionStep).toContain('SUPABASE_SERVICE_ROLE_KEY');
   });
 

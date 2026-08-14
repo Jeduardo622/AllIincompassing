@@ -12,9 +12,10 @@ export type ObserverArgs = {
   baseUrl: string;
   routes: string[];
   scenario?: ObserverScenario;
+  artifactRunId?: string;
 };
 
-export type ObserverScenario = 'schedule-overlap';
+export type ObserverScenario = 'schedule-overlap' | 'payroll-time' | 'payroll-time-review';
 
 export type LayoutTouchTarget = {
   width: number;
@@ -58,6 +59,8 @@ export const OBSERVER_POLICY: ObserverPolicy = {
 };
 
 const SCHEDULE_OVERLAP_SCENARIO: ObserverScenario = 'schedule-overlap';
+const PAYROLL_TIME_SCENARIO: ObserverScenario = 'payroll-time';
+const PAYROLL_TIME_REVIEW_SCENARIO: ObserverScenario = 'payroll-time-review';
 
 const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
@@ -165,6 +168,7 @@ export const parseObserverArgs = (argv: string[]): ObserverArgs => {
   let baseUrl: string | undefined;
   const routes: string[] = [];
   let scenario: ObserverScenario | undefined;
+  let artifactRunId: string | undefined;
 
   for (const arg of argv.slice(2)) {
     if (arg.startsWith('--base-url=')) {
@@ -183,10 +187,25 @@ export const parseObserverArgs = (argv: string[]): ObserverArgs => {
         throw new Error('Scenario may be provided only once.');
       }
       const candidate = arg.slice('--scenario='.length);
-      if (candidate !== SCHEDULE_OVERLAP_SCENARIO) {
+      if (
+        candidate !== SCHEDULE_OVERLAP_SCENARIO
+        && candidate !== PAYROLL_TIME_SCENARIO
+        && candidate !== PAYROLL_TIME_REVIEW_SCENARIO
+      ) {
         throw new Error(`Unknown observer scenario: ${candidate}`);
       }
-      scenario = SCHEDULE_OVERLAP_SCENARIO;
+      scenario = candidate;
+      continue;
+    }
+    if (arg.startsWith('--artifact-run-id=')) {
+      if (artifactRunId) {
+        throw new Error('Artifact run ID may be provided only once.');
+      }
+      const candidate = arg.slice('--artifact-run-id='.length);
+      if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(candidate)) {
+        throw new Error('Artifact run ID must be a lowercase alphanumeric slug.');
+      }
+      artifactRunId = candidate;
       continue;
     }
     throw new Error(`Unknown observer argument: ${arg}`);
@@ -203,8 +222,17 @@ export const parseObserverArgs = (argv: string[]): ObserverArgs => {
       throw new Error('The schedule-overlap scenario requires exactly one --route=/schedule.');
     }
   }
-
-  return { baseUrl, routes, scenario };
+  if (scenario === PAYROLL_TIME_SCENARIO) {
+    if (routes.length !== 1 || routes[0] !== '/time') {
+      throw new Error('The payroll-time scenario requires exactly one --route=/time.');
+    }
+  }
+  if (scenario === PAYROLL_TIME_REVIEW_SCENARIO) {
+    if (routes.length !== 1 || routes[0] !== '/time/review') {
+      throw new Error('The payroll-time-review scenario requires exactly one --route=/time/review.');
+    }
+  }
+  return { baseUrl, routes, scenario, artifactRunId };
 };
 
 export const classifyLayout = (
@@ -236,6 +264,8 @@ export const sanitizeObserverFailures = (messages: string[]): string[] => {
     'scenario-trigger-missing',
     'scenario-dialog-missing',
     'unexpected-scenario-request',
+    'scenario-bootstrap-missing',
+    'route-surface-missing',
   ]);
 
   for (const message of messages) {

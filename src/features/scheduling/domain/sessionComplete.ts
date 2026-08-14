@@ -9,6 +9,12 @@ export type CompleteSessionRequest = {
   notes?: string | null;
 };
 
+type RevalidateTerminalSessionOutcomeInput = {
+  sessionId: string;
+  organizationId: string;
+  outcome: CompleteSessionRequest["outcome"];
+};
+
 type InProgressSessionCloseReadinessInput = {
   sessionId: string;
   organizationId: string | null;
@@ -124,4 +130,20 @@ export async function completeSessionFromModal(
       "Failed to complete session",
     );
   }
+}
+
+export async function revalidateTerminalSessionOutcome(
+  input: RevalidateTerminalSessionOutcomeInput,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("status")
+    .eq("id", input.sessionId)
+    .eq("organization_id", input.organizationId);
+
+  if (error) {
+    throw error;
+  }
+
+  return data?.[0]?.status === input.outcome;
 }

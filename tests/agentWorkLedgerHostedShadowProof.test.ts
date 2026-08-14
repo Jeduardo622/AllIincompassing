@@ -449,7 +449,7 @@ describe("agent work hosted shadow proof contract", () => {
         // GitHub's shallow checkout may not contain the reviewed predecessor.
         expect(historicalFile.status, reference.path).toBe(128);
         expect(historicalFile.stderr.toString(), reference.path).toMatch(
-          /bad object|does not exist in|invalid object name|unknown revision/i,
+          /bad object|does not exist in|exists on disk, but not in|invalid object name|unknown revision/i,
         );
         continue;
       }

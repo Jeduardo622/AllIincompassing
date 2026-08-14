@@ -142,3 +142,13 @@ Specialist results:
 - merged stack: PR `#935` merged into the still-open evidence PR `#934`; PR `#934` is the remaining critical-lane merge boundary
 - blocked checks: credential-backed local `npm run ci:playwright` and PR `#934` exact-head CI after this evidence refresh
 - residual risk: critical-lane owner review and exact-head required CI remain mandatory; internal `program*` identifiers and backend contracts remain intentionally unchanged
+
+## 2026-08-13 Shallow-History CI Compatibility Fix
+
+- scope: recognize Git's canonical `exists on disk, but not in` stderr only when historical evidence lookup exits with status `128`
+- protected evidence: refreshed only the canonical hash for `tests/agentWorkLedgerHostedShadowProof.test.ts`; reviewer identities and hosted authority remain unchanged
+- focused contract: `38/38` passed after the expected red hash-mismatch step
+- standard checks: policy, lint, typecheck, full `test:ci` retry (`537` files passed, `7` skipped), and production build passed
+- transient evidence: the first full suite run hit unrelated concurrent failures and a Vitest worker RPC timeout; `TherapistOnboarding.test.tsx` immediately passed `7/7` in isolation before the clean full-suite retry
+- specialist review: code review approved with no findings; test review confirmed exact-head CI remains the mandatory merge gate
+- residual risk: critical-lane owner review and exact-head required CI remain mandatory; no hosted action or runtime-policy change was authorized

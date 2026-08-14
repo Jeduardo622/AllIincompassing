@@ -14,7 +14,13 @@ export type StartSessionRequest = {
   startedAt?: string;
 };
 
-export async function startSessionFromModal(request: StartSessionRequest): Promise<void> {
+export type StartSessionApiResult = {
+  outcome: "started" | "already_started";
+};
+
+export async function startSessionApiRequest(
+  request: StartSessionRequest,
+): Promise<StartSessionApiResult> {
   const parsedRequest = sessionsStartRequestSchema.safeParse({
     session_id: request.sessionId,
     program_id: request.programId,
@@ -41,7 +47,7 @@ export async function startSessionFromModal(request: StartSessionRequest): Promi
       fallbackPayload = null;
     }
     if (response.status === 409 && fallbackPayload?.rpcCode === "ALREADY_STARTED") {
-      return;
+      return { outcome: "already_started" };
     }
     throw toNormalizedApiError(
       fallbackPayload,
@@ -49,5 +55,11 @@ export async function startSessionFromModal(request: StartSessionRequest): Promi
       "Failed to start session",
     );
   }
+
+  return { outcome: "started" };
+}
+
+export async function startSessionFromModal(request: StartSessionRequest): Promise<void> {
+  await startSessionApiRequest(request);
 }
 

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 const ROOT = process.cwd();
 const APP_PATH = path.join(ROOT, 'src', 'App.tsx');
 const AUDIT_PATH = path.join(ROOT, 'scripts', 'route-audit.ts');
+const ROUTE_SCENARIOS_PATH = path.join(ROOT, 'cypress', 'support', 'routeScenarios.ts');
 
 const normalizeRoles = (roles: string[]): string[] =>
   [...new Set(roles.map((role) => role.trim()).filter((role) => role.length > 0))].sort();
@@ -80,5 +81,16 @@ describe('route-audit role matrix parity', () => {
       expect(auditRoutes.has(routePath), `route-audit is missing route ${routePath}`).toBe(true);
       expect(auditRoutes.get(routePath), `route role mismatch for ${routePath}`).toEqual(appRoles);
     }
+  });
+
+  it('keeps payroll review and administration in route-audit and tier-0 inventories', () => {
+    const auditRoutes = parseAuditRouteRoles(readFileSync(AUDIT_PATH, 'utf8'));
+    const routeScenarios = readFileSync(ROUTE_SCENARIOS_PATH, 'utf8');
+
+    expect(auditRoutes.get('/time/review')).toEqual(normalizeRoles([
+      'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin',
+    ]));
+    expect(auditRoutes.get('/payroll')).toEqual(normalizeRoles(['admin', 'super_admin']));
+    expect(routeScenarios).toMatch(/path:\s*["']\/payroll["'][\s\S]*?roles:\s*\[["']admin["'],\s*["']super_admin["']\]/);
   });
 });

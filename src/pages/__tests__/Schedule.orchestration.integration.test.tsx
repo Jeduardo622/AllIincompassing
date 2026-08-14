@@ -10,6 +10,7 @@ const reactivateSessionMock = vi.fn();
 const showErrorMock = vi.fn();
 const showSuccessMock = vi.fn();
 const buildBookSessionApiPayloadMock = vi.fn((session: unknown) => session);
+const startSessionFromModalMock = vi.fn();
 const upsertClientSessionNoteForSessionMock = vi.fn();
 const invalidateSessionNoteCachesAfterSessionWriteMock = vi.fn();
 const completeSessionFromModalMock = vi.fn();
@@ -18,6 +19,16 @@ const formatSessionNoteTimingMock = vi.fn(() => ({
   sessionDate: "2026-07-23",
   startTime: "14:00:00",
   endTime: "15:00:00",
+}));
+const prepareStartMock = vi.fn();
+const executeStartMock = vi.fn();
+const prepareCloseSessionMock = vi.fn();
+const completePreparedCloseMock = vi.fn();
+const createSessionPayrollLifecycleMock = vi.fn(() => ({
+  prepareStart: prepareStartMock,
+  executeStart: executeStartMock,
+  prepareCloseSession: prepareCloseSessionMock,
+  completePreparedClose: completePreparedCloseMock,
 }));
 
 const currentSessionStart = new Date();
@@ -97,8 +108,16 @@ vi.mock("../../features/scheduling/domain/booking", () => ({
   bookSessionViaApi: (...args: unknown[]) => bookSessionViaApiMock(...args),
 }));
 
+vi.mock("../../features/scheduling/domain/sessionStart", () => ({
+  startSessionFromModal: (...args: unknown[]) => startSessionFromModalMock(...args),
+}));
+
 vi.mock("../../features/scheduling/domain/time", () => ({
   formatSessionNoteTiming: (...args: unknown[]) => formatSessionNoteTimingMock(...args),
+}));
+
+vi.mock("../../features/scheduling/domain/sessionPayrollLifecycle", () => ({
+  createSessionPayrollLifecycle: (...args: unknown[]) => createSessionPayrollLifecycleMock(...args),
 }));
 
 vi.mock("../../lib/sessionCancellation", () => ({
@@ -150,6 +169,9 @@ vi.mock("../../components/SessionModal", () => ({
     canCreateSchedules,
     isReactivating,
     hideGoalCaptureFields,
+    onStartSessionOrchestration,
+    onPrepareSessionClose,
+    onFinalizeBtAbaSession,
     onBtAbaSessionFinalized,
   }: {
     isOpen: boolean;
@@ -164,6 +186,9 @@ vi.mock("../../components/SessionModal", () => ({
     canCreateSchedules?: boolean;
     isReactivating?: boolean;
     hideGoalCaptureFields?: boolean;
+    onStartSessionOrchestration?: (request: Record<string, unknown>, choice?: "clock_in" | "continue_without_clock_in") => Promise<unknown>;
+    onPrepareSessionClose?: (sessionId: string) => Promise<unknown>;
+    onFinalizeBtAbaSession?: (sessionId: string, finalize: () => Promise<unknown>) => Promise<unknown>;
     onBtAbaSessionFinalized?: (result: { sessionId: string; noteId: string; status: 'completed'; progressionResults: [] }) => Promise<void>;
   }) =>
     isOpen ? (
@@ -178,6 +203,9 @@ vi.mock("../../components/SessionModal", () => ({
         <div data-testid="reactivating">{isReactivating ? "true" : "false"}</div>
         <div data-testid="delete-available">{session && onDeleteAppointment ? "true" : "false"}</div>
         <div data-testid="hide-goal-capture-fields">{hideGoalCaptureFields ? "true" : "false"}</div>
+        <div data-testid="start-orchestration-available">{onStartSessionOrchestration ? "true" : "false"}</div>
+        <div data-testid="prepare-close-available">{onPrepareSessionClose ? "true" : "false"}</div>
+        <div data-testid="bt-finalize-wrapper-available">{onFinalizeBtAbaSession ? "true" : "false"}</div>
         <button
           aria-label="delete-appointment"
           disabled={!session || !onDeleteAppointment}
@@ -191,6 +219,96 @@ vi.mock("../../components/SessionModal", () => ({
           }}
         >
           delete-appointment
+        </button>
+        <button
+          aria-label="start-orchestration-no-choice"
+          disabled={!onStartSessionOrchestration}
+          onClick={() => {
+            const result = onStartSessionOrchestration?.({
+              sessionId: session?.id ?? "session-1",
+              programId: "program-1",
+              goalId: "goal-1",
+              goalIds: ["goal-1"],
+            });
+            if (result && typeof (result as Promise<unknown>).catch === "function") {
+              void (result as Promise<unknown>).catch((error) => showErrorMock(
+                error instanceof Error ? error.message : error,
+              ));
+            }
+          }}
+        >
+          start-orchestration-no-choice
+        </button>
+        <button
+          aria-label="start-orchestration-clock-in"
+          disabled={!onStartSessionOrchestration}
+          onClick={() => {
+            const result = onStartSessionOrchestration?.({
+              sessionId: session?.id ?? "session-1",
+              programId: "program-1",
+              goalId: "goal-1",
+              goalIds: ["goal-1"],
+            }, "clock_in");
+            if (result && typeof (result as Promise<unknown>).catch === "function") {
+              void (result as Promise<unknown>).catch(() => undefined);
+            }
+          }}
+        >
+          start-orchestration-clock-in
+        </button>
+        <button
+          aria-label="start-orchestration-continue"
+          disabled={!onStartSessionOrchestration}
+          onClick={() => {
+            const result = onStartSessionOrchestration?.({
+              sessionId: session?.id ?? "session-1",
+              programId: "program-1",
+              goalId: "goal-1",
+              goalIds: ["goal-1"],
+            }, "continue_without_clock_in");
+            if (result && typeof (result as Promise<unknown>).catch === "function") {
+              void (result as Promise<unknown>).catch(() => undefined);
+            }
+          }}
+        >
+          start-orchestration-continue
+        </button>
+        <button
+          aria-label="prepare-close-session"
+          disabled={!session || !onPrepareSessionClose}
+          onClick={() => {
+            const result = session && onPrepareSessionClose
+              ? onPrepareSessionClose(session.id)
+              : undefined;
+            if (result && typeof (result as Promise<unknown>).catch === "function") {
+              void (result as Promise<unknown>).catch((error) => showErrorMock(
+                error instanceof Error ? error.message : error,
+              ));
+            }
+          }}
+        >
+          prepare-close-session
+        </button>
+        <button
+          aria-label="finalize-bt-wrapper"
+          disabled={!session || !onFinalizeBtAbaSession}
+          onClick={() => {
+            const result = session && onFinalizeBtAbaSession
+              ? onFinalizeBtAbaSession(session.id, () => Promise.resolve({
+                  sessionId: session.id,
+                  noteId: "note-1",
+                  status: "completed",
+                  progressionResults: [],
+                }))
+              : undefined;
+            if (result && typeof (result as Promise<unknown>).catch === "function") {
+              void (result as Promise<unknown>).catch((error) => showErrorMock(
+                error instanceof Error ? error.message : error,
+              ));
+            }
+          }}
+        >
+          finalize-bt-wrapper
         </button>
         <button
           aria-label="submit-complete-with-stale-trial"
@@ -568,6 +686,20 @@ describe("Schedule orchestration integration hardening", () => {
       ready: true,
       requiredGoalIds: ["goal-1"],
       missingGoalIds: [],
+    });
+    prepareStartMock.mockReset();
+    executeStartMock.mockReset();
+    prepareCloseSessionMock.mockReset();
+    completePreparedCloseMock.mockReset();
+    createSessionPayrollLifecycleMock.mockClear();
+    prepareStartMock.mockResolvedValue({ kind: "payroll_disabled" });
+    executeStartMock.mockResolvedValue({ kind: "started" });
+    prepareCloseSessionMock.mockResolvedValue({ kind: "payroll_disabled" });
+    startSessionFromModalMock.mockReset();
+    startSessionFromModalMock.mockResolvedValue(undefined);
+    completePreparedCloseMock.mockImplementation(async ({ runClinicalClose }: { runClinicalClose: () => Promise<unknown> }) => {
+      await runClinicalClose();
+      return { kind: "completed" };
     });
     reactivateSessionMock.mockReset();
     bookSessionViaApiMock.mockResolvedValue({
@@ -1423,6 +1555,243 @@ describe("Schedule orchestration integration hardening", () => {
     }));
     expect(bookSessionViaApiMock.mock.calls[0][1]).toBeUndefined();
     expect(showErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("passes all three attendance orchestration callbacks into SessionModal", async () => {
+    scheduleFixtures.sessions[0].status = "in_progress";
+
+    renderWithProviders(<Schedule />, {
+      auth: { role: "bt", roleAssignments: ["bt"], organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    expect(screen.getByTestId("start-orchestration-available")).toHaveTextContent("true");
+    expect(screen.getByTestId("prepare-close-available")).toHaveTextContent("true");
+    expect(screen.getByTestId("bt-finalize-wrapper-available")).toHaveTextContent("true");
+    expect(createSessionPayrollLifecycleMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes payroll-disabled starts through the legacy clinical start and fails closed for attendance-not-confirmed", async () => {
+    renderWithProviders(<Schedule />, {
+      auth: { role: "bt", roleAssignments: ["bt"], organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    fireEvent.click(screen.getByLabelText("start-orchestration-no-choice"));
+    await waitFor(() => {
+      expect(prepareStartMock).toHaveBeenCalledWith({
+        scope: expect.objectContaining({
+          organizationId: "5238e88b-6198-4862-80a2-dbe15bbeabdd",
+          userId: "bt-user-id",
+        }),
+        sessionId: "session-1",
+      });
+      expect(executeStartMock).not.toHaveBeenCalled();
+      expect(startSessionFromModalMock).toHaveBeenCalledTimes(1);
+    });
+
+    showErrorMock.mockClear();
+    startSessionFromModalMock.mockClear();
+    prepareStartMock.mockResolvedValueOnce({ kind: "ready", mode: "active", attendance: { idempotencyKey: "att-1", occurredAt: "2026-08-12T10:00:00.000Z" } });
+    executeStartMock.mockResolvedValueOnce({ kind: "attendance_not_confirmed", reason: "not_confirmed" });
+
+    fireEvent.click(screen.getByLabelText("start-orchestration-no-choice"));
+    await waitFor(() => {
+      expect(executeStartMock).toHaveBeenCalledTimes(1);
+      expect(startSessionFromModalMock).not.toHaveBeenCalled();
+      expect(showErrorMock).toHaveBeenCalledWith("Attendance could not be confirmed. Reconnect and retry.");
+    });
+
+    showErrorMock.mockClear();
+    prepareStartMock.mockRejectedValueOnce(new Error("internal stale preparation details"));
+    fireEvent.click(screen.getByLabelText("start-orchestration-no-choice"));
+    await waitFor(() => {
+      expect(showErrorMock).toHaveBeenCalledWith("Attendance could not be confirmed. Reconnect and retry.");
+      expect(showErrorMock).not.toHaveBeenCalledWith("internal stale preparation details");
+    });
+  });
+
+  it("reuses the exact prepared clock-choice state for the second start click", async () => {
+    const startPreparation = {
+      kind: "clock_choice_required" as const,
+      attendance: { idempotencyKey: "att-2", occurredAt: "2026-08-12T10:00:00.000Z" },
+    };
+    prepareStartMock.mockResolvedValueOnce(startPreparation);
+    executeStartMock.mockResolvedValueOnce({ kind: "started" });
+
+    renderWithProviders(<Schedule />, {
+      auth: { role: "bt", roleAssignments: ["bt"], organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    fireEvent.click(screen.getByLabelText("start-orchestration-no-choice"));
+    await waitFor(() => expect(prepareStartMock).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByLabelText("start-orchestration-clock-in"));
+
+    await waitFor(() => {
+      expect(executeStartMock).toHaveBeenCalledWith(expect.objectContaining({
+        choice: "clock_in",
+        prepared: startPreparation,
+      }));
+      expect(executeStartMock).toHaveBeenCalledTimes(1);
+      expect(prepareStartMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("clears retained start preparation when the modal is dismissed", async () => {
+    prepareStartMock
+      .mockResolvedValueOnce({ kind: "clock_choice_required", attendance: { idempotencyKey: "dismiss-1", occurredAt: "2026-08-12T10:00:00.000Z" } })
+      .mockResolvedValueOnce({ kind: "clock_choice_required", attendance: { idempotencyKey: "dismiss-2", occurredAt: "2026-08-12T10:01:00.000Z" } });
+
+    renderWithProviders(<Schedule />, {
+      auth: { role: "bt", roleAssignments: ["bt"], organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    fireEvent.click(screen.getByLabelText("start-orchestration-no-choice"));
+    await waitFor(() => expect(prepareStartMock).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByLabelText("close-modal"));
+    await waitFor(() => expect(screen.queryByTestId("session-modal")).not.toBeInTheDocument());
+
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+    fireEvent.click(screen.getByLabelText("start-orchestration-no-choice"));
+    await waitFor(() => expect(prepareStartMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("reuses the exact ready close token for regular completion and blocks attendance-not-confirmed close", async () => {
+    scheduleFixtures.sessions[0].status = "in_progress";
+    const closePreparation = {
+      kind: "session_close_preparation" as const,
+      attendanceIdempotencyKey: "close-1",
+      occurredAt: "2026-08-12T10:00:00.000Z",
+    };
+    prepareCloseSessionMock.mockResolvedValueOnce({ kind: "ready", preparation: closePreparation });
+    completePreparedCloseMock
+      .mockRejectedValueOnce(new Error("internal stale close details"))
+      .mockImplementationOnce(async ({ runClinicalClose }: { runClinicalClose: () => Promise<unknown> }) => {
+        await runClinicalClose();
+        return { kind: "completed" };
+      });
+
+    renderWithProviders(<Schedule />);
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    fireEvent.click(screen.getByLabelText("prepare-close-session"));
+    fireEvent.click(screen.getByLabelText("submit-complete-after-discard"));
+
+    await waitFor(() => {
+      expect(prepareCloseSessionMock).toHaveBeenCalledWith(expect.objectContaining({
+        scope: expect.objectContaining({
+          organizationId: "5238e88b-6198-4862-80a2-dbe15bbeabdd",
+          userId: "admin-user-id",
+        }),
+        sessionId: "session-1",
+      }));
+      expect(completePreparedCloseMock).toHaveBeenCalledWith(expect.objectContaining({
+        preparation: closePreparation,
+      }));
+      expect(completeSessionFromModalMock).not.toHaveBeenCalled();
+      expect(showErrorMock.mock.calls.some(([error]) => (
+        error === "Attendance could not be confirmed. Reconnect and retry."
+        || (error instanceof Error && error.message === "Attendance could not be confirmed. Reconnect and retry.")
+      ))).toBe(true);
+    });
+
+    showErrorMock.mockClear();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+    fireEvent.click(screen.getByLabelText("submit-complete-after-discard"));
+    await waitFor(() => {
+      expect(completePreparedCloseMock).toHaveBeenCalledTimes(2);
+      expect(completePreparedCloseMock).toHaveBeenLastCalledWith(expect.objectContaining({
+        preparation: closePreparation,
+      }));
+      expect(prepareCloseSessionMock).toHaveBeenCalledTimes(1);
+      expect(completeSessionFromModalMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("blocks close preparation when attendance cannot be confirmed", async () => {
+    scheduleFixtures.sessions[0].status = "in_progress";
+    prepareCloseSessionMock.mockResolvedValueOnce({ kind: "attendance_not_confirmed", reason: "offline" });
+
+    renderWithProviders(<Schedule />);
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    fireEvent.click(screen.getByLabelText("prepare-close-session"));
+    await waitFor(() => {
+      expect(completeSessionFromModalMock).not.toHaveBeenCalled();
+      expect(showErrorMock).toHaveBeenCalledWith("Attendance could not be confirmed. Reconnect and retry.");
+    });
+  });
+
+  it("wraps BT finalization with completePreparedClose and keeps reporting separate", async () => {
+    scheduleFixtures.sessions[0].status = "in_progress";
+    const closePreparation = {
+      kind: "session_close_preparation" as const,
+      attendanceIdempotencyKey: "bt-close-1",
+      occurredAt: "2026-08-12T10:00:00.000Z",
+    };
+    prepareCloseSessionMock.mockResolvedValueOnce({ kind: "ready", preparation: closePreparation });
+    completePreparedCloseMock
+      .mockRejectedValueOnce(new Error("close wrapper failed"))
+      .mockImplementationOnce(async ({ runClinicalClose }: { runClinicalClose: () => Promise<unknown> }) => {
+        await runClinicalClose();
+        return { kind: "completed" };
+      });
+
+    renderWithProviders(<Schedule />, {
+      auth: { role: "bt", roleAssignments: ["bt"], organizationId: "org-1" },
+    });
+    await screen.findByRole("heading", { name: /Schedule/i });
+    await waitForScheduleGridReady();
+    await openExistingSessionForEdit();
+    await screen.findByTestId("session-modal");
+
+    fireEvent.click(screen.getByLabelText("prepare-close-session"));
+    await waitFor(() => expect(prepareCloseSessionMock).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByLabelText("finalize-bt-wrapper"));
+    await waitFor(() => {
+      expect(completePreparedCloseMock).toHaveBeenCalledTimes(1);
+      expect(completePreparedCloseMock).toHaveBeenLastCalledWith(expect.objectContaining({
+        preparation: closePreparation,
+      }));
+      expect(showSuccessMock).not.toHaveBeenCalledWith("Session marked as completed");
+      expect(showErrorMock).toHaveBeenCalledWith("Attendance could not be confirmed. Reconnect and retry.");
+    });
+
+    showErrorMock.mockClear();
+    fireEvent.click(screen.getByLabelText("finalize-bt-wrapper"));
+    await waitFor(() => {
+      expect(completePreparedCloseMock).toHaveBeenCalledTimes(2);
+      expect(completePreparedCloseMock).toHaveBeenLastCalledWith(expect.objectContaining({
+        preparation: closePreparation,
+      }));
+      expect(prepareCloseSessionMock).toHaveBeenCalledTimes(1);
+      expect(showSuccessMock).not.toHaveBeenCalledWith("Session marked as completed");
+    });
+
+    fireEvent.click(screen.getByLabelText("report-bt-atomic-completion"));
+    await waitFor(() => expect(showSuccessMock).toHaveBeenCalledWith("Session marked as completed"));
   });
 
   it("allows a BT to start an existing scheduled appointment in data-only mode", async () => {

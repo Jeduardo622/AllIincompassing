@@ -1,0 +1,6 @@
+schema_version,export_id,adjusts_export_id,organization_payroll_id,employee_payroll_id,pay_group_id,period_start,period_end,work_date,earning_code,hours,base_rate,applied_rate,gross_earnings,correction_indicator,snapshot_version,snapshot_hash
+provider-neutral-v1,11111111-1111-4111-8111-111111111111,,ORG-001,EMP-001,"GROUP,01",2026-08-11,2026-08-24,2026-08-11,REG,8.000000,20.00,1.00,160.00,N,3,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+provider-neutral-v1,11111111-1111-4111-8111-111111111111,,ORG-001,EMP-001,"GROUP,01",2026-08-11,2026-08-24,2026-08-11,OT,2.000000,20.00,1.50,60.00,N,3,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+provider-neutral-v1,11111111-1111-4111-8111-111111111111,,ORG-001,EMP-001,"GROUP,01",2026-08-11,2026-08-24,2026-08-11,MEAL_PREMIUM,1.000000,20.00,1.00,20.00,N,3,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+provider-neutral-v1,11111111-1111-4111-8111-111111111111,,ORG-001,EMP-002,"GROUP,01",2026-08-11,2026-08-24,2026-08-11,REG,7.500000,30.00,1.00,225.00,N,4,bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+provider-neutral-v1,11111111-1111-4111-8111-111111111111,,ORG-001,EMP-002,"GROUP,01",2026-08-11,2026-08-24,2026-08-11,DT,1.000000,30.00,2.00,60.00,N,4,bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb

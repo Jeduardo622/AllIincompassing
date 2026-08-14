@@ -26,6 +26,11 @@ const passHtml = `<!doctype html>
 <style>*{box-sizing:border-box}body{margin:0;max-width:100vw;overflow-x:hidden}.control{width:48px;height:48px}.label{width:8px;height:8px}</style>
 </head><body><div class="label" data-testid="status" aria-label="Status"></div><button class="control">OK</button></body></html>`;
 
+const deceptiveTimeReviewHtml = `<!doctype html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>*{box-sizing:border-box}body{margin:0;max-width:100vw;overflow-x:hidden}</style>
+</head><body><h1>Time Review</h1><h2>Assigned queue</h2></body></html>`;
+
 const blockedHtml = `<!doctype html>
 <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>body{margin:0}button{width:48px;height:48px}</style></head>
@@ -46,7 +51,8 @@ type ScheduleFixtureMode =
   | 'clipped-control'
   | 'missing-dialog'
   | 'missing-trigger'
-  | 'unexpected-read';
+  | 'unexpected-read'
+  | 'mutation-action';
 
 let scheduleFixtureMode: ScheduleFixtureMode = 'pass';
 
@@ -61,11 +67,18 @@ ${mode === 'clipped-control' ? '<button style="position:fixed;left:-10px;top:500
 ${mode === 'unexpected-read' ? "fetch('/unexpected-read').catch(() => {});" : ''}
 Promise.all([
   fetch('/api/runtime-config').then((response) => response.json()),
+  fetch('/api/payroll-time-events', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: ${mode === 'mutation-action'
+      ? "JSON.stringify({ action: 'record_time_event', event: { occurredAt: '2026-08-12T16:00:00.000Z' } })"
+      : "JSON.stringify({ action: 'get_day', localDate: '2026-08-12' })"},
+  }).then((response) => response.json()),
   fetch('/rest/v1/rpc/get_schedule_data_batch', { method: 'POST' }).then((response) => response.json()),
   fetch('/rest/v1/rpc/get_dropdown_data', { method: 'POST' }).then((response) => response.json()),
   fetch('/rest/v1/rpc/get_sessions_optimized', { method: 'POST' }).then((response) => response.json()),
   fetch('/rest/v1/message_thread_participants').then((response) => response.json()),
-]).then(([runtimeConfig, schedule, dropdowns, optimizedSessions, messageParticipants]) => {
+]).then(([runtimeConfig, payrollDay, schedule, dropdowns, optimizedSessions, messageParticipants]) => {
   const auth = JSON.parse(localStorage.getItem('auth-storage') || '{}');
   const authIsValid = auth.user?.role === 'admin_schedule'
     && auth.roleAssignments?.includes('admin_schedule')
@@ -74,6 +87,7 @@ Promise.all([
   const runtimeConfigIsValid = runtimeConfig.supabaseUrl === location.origin
     && typeof runtimeConfig.supabaseAnonKey === 'string'
     && typeof runtimeConfig.defaultOrganizationId === 'string';
+  const payrollDayIsValid = payrollDay?.state === 'feature_disabled';
   const scheduleIsValid = schedule.sessions.length === 12
     && schedule.sessions.every((session) => session.start_time && session.end_time)
     && schedule.therapists.length === 12
@@ -82,7 +96,7 @@ Promise.all([
     && dropdowns.clients.length === 12
     && Array.isArray(optimizedSessions)
     && Array.isArray(messageParticipants);
-  if (!authIsValid || !runtimeConfigIsValid || !scheduleIsValid || !fallbacksAreValid) {
+  if (!authIsValid || !runtimeConfigIsValid || !payrollDayIsValid || !scheduleIsValid || !fallbacksAreValid) {
     throw new Error('synthetic schedule bootstrap failed');
   }
   setTimeout(() => {
@@ -124,6 +138,11 @@ beforeAll(async () => {
     if (request.url === '/observer-runtime-labeled-checkbox') {
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       response.end(labeledCheckboxHtml);
+      return;
+    }
+    if (request.url === '/time/review') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(deceptiveTimeReviewHtml);
       return;
     }
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
@@ -264,7 +283,7 @@ describe('responsive UI observer browser runtime', () => {
     }
   }, 60_000);
 
-  it('runs the fixed synthetic schedule scenario without sending its synthetic requests to the server', async () => {
+  it('runs the fixed synthetic schedule scenario with fulfilled payroll get_day bootstrap and without sending synthetic requests to the server', async () => {
     scheduleFixtureMode = 'pass';
     const requestStart = receivedRequests.length;
     const summary = await runResponsiveUiObserver([
@@ -286,6 +305,91 @@ describe('responsive UI observer browser runtime', () => {
       const evidence = JSON.parse(await readFile(result.evidencePath, 'utf8')) as Record<string, unknown>;
       expect(evidence.scenarioId).toBe('schedule-overlap');
       expect(evidence.metricsSummary).toMatchObject({ visibleTouchTargetCount: 1 });
+    }
+  }, 60_000);
+
+  it('runs the fixed payroll-time scenario with loopback-only fulfilled authority data', async () => {
+    const requestStart = receivedRequests.length;
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/time',
+      '--scenario=payroll-time',
+    ]);
+
+    expect(summary.ok).toBe(true);
+    expect(summary.results).toHaveLength(2);
+    expect(receivedRequests.slice(requestStart)).toEqual([]);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.result).toBe('pass');
+      expect(result.failureCodes).toEqual([]);
+      const evidence = JSON.parse(await readFile(result.evidencePath, 'utf8')) as Record<string, unknown>;
+      expect(evidence.scenarioId).toBe('payroll-time');
+      expect(JSON.stringify(evidence)).not.toContain('employmentProfileId');
+      expect(JSON.stringify(evidence)).not.toContain('client_site');
+    }
+  }, 60_000);
+
+  it('fails closed when the payroll-time-review production surface is absent', async () => {
+    const requestStart = receivedRequests.length;
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/time/review',
+      '--scenario=payroll-time-review',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    expect(summary.results).toHaveLength(2);
+    expect(receivedRequests.slice(requestStart)).toEqual(['GET /time/review', 'GET /time/review']);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.result).toBe('fail');
+      expect(result.failureCodes).toContain('route-surface-missing');
+      const evidence = JSON.parse(await readFile(result.evidencePath, 'utf8')) as Record<string, unknown>;
+      expect(evidence.scenarioId).toBe('payroll-time-review');
+      expect(evidence.screenshotPath).toBe(result.screenshotPath);
+      expect(evidence.evidencePath).toBe(result.evidencePath);
+      expect(JSON.stringify(evidence)).not.toContain('hourlyRateCents');
+      expect(JSON.stringify(evidence)).not.toContain('blockerId');
+    }
+  }, 60_000);
+
+  it('keeps payroll mutation actions fail-closed in the payroll-time scenario', async () => {
+    const previousMode = process.env.RESPONSIVE_UI_OBSERVER_PAYROLL_TIME_FIXTURE;
+    process.env.RESPONSIVE_UI_OBSERVER_PAYROLL_TIME_FIXTURE = 'mutation-action';
+    const requestStart = receivedRequests.length;
+    try {
+      const summary = await runResponsiveUiObserver([
+        'node',
+        'scripts/playwright-responsive-ui-observer.ts',
+        `--base-url=${baseUrl}`,
+        '--route=/time',
+        '--scenario=payroll-time',
+      ]);
+
+      expect(summary.ok).toBe(false);
+      expect(summary.results).toHaveLength(2);
+      expect(receivedRequests.slice(requestStart)).toEqual([]);
+      for (const result of summary.results) {
+        artifactPaths.add(result.screenshotPath);
+        artifactPaths.add(result.evidencePath);
+        expect(result.result).toBe('fail');
+        expect(result.failureCodes).toContain('non-read-method');
+        expect(result.failureCodes).toContain('same-origin-request-failed');
+        expect(result.failureCodes).toContain('console-error');
+      }
+    } finally {
+      if (previousMode === undefined) {
+        delete process.env.RESPONSIVE_UI_OBSERVER_PAYROLL_TIME_FIXTURE;
+      } else {
+        process.env.RESPONSIVE_UI_OBSERVER_PAYROLL_TIME_FIXTURE = previousMode;
+      }
     }
   }, 60_000);
 
@@ -322,6 +426,26 @@ describe('responsive UI observer browser runtime', () => {
       artifactPaths.add(result.screenshotPath);
       artifactPaths.add(result.evidencePath);
       expect(result.failureCodes).toContain('unexpected-scenario-request');
+    }
+  }, 60_000);
+
+  it('keeps payroll mutation actions fail-closed in the schedule scenario', async () => {
+    scheduleFixtureMode = 'mutation-action';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/schedule',
+      '--scenario=schedule-overlap',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('non-read-method');
+      expect(result.failureCodes).toContain('same-origin-request-failed');
+      expect(result.failureCodes).toContain('console-error');
     }
   }, 60_000);
 

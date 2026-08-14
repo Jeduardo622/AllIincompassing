@@ -41,7 +41,6 @@ const suffixRemaps: Array<[suffix: string, target: string]> = [
   ["agent-work-ledger", normalizePath(path.join(shimRoot, "agent-work-ledger.ts"))],
   ["supabase", normalizePath(path.join(shimRoot, "supabase.ts"))],
   ["toast", normalizePath(path.join(shimRoot, "toast.ts"))],
-  ["api", normalizePath(path.join(shimRoot, "api.ts"))],
   ["ai", normalizePath(path.join(shimRoot, "ai.ts"))],
   ["logger/logger", normalizePath(path.join(shimRoot, "logger.ts"))],
 ];

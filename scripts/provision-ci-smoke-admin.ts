@@ -227,7 +227,7 @@ export const ensureSmokeAdminRoleMapping = async (
   if (
     !persistedProfile
     || persistedProfile.email?.toLowerCase() !== email.toLowerCase()
-    || persistedProfile.organization_id !== organizationId
+    || (organizationId !== null && persistedProfile.organization_id !== organizationId)
     || persistedProfile.is_active !== true
     || persistedProfile.role !== role
   ) {

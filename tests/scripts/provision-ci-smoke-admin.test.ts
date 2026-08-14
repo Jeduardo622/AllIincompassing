@@ -132,6 +132,46 @@ describe('provision-ci-smoke-admin safeguards', () => {
     expect(calls).toEqual(['user-role-upsert']);
   });
 
+  it('accepts the auth-sync fallback organization when the smoke job requested no tenant scope', async () => {
+    const client = {
+      from: (table: string) => {
+        if (table === 'roles') {
+          return {
+            select: () => ({
+              eq: () => ({ maybeSingle: async () => ({ data: { id: 'role-super-admin' }, error: null }) }),
+            }),
+          };
+        }
+        if (table === 'profiles') {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: {
+                    email: 'playwright.ci.iehp_assessment_import_smoke.1.1@example.com',
+                    organization_id: '5238e88b-6198-4862-80a2-dbe15bbeabdd',
+                    is_active: true,
+                    role: 'super_admin',
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        return { upsert: async () => ({ error: null }) };
+      },
+    };
+
+    await expect(ensureSmokeAdminRoleMapping(
+      client as never,
+      'd4c6b27f-f11c-42c9-b8ff-58b906f3f395',
+      'playwright.ci.iehp_assessment_import_smoke.1.1@example.com',
+      'super_admin',
+      null,
+    )).resolves.toBeUndefined();
+  });
+
   it('fails closed when the synthetic profile tenant binding does not persist', async () => {
     const client = {
       from: (table: string) => {

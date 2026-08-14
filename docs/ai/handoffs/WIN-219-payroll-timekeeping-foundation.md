@@ -504,3 +504,24 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - pr-ready: `yes`; blocked local aggregate checks are explicit and must be resolved by exact-head CI before merge.
 - pr handoff: `ready for commit, push, and WIN-219-linked PR creation; exact-head check status will be attached to the live PR`
 - required follow-up: push the isolated branch, open a WIN-219-linked PR, and wait boundedly for required checks; do not merge or apply the hosted migration in this slice.
+
+### Hosted Manager Assignment Index Application
+
+- Date and authority: on 2026-08-14, after PR #947 merged at `db6adb1d07fe656244392652206c84cdc2ea8be3` with all required exact-head checks green, the user separately authorized the hosted apply to Supabase project `wnnjeqheqxxyrgsjmygy` under existing issue `WIN-219`.
+- Preflight: the project was `ACTIVE_HEALTHY`; `payroll_security_repair` was present; the new logical migration and index were absent; `public.employee_manager_assignments` had zero rows, occupied 24,576 bytes, and retained enabled plus forced RLS. The empty table made the plain `create index` write-lock window acceptable.
+- Apply result: Supabase `apply_migration` succeeded for logical name `payroll_manager_assignment_lookup_index`. The hosted ledger records exactly one row at generated version `20260814164939`.
+- Catalog proof: the index is valid, ready, non-unique, non-primary, non-exclusion, non-partial, expression-free, and has four key attributes plus one included attribute. PostgreSQL truncated the overlength requested identifier to the 63-byte catalog name `employee_manager_assignments_org_manager_employment_effective_i`; its definition is `btree (organization_id, manager_user_id, employment_profile_id, effective_from desc) include (effective_through)`. The original overlength identifier remains self-consistent for PostgreSQL lookup and rollback because identifiers are truncated before resolution; no cosmetic rename was performed.
+- Tenant and privilege proof: the table remained empty with enabled and forced RLS. The only policy remains `employee_manager_assignments_authenticated_select`; `anon` has no select, `authenticated` retains select, and `authenticated` has no insert, update, or delete privilege. The exact applied SQL was index-only and contained no RLS, policy, grant, RPC, function, feature-flag, or business-data statement.
+- Advisor delta: the applying operator's targeted Supabase advisor snapshots returned no security lint for this table before or after apply. Performance results changed from three to two unindexed-FK notices: the organization FK notice cleared, while the composite employment-profile/organization and manager-user FK notices remained. The targeted post-apply snapshot also returned the existing RLS init-plan warning and an expected unused-index notice for the new empty-table index; these are recorded as observed advisor rows, not as a claim that the project-wide advisor surface is otherwise clean. Runtime benefit cannot yet be measured. See the Supabase linter references for [unindexed foreign keys](https://supabase.com/docs/guides/database/database-linter?lint=0001_unindexed_foreign_keys), [RLS init-plan evaluation](https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan), and [unused indexes](https://supabase.com/docs/guides/database/database-linter?lint=0005_unused_index).
+- Result: `pass-with-follow-up`; the reviewed index is hosted and inert until manager-assignment rows exist. No Edge deployment, Netlify deployment, payroll feature activation, capability grant, PHI/customer-row access, secret access, or `.env*` access occurred.
+
+#### Hosted Index Application Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- triggering path: `supabase/migrations/20260814153000_payroll_manager_assignment_lookup_index.sql`
+- executed checks: merged PR and exact-head CI confirmation; live migration-ledger preflight; exact row count and table-size check; pre/post catalog definition and `pg_index` flags; post-apply RLS, policy, and ACL snapshot; targeted security and performance advisor comparison.
+- blocked checks: `explain analyze` as performance proof -> not meaningful on an empty table; representative workload measurement -> no hosted manager-assignment rows exist.
+- reviewer: software architecture, security, Supabase, and test preflight agents approved the bounded apply; PR #947 supplied the merged human-reviewed source artifact.
+- result: `pass-with-blocked-checks`
+- residual risk: future representative workload should confirm planner use; separately route the remaining composite/manager FK notices and RLS init-plan warning rather than broadening this completed index slice.

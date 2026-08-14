@@ -86,7 +86,7 @@ describe('IEHP PDF mini-matrix evidence finalizer', () => {
         error: 'private rejection text',
         phone: '951-555-0102',
       },
-      successfulCase('skills-behaviors-proof', { verified: true }),
+      successfulCase('skills-behaviors-proof-300dpi-monochrome-rotated-2deg', { verified: true }),
       {
         ok: false,
         mode: 'pdf-mini-matrix',
@@ -120,7 +120,7 @@ describe('IEHP PDF mini-matrix evidence finalizer', () => {
       'clean-single-page',
       'multi-page-target-content',
       'table-structured-fields',
-      'skills-behaviors-proof',
+      'skills-behaviors-proof-300dpi-monochrome-rotated-2deg',
     ]);
     expect(cases.find((entry) => entry.caseId === 'table-structured-fields')).toMatchObject({
       ok: true,
@@ -161,7 +161,10 @@ describe('IEHP PDF mini-matrix evidence finalizer', () => {
   it('strictly accepts only the canonical successful 8/8/8/1 contract with no failure objects', () => {
     const outputDirectory = createTemporaryDirectory();
     const successfulCases = EXPECTED_IEHP_PDF_MINI_MATRIX_CASE_IDS.map((caseId) =>
-      successfulCase(caseId, caseId === 'skills-behaviors-proof' ? { verified: true } : null));
+      successfulCase(
+        caseId,
+        caseId === 'skills-behaviors-proof-300dpi-monochrome-rotated-2deg' ? { verified: true } : null,
+      ));
     const aggregate = {
       ok: true,
       mode: 'pdf-mini-matrix',
@@ -183,7 +186,11 @@ describe('IEHP PDF mini-matrix evidence finalizer', () => {
     expect(readJson(outputDirectory, 'run-status.json')).toMatchObject({ ok: true, status: 'success' });
 
     expect(() => buildFinalizedIehpPdfMiniMatrixEvidence({
-      logSource: asLog([...successfulCases.slice(0, 7), failureCase('skills-behaviors-proof'), aggregate]),
+      logSource: asLog([
+        ...successfulCases.slice(0, 7),
+        failureCase('skills-behaviors-proof-300dpi-monochrome-rotated-2deg'),
+        aggregate,
+      ]),
       workflowStatus: 'success',
       metadata: {},
     })).toThrow('successful_contract_failed');

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isValidPhone } from '../../src/lib/validation';
 
 import {
+  IEHP_DEGRADED_SKILLS_BEHAVIORS_PROOF_CASE,
   IEHP_GENERATED_DOCX_PARITY_PROOF_CASE,
   IEHP_PDF_MINI_MATRIX_CASES,
   IEHP_SKILLS_BEHAVIORS_PROOF_CASE,
@@ -9,6 +10,7 @@ import {
   assertIehpSkillsBehaviorsChecklistSection,
   buildRedactedIehpPreflightBlockerEvidence,
   buildIehpGeneratedDocxParityPdfHtml,
+  buildIehpDegradedSkillsBehaviorsRasterPagesHtml,
   buildIehpPdfMiniMatrixHtml,
   buildIehpSkillsBehaviorsProofPdfHtml,
   canonicalizeUsPhoneForComparison,
@@ -259,6 +261,45 @@ describe('IEHP assessment import smoke helpers', () => {
       },
       expectedTargets: ['Physical Aggression', 'Functional Communication', 'Community Safety'],
     });
+  });
+
+  it('defines the matrix Skills & Behaviors proof as an image-only 300 DPI monochrome scan rotated exactly 2 degrees', () => {
+    expect(IEHP_DEGRADED_SKILLS_BEHAVIORS_PROOF_CASE).toEqual({
+      id: 'skills-behaviors-proof-300dpi-monochrome-rotated-2deg',
+      renderMode: 'raster-scan',
+      scan: {
+        dpi: 300,
+        colorMode: 'black-and-white',
+        rotationDegrees: 2,
+        compression: 'jpeg',
+        jpegQuality: 85,
+      },
+    });
+  });
+
+  it('renders three fixed-size raster source pages while preserving every Skills & Behaviors assertion anchor', () => {
+    const pages = buildIehpDegradedSkillsBehaviorsRasterPagesHtml(
+      IEHP_SKILLS_BEHAVIORS_PROOF_CASE,
+      IEHP_DEGRADED_SKILLS_BEHAVIORS_PROOF_CASE,
+    );
+
+    expect(pages).toHaveLength(3);
+    for (const html of pages) {
+      expect(html).toContain('width: 2550px');
+      expect(html).toContain('height: 3300px');
+      expect(html).toContain('transform: rotate(2deg)');
+    }
+
+    const combinedHtml = pages.join('\n');
+    for (const target of IEHP_SKILLS_BEHAVIORS_PROOF_CASE.expectedTargets) {
+      expect(combinedHtml).toContain(target);
+    }
+    for (const item of Object.values(IEHP_SKILLS_BEHAVIORS_PROOF_CASE.expectedItems)) {
+      expect(combinedHtml).toContain(item);
+    }
+    expect(combinedHtml).toContain('TARGET BEHAVIORS:');
+    expect(combinedHtml).toContain('REPLACEMENT BEHAVIORS:');
+    expect(combinedHtml).toContain('PARENT EDUCATION:');
   });
 
   it('renders the dedicated skills behaviors proof html with early summary targets, later child goal blocks, one detailed-only child, and one excluded parent goal', () => {

@@ -333,6 +333,81 @@ const buildRasterScanImageDataUrl = async (args: {
   );
 };
 
+const buildImageOnlyPdfFromRasterHtmlPages = async (args: {
+  context: import('playwright').BrowserContext;
+  caseId: string;
+  pageHtmls: readonly string[];
+  rasterWidth: number;
+  rasterHeight: number;
+  colorMode: 'black-and-white' | 'grayscale';
+  jpegQuality: number;
+}): Promise<Buffer> => {
+  const rasterPage = await args.context.newPage();
+  const rasterImageDataUrls: string[] = [];
+  try {
+    await rasterPage.setViewportSize({ width: args.rasterWidth, height: args.rasterHeight });
+    for (const pageHtml of args.pageHtmls) {
+      await rasterPage.setContent(pageHtml);
+      rasterImageDataUrls.push(
+        await buildRasterScanImageDataUrl({
+          page: rasterPage,
+          colorMode: args.colorMode,
+          jpegQuality: args.jpegQuality,
+        }),
+      );
+    }
+  } finally {
+    if (!rasterPage.isClosed()) {
+      await rasterPage.close().then(() => undefined);
+    }
+  }
+
+  const pdfPage = await args.context.newPage();
+  try {
+    await pdfPage.setContent(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>${args.caseId}</title>
+    <style>
+      @page {
+        size: Letter;
+        margin: 0;
+      }
+
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: white;
+      }
+
+      section {
+        page-break-after: always;
+      }
+
+      section:last-of-type {
+        page-break-after: auto;
+      }
+
+      img {
+        display: block;
+        width: 8.5in;
+        height: 11in;
+      }
+    </style>
+  </head>
+  <body>
+    ${rasterImageDataUrls.map((dataUrl, index) => `<section><img alt="${args.caseId}-page-${index + 1}" src="${dataUrl}" /></section>`).join('')}
+  </body>
+</html>`);
+    return await pdfPage.pdf({ format: 'Letter', printBackground: true });
+  } finally {
+    if (!pdfPage.isClosed()) {
+      await pdfPage.close().then(() => undefined);
+    }
+  }
+};
+
 const fetchWithRetry = async (url: string, init: RequestInit, label: string): Promise<Response> => {
   let lastError: unknown = null;
   for (let attempt = 1; attempt <= 4; attempt += 1) {
@@ -1201,6 +1276,36 @@ async function run() {
       }
     };
 
+    const runDegradedSkillsBehaviorsProofMatrixCase = async () => {
+      const degradedProofCase = iehpAssessmentImportSmoke.IEHP_DEGRADED_SKILLS_BEHAVIORS_PROOF_CASE;
+      const rasterWidth = Math.round(degradedProofCase.scan.dpi * 8.5);
+      const rasterHeight = degradedProofCase.scan.dpi * 11;
+      const degradedPdfBuffer = await buildImageOnlyPdfFromRasterHtmlPages({
+        context,
+        caseId: degradedProofCase.id,
+        pageHtmls: iehpAssessmentImportSmoke.buildIehpDegradedSkillsBehaviorsRasterPagesHtml(
+          IEHP_SKILLS_BEHAVIORS_PROOF_CASE,
+          degradedProofCase,
+        ),
+        rasterWidth,
+        rasterHeight,
+        colorMode: degradedProofCase.scan.colorMode,
+        jpegQuality: degradedProofCase.scan.jpegQuality,
+      });
+
+      return runSmokeCase({
+        caseId: degradedProofCase.id,
+        uploadFileName: buildIehpSmokeUploadFileName(Date.now(), 'pdf'),
+        mimeType: 'application/pdf',
+        sourceFileBuffer: degradedPdfBuffer,
+        assessmentAssertions: ({ checklist }) =>
+          iehpAssessmentImportSmoke.assertIehpSkillsBehaviorsChecklistSection({
+            checklist,
+            proofCase: IEHP_SKILLS_BEHAVIORS_PROOF_CASE,
+          }),
+      });
+    };
+
     const runGeneratedDocxParityCase = async () => {
       let createdAssessment: AssessmentDocumentRecord | null = null;
       let generatedDocxObjectPath: string | null = null;
@@ -1602,8 +1707,8 @@ async function run() {
         },
       }));
       matrixTasks.push({
-        caseId: 'skills-behaviors-proof',
-        run: runSkillsBehaviorsProofCase,
+        caseId: iehpAssessmentImportSmoke.IEHP_DEGRADED_SKILLS_BEHAVIORS_PROOF_CASE.id,
+        run: runDegradedSkillsBehaviorsProofMatrixCase,
       });
 
       const { passedCases, failedCases } = await runIehpPdfMiniMatrixTasks({

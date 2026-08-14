@@ -128,6 +128,18 @@ export type IehpSkillsBehaviorsProofCase = {
   };
 };
 
+export type IehpDegradedSkillsBehaviorsProofCase = {
+  id: 'skills-behaviors-proof-300dpi-monochrome-rotated-2deg';
+  renderMode: 'raster-scan';
+  scan: {
+    dpi: 300;
+    colorMode: 'black-and-white';
+    rotationDegrees: 2;
+    compression: 'jpeg';
+    jpegQuality: 85;
+  };
+};
+
 export type IehpSkillsBehaviorsAssertion = {
   rowCount: 1;
   version: 1;
@@ -208,6 +220,14 @@ export type IehpGeneratedDocxParityAssertion = {
   allExpectedContentPresent: true;
 };
 
+const IEHP_300_DPI_MONOCHROME_ROTATED_2_DEG_SCAN = Object.freeze({
+  dpi: 300,
+  colorMode: 'black-and-white',
+  rotationDegrees: 2,
+  compression: 'jpeg',
+  jpegQuality: 85,
+} as const);
+
 export const IEHP_PDF_MINI_MATRIX_CASES: readonly IehpPdfMiniMatrixCase[] = [
   {
     id: 'clean-single-page',
@@ -253,13 +273,7 @@ export const IEHP_PDF_MINI_MATRIX_CASES: readonly IehpPdfMiniMatrixCase[] = [
     documentPhone: '909 555 0105',
     pageBreakBeforeTarget: false,
     renderMode: 'raster-scan',
-    scan: {
-      dpi: 300,
-      colorMode: 'black-and-white',
-      rotationDegrees: 2,
-      compression: 'jpeg',
-      jpegQuality: 85,
-    },
+    scan: { ...IEHP_300_DPI_MONOCHROME_ROTATED_2_DEG_SCAN },
   },
   {
     id: 'scan-150dpi-grayscale-low-quality',
@@ -312,6 +326,17 @@ export const IEHP_SKILLS_BEHAVIORS_PROOF_CASE: IehpSkillsBehaviorsProofCase = {
     excludedParent: 'Parent Coaching',
   },
 };
+
+export const IEHP_DEGRADED_SKILLS_BEHAVIORS_PROOF_CASE: IehpDegradedSkillsBehaviorsProofCase = {
+  id: 'skills-behaviors-proof-300dpi-monochrome-rotated-2deg',
+  renderMode: 'raster-scan',
+  scan: { ...IEHP_300_DPI_MONOCHROME_ROTATED_2_DEG_SCAN },
+};
+
+const IEHP_DEGRADED_SKILLS_BEHAVIORS_RASTER_PAGE = Object.freeze({
+  width: 2550,
+  height: 3300,
+});
 
 export const IEHP_GENERATED_DOCX_PARITY_PROOF_CASE: IehpGeneratedDocxParityProofCase = {
   id: 'generated-docx-parity',
@@ -490,6 +515,131 @@ export const buildIehpSkillsBehaviorsProofPdfHtml = (
     </section>
   </body>
 </html>`;
+
+const buildIehpRasterProofPageHtml = (args: {
+  title: string;
+  rotationDegrees: number;
+  innerHtml: string;
+  rasterWidth: number;
+  rasterHeight: number;
+}): string => `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>${args.title}</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: ${args.rasterWidth}px;
+        height: ${args.rasterHeight}px;
+        background: white;
+      }
+
+      body {
+        color: black;
+        font-family: Arial, sans-serif;
+      }
+
+      main {
+        box-sizing: border-box;
+        width: 100%;
+        min-height: 100%;
+        padding: 240px 220px;
+        transform: rotate(${args.rotationDegrees}deg);
+        transform-origin: center center;
+      }
+
+      h1, h2, p {
+        margin: 0 0 36px;
+      }
+
+      h1 {
+        font-size: 92px;
+      }
+
+      h2 {
+        font-size: 74px;
+      }
+
+      p {
+        font-size: 54px;
+        line-height: 1.4;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      ${args.innerHtml}
+    </main>
+  </body>
+</html>`;
+
+export const buildIehpDegradedSkillsBehaviorsRasterPagesHtml = (
+  proofCase: IehpSkillsBehaviorsProofCase = IEHP_SKILLS_BEHAVIORS_PROOF_CASE,
+  degradedCase: IehpDegradedSkillsBehaviorsProofCase = IEHP_DEGRADED_SKILLS_BEHAVIORS_PROOF_CASE,
+): readonly [string, string, string] => {
+  const { rotationDegrees } = degradedCase.scan;
+  const rasterWidth = IEHP_DEGRADED_SKILLS_BEHAVIORS_RASTER_PAGE.width;
+  const rasterHeight = IEHP_DEGRADED_SKILLS_BEHAVIORS_RASTER_PAGE.height;
+
+  return [
+    buildIehpRasterProofPageHtml({
+      title: `${degradedCase.id}-page-1`,
+      rotationDegrees,
+      rasterWidth,
+      rasterHeight,
+      innerHtml: `
+        <h1>BEHAVIORS:</h1>
+        <p>The behaviors and functional skills to be addressed are:</p>
+        <p>${proofCase.expectedTargets.join('; ')}</p>
+        <h2>BACKGROUND INFORMATION</h2>
+      `,
+    }),
+    buildIehpRasterProofPageHtml({
+      title: `${degradedCase.id}-page-2`,
+      rotationDegrees,
+      rasterWidth,
+      rasterHeight,
+      innerHtml: `
+        <h2>TARGET BEHAVIORS:</h2>
+        <p>Program Name: ${proofCase.expectedItems.behavior}</p>
+        <p>Instrumental Goal: Member will reduce physical aggression during transitions.</p>
+        <p>Data Collection: Rate per hour.</p>
+        <p>Mastery Criteria: Zero instances across four consecutive weeks.</p>
+        <p>Baseline: Three instances per hour.</p>
+        <h2>REPLACEMENT BEHAVIORS:</h2>
+        <p>Program Name: ${proofCase.expectedItems.skill}</p>
+        <p>Instrumental Goal: Member will request help using functional communication.</p>
+        <p>Data Collection: Percentage of opportunities.</p>
+        <p>Mastery Criteria: Eighty percent across four consecutive weeks.</p>
+        <p>Baseline: Zero percent independent.</p>
+        <p>Program Name: ${proofCase.expectedItems.detailedOnly}</p>
+        <p>Instrumental Goal: Member will wait safely before crossing in the community.</p>
+        <p>Data Collection: Percentage of opportunities.</p>
+        <p>Mastery Criteria: Eighty percent across four consecutive weeks.</p>
+        <p>Baseline: Zero percent independent.</p>
+        <h2>Safety/Crisis Procedure</h2>
+      `,
+    }),
+    buildIehpRasterProofPageHtml({
+      title: `${degradedCase.id}-page-3`,
+      rotationDegrees,
+      rasterWidth,
+      rasterHeight,
+      innerHtml: `
+        <h2>PARENT EDUCATION:</h2>
+        <p>Program Name: ${proofCase.expectedItems.excludedParent}</p>
+        <p>Instrumental Goal: Caregiver will carry out the synthetic home plan with fidelity.</p>
+        <p>Data Collection: Percentage of opportunities.</p>
+        <p>Mastery Criteria: Eighty percent across four consecutive weeks.</p>
+        <p>Baseline: Zero percent independent.</p>
+        <h2>Location of Service:</h2>
+        <p>Synthetic test setting.</p>
+      `,
+    }),
+  ] as const;
+};
 
 export const buildIehpGeneratedDocxParityPdfHtml = (
   proofCase: IehpGeneratedDocxParityProofCase = IEHP_GENERATED_DOCX_PARITY_PROOF_CASE,

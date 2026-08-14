@@ -10,7 +10,7 @@ export const EXPECTED_IEHP_PDF_MINI_MATRIX_CASE_IDS = Object.freeze([
   'scan-300dpi-monochrome-rotated-2deg',
   'scan-150dpi-grayscale-low-quality',
   'table-structured-fields',
-  'skills-behaviors-proof',
+  'skills-behaviors-proof-300dpi-monochrome-rotated-2deg',
 ]);
 
 const REDACTED_PHONE_PATTERN = /^\(\*\*\*\) \*\*\*-\d{4}$/;

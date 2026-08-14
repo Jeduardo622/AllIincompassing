@@ -1169,7 +1169,12 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     const matrixTaskBuildIndex = script.indexOf('const matrixTasks = IEHP_PDF_MINI_MATRIX_CASES.map');
     const matrixPreflightIndex = script.indexOf('assertIehpPdfMiniMatrixPreflight({');
     const reusableProofRunnerIndex = script.indexOf('const runSkillsBehaviorsProofCase = async () =>');
-    const matrixProofTaskIndex = script.indexOf("caseId: 'skills-behaviors-proof'", matrixTaskBuildIndex);
+    const degradedProofRunnerIndex = script.indexOf('const runDegradedSkillsBehaviorsProofMatrixCase = async () =>');
+    const degradedProofRenderIndex = script.indexOf('buildImageOnlyPdfFromRasterHtmlPages({', degradedProofRunnerIndex);
+    const matrixProofTaskIndex = script.indexOf(
+      'caseId: iehpAssessmentImportSmoke.IEHP_DEGRADED_SKILLS_BEHAVIORS_PROOF_CASE.id',
+      matrixTaskBuildIndex,
+    );
     const runnerCallIndex = script.indexOf('await runIehpPdfMiniMatrixTasks({', matrixProofTaskIndex);
     const evidenceModeIndex = script.indexOf('mode: isSkillsBehaviorsProofMode');
     const matrixEvidenceModeIndex = script.indexOf("? 'pdf-mini-matrix-case'", evidenceModeIndex);
@@ -1186,12 +1191,15 @@ describe('playwright-iehp-assessment-import-smoke structure', () => {
     );
 
     expect(reusableProofRunnerIndex).toBeGreaterThanOrEqual(0);
+    expect(degradedProofRunnerIndex).toBeGreaterThan(reusableProofRunnerIndex);
+    expect(degradedProofRenderIndex).toBeGreaterThan(degradedProofRunnerIndex);
     expect(evidenceModeIndex).toBeGreaterThanOrEqual(0);
     expect(matrixEvidenceModeIndex).toBeGreaterThan(evidenceModeIndex);
     expect(matrixTaskBuildIndex).toBeGreaterThanOrEqual(0);
     expect(matrixPreflightIndex).toBeGreaterThanOrEqual(0);
     expect(matrixPreflightIndex).toBeLessThan(matrixTaskBuildIndex);
     expect(matrixProofTaskIndex).toBeGreaterThan(matrixTaskBuildIndex);
+    expect(script).not.toContain('Legacy source anchor retained for focused structure tests');
     expect(runnerCallIndex).toBeGreaterThan(matrixProofTaskIndex);
     expect(computedSkillsCountIndex).toBeGreaterThan(runnerCallIndex);
     expect(aggregateTotalIndex).toBeGreaterThan(computedSkillsCountIndex);

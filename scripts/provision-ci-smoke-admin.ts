@@ -203,23 +203,6 @@ export const ensureSmokeAdminRoleMapping = async (
     throw new Error(`Role ${role} is not provisioned.`);
   }
 
-  const { error: profileError } = await client.from('profiles').upsert(
-    {
-      id: userId,
-      email,
-      role,
-      is_active: true,
-      first_name: 'Playwright',
-      last_name: 'CI',
-      organization_id: organizationId,
-    },
-    { onConflict: 'id' },
-  );
-
-  if (profileError) {
-    throw profileError;
-  }
-
   const { error: userRoleError } = await client.from('user_roles').upsert(
     {
       user_id: userId,
@@ -235,14 +218,16 @@ export const ensureSmokeAdminRoleMapping = async (
 
   const { data: persistedProfile, error: persistedProfileError } = await client
     .from('profiles')
-    .select('organization_id,is_active,role')
+    .select('email,organization_id,is_active,role')
     .eq('id', userId)
     .maybeSingle();
   if (persistedProfileError) {
     throw new Error(`Synthetic smoke admin profile verification failed: ${serializeError(persistedProfileError)}`);
   }
   if (
-    persistedProfile?.organization_id !== organizationId
+    !persistedProfile
+    || persistedProfile.email?.toLowerCase() !== email.toLowerCase()
+    || persistedProfile.organization_id !== organizationId
     || persistedProfile.is_active !== true
     || persistedProfile.role !== role
   ) {

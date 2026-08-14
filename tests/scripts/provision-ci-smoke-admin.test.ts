@@ -82,7 +82,7 @@ describe('provision-ci-smoke-admin safeguards', () => {
     ).resolves.toBe('5238e88b-6198-4862-80a2-dbe15bbeabdd');
   });
 
-  it('reasserts and verifies the synthetic admin profile tenant binding', async () => {
+  it('verifies the auth-sync-owned profile tenant binding without rewriting the profile', async () => {
     const calls: string[] = [];
     const client = {
       from: (table: string) => {
@@ -95,14 +95,14 @@ describe('provision-ci-smoke-admin safeguards', () => {
         }
         if (table === 'profiles') {
           return {
-            upsert: async (payload: Record<string, unknown>) => {
-              calls.push(`profile-upsert:${String(payload.organization_id)}`);
-              return { error: null };
+            upsert: async () => {
+              throw new Error('profile writes must remain owned by the auth sync trigger');
             },
             select: () => ({
               eq: () => ({
                 maybeSingle: async () => ({
                   data: {
+                    email: 'playwright.ci.auth_browser_smoke.1.1@example.com',
                     organization_id: '5238e88b-6198-4862-80a2-dbe15bbeabdd',
                     is_active: true,
                     role: 'super_admin',
@@ -129,10 +129,7 @@ describe('provision-ci-smoke-admin safeguards', () => {
       'super_admin',
       '5238e88b-6198-4862-80a2-dbe15bbeabdd',
     )).resolves.toBeUndefined();
-    expect(calls).toEqual([
-      'profile-upsert:5238e88b-6198-4862-80a2-dbe15bbeabdd',
-      'user-role-upsert',
-    ]);
+    expect(calls).toEqual(['user-role-upsert']);
   });
 
   it('fails closed when the synthetic profile tenant binding does not persist', async () => {
@@ -151,10 +148,45 @@ describe('provision-ci-smoke-admin safeguards', () => {
             select: () => ({
               eq: () => ({
                 maybeSingle: async () => ({
-                  data: { organization_id: null, is_active: true, role: 'super_admin' },
+                  data: {
+                    email: 'playwright.ci.auth_browser_smoke.1.1@example.com',
+                    organization_id: null,
+                    is_active: true,
+                    role: 'super_admin',
+                  },
                   error: null,
                 }),
               }),
+            }),
+          };
+        }
+        return { upsert: async () => ({ error: null }) };
+      },
+    };
+
+    await expect(ensureSmokeAdminRoleMapping(
+      client as never,
+      'd4c6b27f-f11c-42c9-b8ff-58b906f3f395',
+      'playwright.ci.auth_browser_smoke.1.1@example.com',
+      'super_admin',
+      '5238e88b-6198-4862-80a2-dbe15bbeabdd',
+    )).rejects.toThrow('Synthetic smoke admin profile tenant binding did not persist');
+  });
+
+  it('fails closed with the explicit binding error when auth sync did not create a profile row', async () => {
+    const client = {
+      from: (table: string) => {
+        if (table === 'roles') {
+          return {
+            select: () => ({
+              eq: () => ({ maybeSingle: async () => ({ data: { id: 'role-super-admin' }, error: null }) }),
+            }),
+          };
+        }
+        if (table === 'profiles') {
+          return {
+            select: () => ({
+              eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }),
             }),
           };
         }
@@ -623,15 +655,11 @@ describe('provision-ci-smoke-admin safeguards', () => {
     );
   });
 
-  it('does not write hosted generated profile columns', () => {
+  it('keeps profile organization writes owned by auth metadata sync', () => {
     const script = readFileSync(path.join(process.cwd(), 'scripts/provision-ci-smoke-admin.ts'), 'utf8');
-    const profilePayload = script.slice(
-      script.indexOf("const { error: profileError } = await client.from('profiles').upsert("),
-      script.indexOf("const { error: userRoleError } = await client.from('user_roles').upsert("),
-    );
 
-    expect(profilePayload).not.toContain('full_name');
-    expect(profilePayload).toContain('organization_id: organizationId');
+    expect(script).not.toMatch(/from\('profiles'\)\.upsert/);
+    expect(script).not.toContain('full_name');
     expect(script).toMatch(/user_metadata:\s*\{\s*\.\.\.\(existing\.user_metadata \?\? \{\}\),\s*\.\.\.metadata,/);
     expect(script).toContain('user_metadata: metadata,');
   });

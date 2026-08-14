@@ -21,6 +21,9 @@ describe("check-runtime-migration-parity", () => {
     expect(entries).toContain(
       "20260814191200|payroll_session_context_enabled_authority_repair",
     );
+    expect(entries).toContain(
+      "20260814205000|profile_insert_sync_bypass",
+    );
   });
 
   it("fails closed for manual payroll activation when the explicit WIN-219 migration contract is missing", () => {

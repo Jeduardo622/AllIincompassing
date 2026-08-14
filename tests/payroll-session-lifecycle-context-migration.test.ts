@@ -227,6 +227,18 @@ describe("payroll session lifecycle context migration contract", () => {
     expect(precedenceRepairMigrationSql).not.toMatch(
       /grant execute on function public\.get_session_payroll_context\(uuid\) to (?:anon|service_role)/i,
     );
+    expect(enabledAuthorityRepairMigrationSql).toMatch(
+      /revoke all on function public\.get_session_payroll_context\(uuid\) from public, anon, authenticated/i,
+    );
+    expect(enabledAuthorityRepairMigrationSql).toMatch(
+      /revoke all on function public\.get_session_payroll_context\(uuid\) from service_role/i,
+    );
+    expect(enabledAuthorityRepairMigrationSql).toMatch(
+      /grant execute on function public\.get_session_payroll_context\(uuid\) to authenticated/i,
+    );
+    expect(enabledAuthorityRepairMigrationSql).not.toMatch(
+      /grant execute on function public\.get_session_payroll_context\(uuid\) to (?:anon|service_role)/i,
+    );
   });
 
   it("keeps attendance mutation fail-closed and server-derived instead of returning a disabled union", () => {

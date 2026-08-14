@@ -465,3 +465,42 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - Local verification: the focused migration/static suite passed 76 tests with 6 environment skips; `npm run ci:check-focused` and `npm run validate:tenant` passed. A clean local reset was not usable because the existing local Supabase Storage image failed before repository migrations with `StorageBackendError: Migration fix-optimized-search-function not found`; this was classified as local harness drift rather than payroll SQL evidence.
 - Hosted advisors: security reported 17 expected authenticated `SECURITY DEFINER` exposure warnings for the intentionally callable RPC surface. Performance reported 80 unindexed payroll foreign keys, 5 RLS init-plan warnings, and 27 unused-index notices on the newly empty tables. The missing-FK-index and RLS-init-plan findings require a separately routed migration before activation; unused-index notices need workload evidence rather than immediate deletion.
 - Result: `pass-with-follow-up`; hosted schema promotion is complete and remains inert. The next protected slice is advisor remediation and hosted synthetic tenant/RPC smoke. Edge deployment and owner activation remain separate, explicit authorization boundaries.
+
+### Pre-Activation Manager Assignment Lookup Index
+
+- Branch and scope: `codex/win-219-payroll-manager-index`; one additive index-only migration and one static migration contract test under the existing `WIN-219` critical lane.
+- Hosted evidence: `public.employee_manager_assignments` is empty and has no covering btree for exact organization/manager/employment/effective-window authority checks. The existing primary, unique, and no-overlap GiST indexes remain unchanged.
+- Index contract: `employee_manager_assignments_org_manager_employment_effective_idx` keys `(organization_id, manager_user_id, employment_profile_id, effective_from desc)` and includes `effective_through`. This optimizes the repeated exact employee-assignment checks and provides only the `(organization_id, manager_user_id)` prefix for the manager-wide capability probe; because that probe does not constrain `employment_profile_id`, its effective-time predicate is not a contiguous btree search condition. A second manager-wide index is deferred until representative workload evidence justifies it.
+- TDD proof: the focused test failed 2/3 before the migration existed, then passed 3/3. The broader payroll migration and runtime-parity batch passed 32/32. Policy checks, lint, typecheck, tenant validation, and production build passed.
+- Aggregate limitation: two direct `npm run test:ci` attempts and the `npm run verify:local` wrapper reached no reported assertion failure but terminated nonzero in Vitest worker infrastructure: default heap exhausted at about 4 GB, and the 8 GB rerun ended with `Timeout calling onTaskUpdate`. The wrapper independently reproduced the default-heap OOM after policy, lint, and typecheck passed. Exact-head hosted CI remains required.
+- Runtime parity: the explicit WIN-219 activation baseline remains through `20260813103000_payroll_security_repair.sql`; the existing diff-based migration parity gate automatically governs this post-promotion performance migration.
+- Boundary: no table, policy, RLS, grant, function, trigger, data, Edge function, feature flag, capability, hosted migration, deployment, or activation changed. The unrelated untracked `.codex-remote-attachments/` directory remains untouched.
+
+#### Manager Assignment Index Handoff Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- why: `supabase/migrations/**` is a protected schema surface; this slice changes a shared authorization lookup access path and requires human review even though it is index-only.
+- triggering paths: `supabase/migrations/20260814153000_payroll_manager_assignment_lookup_index.sql`; `tests/payroll-manager-assignment-index-migration.test.ts`; `docs/ai/handoffs/WIN-219-payroll-timekeeping-foundation.md`
+- task intent: add one tenant-prefixed covering btree for exact effective manager-assignment authority checks without changing authorization behavior.
+- files touched: the three triggering paths above.
+- single-purpose diff: `yes`
+- linear required: `yes`; existing issue `WIN-219` reused and remains `In Review`.
+- blocking conditions: scope widening into policies, RLS, grants, functions, data mutation, CI/workflow policy, hosted apply, Edge deployment, or feature activation; missing human critical-lane review; failing exact-head required CI.
+- required agents: `specification-engineer -> software-architect -> security-engineer -> performance-engineer -> test-engineer -> implementation-engineer -> code-review-engineer -> supabase-reviewer`
+- agents used: all required agents above; performance, implementation, security, and Supabase review converged on `effective_through` as an included column rather than a search key.
+- reviewer: `completed`; code and Supabase re-review returned no findings after the performance-claim and handoff-card repairs.
+- required checks: `npx vitest run tests/payroll-manager-assignment-index-migration.test.ts tests/payroll-timekeeping-foundation-migration.test.ts tests/payroll-approval-workflow-migration.test.ts tests/payroll-security-repair-migration.test.ts tests/ci/check-runtime-migration-parity.test.ts`; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; `git diff --cached --check`; exact-head hosted CI; independent human critical-lane review.
+- executed checks: focused Vitest batch -> pass, 5 files and 32 tests; `npm run ci:check-focused` -> pass with database-connected checks skipped because no database URL is configured; `npm run lint` -> pass; `npm run typecheck` -> pass; `npm run validate:tenant` -> pass; `npm run build` -> pass; `git diff --cached --check` -> pass.
+- blocked checks: `npm run test:ci` -> default worker exhausted the 4 GB heap without a reported assertion failure; `$env:NODE_OPTIONS='--max-old-space-size=8192'; npm run test:ci` -> worker RPC timed out without a reported assertion failure; `npm run verify:local` -> reached `test:ci` and reproduced the default-heap OOM; database-connected focused policy checks -> no database URL configured; hosted migration application -> intentionally unauthorized.
+- result: `pass-with-blocked-checks`
+- residual risk: exact-head hosted CI, human critical-lane review, and a separately authorized hosted apply are mandatory; immediately before apply, verify the named index is absent or its `pg_indexes.indexdef` exactly matches this migration because `if not exists` can mask name drift, and confirm an acceptable write-blocking window for plain `create index`; planner benefit cannot be measured meaningfully while the hosted table is empty.
+- branch-ready: `yes`
+- linear-ready: `yes`
+- protected-path drift: `none`; the intended migration path is the only protected surface changed.
+- unrelated changes: untracked `.codex-remote-attachments/` is excluded and untouched.
+- generated artifact drift: `none`
+- verification summary: `present`
+- pr-ready: `yes`; blocked local aggregate checks are explicit and must be resolved by exact-head CI before merge.
+- pr handoff: `ready for commit, push, and WIN-219-linked PR creation; exact-head check status will be attached to the live PR`
+- required follow-up: push the isolated branch, open a WIN-219-linked PR, and wait boundedly for required checks; do not merge or apply the hosted migration in this slice.

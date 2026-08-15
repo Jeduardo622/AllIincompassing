@@ -621,3 +621,51 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - Exact-head lifecycle result and browser reliability blocker: run `31843771997` on `0d4284d4` passed policy, both tenant gates, lint/typecheck, unit/coverage, runtime contract, build, tier-0, IEHP, Supabase validation, and both no-show/completed hosted session lifecycle flows. The trigger repair therefore executed successfully in the credentialed path. The aggregate browser job failed on three different attempts at three different `/schedule` navigation sites, each waiting for global `networkidle`: blocked-close modal opening, measurement-roundtrip refresh, and no-show modal reopening. The variation and exact stack traces established a shared harness readiness defect rather than a deterministic migration regression.
 - Browser-navigation scope expansion: fresh routing keeps the PR in `high-risk human-reviewed` / `critical` because this is a required auth/session gate inside the protected migration slice. The bounded change replaces only hard `/schedule` `goto(... waitUntil: "networkidle")` waits with `domcontentloaded` in the shared booking/modal helpers and their required lifecycle, measurement, and ad-hoc capture entry points. Existing route checks, calendar controls, schedule filters, exact session-card targeting, dialog visibility, lifecycle/RPC/database assertions, cleanup ownership, and fail-closed error paths remain unchanged. No workflow, credential, production app, auth, RLS, grant, migration, hosted state, timeout budget, or skip behavior changed.
 - Browser-navigation TDD and review: RED produced three expected failures: two shared-helper option assertions and the cross-script hard-network-idle contract. GREEN passes 36/36 focused assertions. `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, `npm run build`, and `npm run test:routes:tier0` (244/244) pass. The final local `npm run test:ci` again made broad assertion progress but failed on the known local runner limits: AI documentation network refusal was followed by a roughly 4 GiB Node heap exhaustion and closed worker IPC; this is blocked infrastructure, not a pass. `npm run verify:local` passed its policy, lint, and typecheck stages, then stopped at the embedded `test:ci` with the same heap/IPC failure; later wrapper stages were not executed in that command, although build and tier-0 passed separately. Independent code and security review approve the bounded diff; test review requires the new exact-head credentialed `auth-browser-smoke` and aggregate `ci-gate` before merge. Human owner review and merge remain mandatory.
+
+## Payroll Mutation Receipts InitPlan Remediation
+
+- Date: 2026-08-14
+- Branch: `codex/win-219-payroll-mutation-receipts-initplan`
+- Classification: `high-risk human-reviewed`
+- Lane: `critical`
+- Scope: replace only the direct `actor_user_id = auth.uid()` evaluation in `payroll_mutation_receipts_authenticated_select` with the semantically equivalent `actor_user_id = (select auth.uid())`, add focused contract coverage, and append the migration to every required WIN-219 runtime-parity mirror.
+- Non-goals: no other advisor remediation, index, function, trigger, grant, ACL, capability, table, data, payroll activation, deployment, historical migration edit, hosted apply, customer/PHI access, secret access, or `.env*` access.
+
+### Hosted Read-Only Baseline
+
+- Supabase project `wnnjeqheqxxyrgsjmygy` was `ACTIVE_HEALTHY` on PostgreSQL 17.6.1.029.
+- The performance advisor reported the scoped `auth_rls_initplan` notice for `public.payroll_mutation_receipts`; the security advisor reported no scoped notice.
+- The table had zero rows and occupied 32,768 bytes. RLS was enabled and forced.
+- The only scoped policy was permissive `SELECT` for `authenticated` with exact expression `((app.payroll_actor_in_organization(organization_id) AND (actor_user_id = auth.uid())) OR app.payroll_actor_has_capability(organization_id, 'payroll.resolve_exceptions'::text))`.
+- ACLs were `postgres=arwdDxtm/postgres` and `authenticated=r/postgres`. Existing indexes were unchanged and already included the primary key, `(id, organization_id)`, and `(organization_id, actor_user_id, operation, idempotency_key)` uniqueness contracts; this slice adds no index.
+
+### Implementation And TDD
+
+- RED: the focused test failed three expected assertions because the migration was absent, the optimized policy body was absent, and runtime parity omitted the new version. Foundation and forbidden-statement assertions already passed.
+- GREEN: `20260815002241_payroll_mutation_receipts_initplan.sql` uses one transactional `ALTER POLICY ... USING` statement. It preserves the organization predicate, actor comparison, `payroll.resolve_exceptions` capability branch, policy name, table, command, and role while changing only `auth.uid()` to `(select auth.uid())`.
+- The contract rejects grants, revokes, functions, triggers, tables, indexes, data mutation, feature activation, and added capability branches. Tenant/RLS coverage pins both the historical direct form and the effective optimized form. Runtime migration parity is updated in the workflow, policy scripts, and their regression tests.
+- Rollback: a compensating forward migration can restore the same policy expression with `actor_user_id = auth.uid()`. `ALTER POLICY` takes a brief catalog lock; the zero-row baseline limits practical risk, but hosted state must be refreshed immediately before any separately authorized apply.
+
+### Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: `database/RLS/migrations/tenant isolation` and `CI/workflow/policy`
+- required checks: focused mutation-receipts migration test; payroll foundation, approval, security-repair, manager-index/advisor, tenant/RLS, and runtime-parity tests; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; `git diff --check`.
+- executed checks:
+  - focused mutation-receipts and required payroll/security/parity batches: pass; 313 assertions across 13 files in the broad targeted batch
+  - `npm run ci:check-focused`: pass
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run validate:tenant`: pass
+  - `npm run build`: pass
+  - `git diff --check`: pass
+  - `npm run test:ci`: fail locally after broad assertion progress; the default run exhausted the approximately 4 GiB Node heap, and a process-local 12 GiB retry avoided OOM but failed on an unrelated Vitest worker `onTaskUpdate` timeout after the AI-documentation test received `ECONNREFUSED`
+  - `npm run verify:local`: fail at its embedded default-heap `npm run test:ci`; its preceding policy, lint, and typecheck stages passed
+- blocked checks:
+  - DB-backed sensitive-table overlap, privileged-function grant, and preview-drift subchecks -> no local `SUPABASE_DB_URL`/`DATABASE_URL`; no `.env*` file was read
+  - exact-head aggregate adjudication -> pending GitHub PR CI
+- result: `fail` pending exact-head CI; local infrastructure failures are not converted to passes
+- residual risk: exact-head CI and human critical-lane review are mandatory before merge. Hosted application remains a separate owner-authorized action and has not occurred.
+- hosted apply status: `not authorized for this new migration`; no hosted state was changed.
+- independent review: code, security, performance, test, and Supabase reviewers found no actionable implementation defects. Code review keeps merge readiness blocked until exact-head aggregate CI resolves the documented local runner failures; all reviewers retain mandatory human critical-lane review and fresh hosted pre-apply catalog checks.

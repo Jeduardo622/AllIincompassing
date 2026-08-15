@@ -4,6 +4,7 @@ import {
   fetchPayrollReviewDetails,
   fetchPayrollReviewQueue,
   fetchPayrollSelfApproval,
+  hasPayrollReviewRouteAccess,
   returnPayrollTimesheet,
   submitPayrollApproval,
   type PayrollScope,
@@ -86,7 +87,7 @@ export function usePayrollApprovals(
   const detailsEnabled = Boolean(
     requestedDetails
     && reviewQueue?.state === "ok"
-    && (reviewQueue.capabilities.canReviewAssigned || reviewQueue.capabilities.canApproveAssigned)
+    && hasPayrollReviewRouteAccess(reviewQueue.capabilities)
     && reviewQueue.queue.some((item) => (
       item.snapshot.id === requestedDetails.snapshotId
       && item.snapshot.hash === requestedDetails.snapshotHash

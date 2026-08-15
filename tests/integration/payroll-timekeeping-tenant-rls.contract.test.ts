@@ -92,6 +92,22 @@ const managerAssignmentAdvisorRemediationSql =
         "utf8",
       )
     : "";
+const mutationReceiptsInitplanMigrationName =
+  readdirSync(path.join(process.cwd(), "supabase", "migrations")).find((name) =>
+    name.endsWith("payroll_mutation_receipts_initplan.sql"),
+  ) ?? "";
+const mutationReceiptsInitplanSql =
+  mutationReceiptsInitplanMigrationName
+    ? readFileSync(
+        path.join(
+          process.cwd(),
+          "supabase",
+          "migrations",
+          mutationReceiptsInitplanMigrationName,
+        ),
+        "utf8",
+      )
+    : "";
 const sessionLifecycleSql = `${sessionLifecycleBaseSql}\n${sessionLifecycleAdditiveSql}\n${sessionLifecyclePrecedenceRepairSql}\n${sessionLifecycleEnabledAuthorityRepairSql}`;
 const functionDefinition = (qualifiedName: string): string => {
   const matches = `${sql}\n${captureSql}\n${sessionLifecycleSql}\n${approvalSql}\n${reviewReadModelsSql}`.match(
@@ -280,6 +296,23 @@ describe("payroll timekeeping tenant and RLS contract", () => {
     );
     expect(managerAssignmentAdvisorRemediationSql).not.toMatch(
       /payroll\.resolve_exceptions|payroll\.view_compensation|time\.view_self/i,
+    );
+
+    const foundationMutationReceipts = policyDefinition(
+      "payroll_mutation_receipts_authenticated_select",
+    );
+
+    expect(foundationMutationReceipts).toMatch(
+      /app\.payroll_actor_in_organization\(organization_id\)/i,
+    );
+    expect(foundationMutationReceipts).toMatch(/actor_user_id = auth\.uid\(\)/i);
+    expect(foundationMutationReceipts).toMatch(/payroll\.resolve_exceptions/i);
+
+    expect(mutationReceiptsInitplanSql).toMatch(
+      /alter policy payroll_mutation_receipts_authenticated_select\s+on public\.payroll_mutation_receipts\s+using\s*\(\s*\(\s*app\.payroll_actor_in_organization\(organization_id\)\s+and actor_user_id = \(select auth\.uid\(\)\)\s*\)\s+or app\.payroll_actor_has_capability\(organization_id,\s*'payroll\.resolve_exceptions'\)\s*\);/i,
+    );
+    expect(mutationReceiptsInitplanSql).not.toMatch(
+      /time\.review_assigned|time\.approve_assigned|payroll\.configure_employment|payroll\.view_compensation|time\.view_self/i,
     );
   });
 

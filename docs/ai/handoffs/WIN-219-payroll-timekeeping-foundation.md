@@ -622,6 +622,67 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - Browser-navigation scope expansion: fresh routing keeps the PR in `high-risk human-reviewed` / `critical` because this is a required auth/session gate inside the protected migration slice. The bounded change replaces only hard `/schedule` `goto(... waitUntil: "networkidle")` waits with `domcontentloaded` in the shared booking/modal helpers and their required lifecycle, measurement, and ad-hoc capture entry points. Existing route checks, calendar controls, schedule filters, exact session-card targeting, dialog visibility, lifecycle/RPC/database assertions, cleanup ownership, and fail-closed error paths remain unchanged. No workflow, credential, production app, auth, RLS, grant, migration, hosted state, timeout budget, or skip behavior changed.
 - Browser-navigation TDD and review: RED produced three expected failures: two shared-helper option assertions and the cross-script hard-network-idle contract. GREEN passes 36/36 focused assertions. `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, `npm run build`, and `npm run test:routes:tier0` (244/244) pass. The final local `npm run test:ci` again made broad assertion progress but failed on the known local runner limits: AI documentation network refusal was followed by a roughly 4 GiB Node heap exhaustion and closed worker IPC; this is blocked infrastructure, not a pass. `npm run verify:local` passed its policy, lint, and typecheck stages, then stopped at the embedded `test:ci` with the same heap/IPC failure; later wrapper stages were not executed in that command, although build and tier-0 passed separately. Independent code and security review approve the bounded diff; test review requires the new exact-head credentialed `auth-browser-smoke` and aggregate `ci-gate` before merge. Human owner review and merge remain mandatory.
 
+## Payroll Mutation Receipts InitPlan Remediation
+
+- Date: 2026-08-14
+- Branch: `codex/win-219-payroll-mutation-receipts-initplan`
+- Classification: `high-risk human-reviewed`
+- Lane: `critical`
+- Scope: replace only the direct `actor_user_id = auth.uid()` evaluation in `payroll_mutation_receipts_authenticated_select` with the semantically equivalent `actor_user_id = (select auth.uid())`, add focused contract coverage, and append the migration to every required WIN-219 runtime-parity mirror.
+- Non-goals: no other advisor remediation, index, function, trigger, grant, ACL, capability, table, data, payroll activation, deployment, historical migration edit, hosted apply, customer/PHI access, secret access, or `.env*` access.
+
+### Hosted Read-Only Baseline
+
+- Supabase project `wnnjeqheqxxyrgsjmygy` was `ACTIVE_HEALTHY` on PostgreSQL 17.6.1.029.
+- The performance advisor reported the scoped `auth_rls_initplan` notice for `public.payroll_mutation_receipts`; the security advisor reported no scoped notice.
+- The table had zero rows and occupied 32,768 bytes. RLS was enabled and forced.
+- The only scoped policy was permissive `SELECT` for `authenticated` with exact expression `((app.payroll_actor_in_organization(organization_id) AND (actor_user_id = auth.uid())) OR app.payroll_actor_has_capability(organization_id, 'payroll.resolve_exceptions'::text))`.
+- ACLs were `postgres=arwdDxtm/postgres` and `authenticated=r/postgres`. Existing indexes were unchanged and already included the primary key, `(id, organization_id)`, and `(organization_id, actor_user_id, operation, idempotency_key)` uniqueness contracts; this slice adds no index.
+
+### Implementation And TDD
+
+- RED: the focused test failed three expected assertions because the migration was absent, the optimized policy body was absent, and runtime parity omitted the new version. Foundation and forbidden-statement assertions already passed.
+- GREEN: `20260815002241_payroll_mutation_receipts_initplan.sql` uses one transactional `ALTER POLICY ... USING` statement. It preserves the organization predicate, actor comparison, `payroll.resolve_exceptions` capability branch, policy name, table, command, and role while changing only `auth.uid()` to `(select auth.uid())`.
+- The contract rejects grants, revokes, functions, triggers, tables, indexes, data mutation, feature activation, and added capability branches. Tenant/RLS coverage pins both the historical direct form and the effective optimized form. Runtime migration parity is updated in the workflow, policy scripts, and their regression tests.
+- Rollback: a compensating forward migration can restore the same policy expression with `actor_user_id = auth.uid()`. `ALTER POLICY` takes a brief catalog lock; the zero-row baseline limits practical risk, but hosted state must be refreshed immediately before any separately authorized apply.
+
+### Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: `database/RLS/migrations/tenant isolation` and `CI/workflow/policy`
+- required checks: focused mutation-receipts migration test; payroll foundation, approval, security-repair, manager-index/advisor, tenant/RLS, and runtime-parity tests; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; `git diff --check`.
+- executed checks:
+  - focused mutation-receipts and required payroll/security/parity batches: pass; 313 assertions across 13 files in the broad targeted batch
+  - `npm run ci:check-focused`: pass
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run validate:tenant`: pass
+  - `npm run build`: pass
+  - `git diff --check`: pass
+  - `npm run test:ci`: fail locally after broad assertion progress; the default run exhausted the approximately 4 GiB Node heap, and a process-local 12 GiB retry avoided OOM but failed on an unrelated Vitest worker `onTaskUpdate` timeout after the AI-documentation test received `ECONNREFUSED`
+  - `npm run verify:local`: fail at its embedded default-heap `npm run test:ci`; its preceding policy, lint, and typecheck stages passed
+- blocked checks:
+  - DB-backed sensitive-table overlap, privileged-function grant, and preview-drift subchecks -> no local `SUPABASE_DB_URL`/`DATABASE_URL`; no `.env*` file was read
+  - exact-head aggregate adjudication -> pending GitHub PR CI
+- result: `fail` pending exact-head CI; local infrastructure failures are not converted to passes
+- residual risk: exact-head CI and human critical-lane review are mandatory before merge. Hosted application remains a separate owner-authorized action and has not occurred.
+- hosted apply status: `not authorized for this new migration`; no hosted state was changed.
+- independent review: code, security, performance, test, and Supabase reviewers found no actionable implementation defects. Code review keeps merge readiness blocked until exact-head aggregate CI resolves the documented local runner failures; all reviewers retain mandatory human critical-lane review and fresh hosted pre-apply catalog checks.
+
+### Hosted Mutation Receipts InitPlan Application
+
+- Date and authority: PR #951 merged to `main` as `cece7641c8c86783308cf79550da9c633efa8adb` after all seven required exact-head checks passed. On 2026-08-14, the owner separately authorized applying only the merged `payroll_mutation_receipts_initplan` migration to Supabase project `wnnjeqheqxxyrgsjmygy`.
+- Immediate preflight: the project remained `ACTIVE_HEALTHY` on PostgreSQL 17.6.1.029; the migration was absent; `public.payroll_mutation_receipts` had zero rows, a zero-byte heap, and 32,768 total bytes. The table retained enabled plus forced RLS, one permissive authenticated `SELECT` policy, null `WITH CHECK`, ACLs `postgres=arwdDxtm/postgres` and `authenticated=r/postgres`, and the direct `actor_user_id = auth.uid()` expression. The empty table made the brief `ALTER POLICY` catalog-lock window acceptable.
+- Apply result: Supabase `apply_migration` succeeded for logical name `payroll_mutation_receipts_initplan`. The hosted ledger records exactly one row at generated version `20260815044944`.
+- Policy and tenant proof: hosted `pg_policy` now renders `actor_user_id = ( SELECT auth.uid() AS uid)`. The organization predicate and `payroll.resolve_exceptions` capability branch are unchanged. Policy name/count, authenticated role, `SELECT` command, permissive mode, null `WITH CHECK`, enabled/forced RLS, and ACLs are unchanged.
+- Schema-scope proof: the same three valid, ready unique indexes remain; no non-internal trigger exists. The migration added no index, function, trigger, table, grant, ACL, data, capability, or activation statement.
+- Advisor delta: targeted performance notices changed from two to one. The `auth_rls_initplan` warning cleared; the separate pre-existing `payroll_mutation_receipts_actor_user_id_fkey` unindexed-FK notice remains and is outside this slice. Targeted security notices remain zero. See the Supabase guidance for [RLS performance and initPlans](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) and [unindexed foreign keys](https://supabase.com/docs/guides/database/database-linter?lint=0001_unindexed_foreign_keys).
+- Synthetic smoke: a read-only transaction under `authenticated` used only synthetic UUID `00000000-0000-4000-8000-000000000219`; it returned zero visible receipts and rolled back. `EXPLAIN (FORMAT JSON)` showed `InitPlan 1` for `auth.uid()` while retaining the organization and capability policy filter. No fixture or operational row was created.
+- Payroll invariants: payroll remains default-disabled with zero enabled organization overrides, capability grants, employment profiles, employee time events, session attendance events, or mutation receipts. No Edge/Netlify deployment, payroll activation, customer/PHI access, secret access, or `.env*` access occurred.
+- Result: `pass`. The reviewed RLS optimization is hosted and the intended advisor warning is cleared without authorization-semantic drift.
+- Residual risk and next slice: representative performance cannot be measured while the table is empty. Separately route the remaining `payroll_mutation_receipts_actor_user_id_fkey` notice; do not fold it into this completed apply.
+
 ## Payroll Super-Admin Route Gate Alignment
 
 - Date: 2026-08-15
@@ -647,7 +708,7 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 
 #### Route Gate PR Hygiene Verdict
 
-- branch isolation: pass (`codex/payroll-super-admin-route-gates`, clean worktree, based on current `origin/main` at `9029364f`)
+- branch isolation: pass (`codex/payroll-super-admin-route-gates`, clean worktree, synchronized with `origin/main` at `33099fc2`)
 - scope: pass; client capability predicates, their consumers, tests, Cypress fixture, design/plan, and handoff only
 - protected-path drift: none; no `src/server/**`, Supabase, migration, RLS, grant, workflow, runtime-config, secret, or deploy change
 - reviewability: pass; focused commits and independent specialist approvals recorded

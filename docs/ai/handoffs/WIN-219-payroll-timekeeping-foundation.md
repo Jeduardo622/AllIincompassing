@@ -683,6 +683,57 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - Result: `pass`. The reviewed RLS optimization is hosted and the intended advisor warning is cleared without authorization-semantic drift.
 - Residual risk and next slice: representative performance cannot be measured while the table is empty. Separately route the remaining `payroll_mutation_receipts_actor_user_id_fkey` notice; do not fold it into this completed apply.
 
+## Payroll Mutation Receipts Actor FK Index Remediation
+
+- Date: 2026-08-15
+- Branch: `codex/win-219-mutation-receipts-actor-index`
+- Classification: `high-risk human-reviewed`
+- Lane: `critical`
+- Scope: add the minimum nonredundant btree index whose leading column exactly covers `public.payroll_mutation_receipts_actor_user_id_fkey`, add a focused migration contract, and append the migration to every required WIN-219 runtime-parity mirror.
+- Non-goals: no policy, RLS, ACL, grant, function, trigger, table, data, capability, feature flag, payroll activation, deployment, historical migration edit, customer/PHI access, secret access, `.env*` access, hosted apply, or other advisor remediation.
+
+### Hosted Read-Only Baseline
+
+- Supabase project `wnnjeqheqxxyrgsjmygy` was `ACTIVE_HEALTHY` on PostgreSQL 17.6.1.029. Hosted migrations included `20260814164939/payroll_manager_assignment_lookup_index`, `20260814190958/payroll_manager_assignment_advisor_remediation`, and `20260815044944/payroll_mutation_receipts_initplan`.
+- The performance advisor reported exactly one scoped notice: `unindexed_foreign_keys` for `payroll_mutation_receipts_actor_user_id_fkey`. The security advisor reported no scoped notice.
+- The target table had zero rows, a zero-byte heap in the primary catalog query, 24,576 index bytes, and 32,768 total bytes. RLS was enabled and forced. ACLs were `postgres=arwdDxtm/postgres` and `authenticated=r/postgres`; there were no non-internal triggers.
+- The FK column order is exactly `(actor_user_id)`. The three existing valid and ready indexes lead on `(id)`, `(id, organization_id)`, and `(organization_id, actor_user_id, operation, idempotency_key)`. None covers the FK with matching leading-column order.
+- The single permissive authenticated `SELECT` policy remained `((app.payroll_actor_in_organization(organization_id) AND (actor_user_id = ( SELECT auth.uid() AS uid))) OR app.payroll_actor_has_capability(organization_id, 'payroll.resolve_exceptions'::text))`.
+- Stop conditions for a later apply: the index or equivalent leading-column coverage appears, the table grows beyond the accepted plain-index lock window, or policy/RLS/ACL/advisor state drifts materially.
+
+### Implementation And TDD
+
+- RED: the focused contract executed five assertions and failed the expected three because the generated migration body was empty, the exact actor-leading index was absent, and runtime parity omitted the new migration. The historical policy/tenant assertions already passed.
+- GREEN: `20260815191838_payroll_mutation_receipts_actor_user_id_index.sql` adds only `payroll_mutation_receipts_actor_user_id_idx` using btree `(actor_user_id)` inside one transaction. The deterministic name is below PostgreSQL's 63-byte identifier limit and does not duplicate the existing organization-first unique index.
+- The focused contract rejects policy, RLS, ACL, grant, function, trigger, table, type, data, capability, activation, and organization-first duplicate-index drift. It also pins the existing `(select auth.uid())` policy form and every explicit WIN-219 runtime-parity mirror.
+- Rollback: a compensating forward migration can `drop index if exists public.payroll_mutation_receipts_actor_user_id_idx`. Plain `CREATE INDEX` briefly blocks writes; the zero-row baseline makes that strategy acceptable only if the hosted pre-apply recheck remains materially unchanged.
+
+### Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: `database/migration/tenant isolation` and `CI/workflow/policy`
+- required checks: focused actor-index contract; payroll foundation, approval, security-repair, manager-index/advisor, mutation-receipts initplan, tenant/RLS, and runtime-parity tests; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; `git diff --check`.
+- executed checks:
+  - focused migration, runtime-parity, and deploy-safety batch: pass; 234 assertions across 3 files
+  - broader targeted payroll/security/parity batch: pass; 326 assertions across 14 files
+  - `npm run ci:check-focused`: pass
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run validate:tenant`: pass
+  - `npm run build`: pass
+  - `git diff --check`: pass
+  - `npm run test:ci`: blocked locally after broad passing assertion progress; the default run exhausted the approximately 4 GiB Node heap and closed worker IPC
+  - `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci`: blocked after completing the assertion phase when Vitest coverage collation could not read temporary shard `coverage/.tmp/coverage-96.json`
+  - `npm run verify:local`: blocked at its embedded default-heap `test:ci`; its preceding policy, lint, and typecheck stages passed
+- blocked checks:
+  - DB-backed privileged-function grant, sensitive-table overlap, and preview-drift subchecks -> no local `SUPABASE_DB_URL`/`DATABASE_URL`; no `.env*` file was read
+  - exact-head aggregate adjudication -> pending GitHub PR CI
+- result: `blocked` pending exact-head CI; neither local infrastructure failure is converted to a pass
+- independent review: code review found the missing handoff entry and approved the code path subject to this fix; security, performance, test, and Supabase reviews found no actionable implementation defect. Reviewers confirmed the exact FK-leading key, nonredundancy, unchanged tenant/authz surfaces, and required hosted recheck. Human critical-lane review remains mandatory.
+- hosted apply status: `not authorized and not applied` for `20260815191838_payroll_mutation_receipts_actor_user_id_index`.
+- residual risk: exact-head CI must adjudicate the locally blocked aggregate runner. A later plain hosted index build is safe only if a fresh row-count/size/write-window check still supports it. `CREATE INDEX IF NOT EXISTS` also requires exact post-apply definition/validity proof so an unexpected same-name object cannot be mistaken for success.
+- next action: push the isolated diff, open the WIN-219-linked PR for human review, wait boundedly for exact-head required checks, and stop without merging or applying the migration hosted.
 ## Payroll Super-Admin Route Gate Alignment
 
 - Date: 2026-08-15

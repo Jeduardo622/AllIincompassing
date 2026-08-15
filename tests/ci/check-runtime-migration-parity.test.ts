@@ -30,6 +30,9 @@ describe("check-runtime-migration-parity", () => {
     expect(entries).toContain(
       "20260815002241|payroll_mutation_receipts_initplan",
     );
+    expect(entries).toContain(
+      "20260815191838|payroll_mutation_receipts_actor_user_id_index",
+    );
   });
 
   it("fails closed for manual payroll activation when the explicit WIN-219 migration contract is missing", () => {

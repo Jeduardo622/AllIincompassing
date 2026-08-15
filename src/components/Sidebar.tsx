@@ -24,6 +24,7 @@ import { usePayrollApprovals } from "../features/payroll/usePayrollApprovals";
 import {
   hasAnyPayrollAdministrationCapability,
 } from "../features/payroll/administrationApi";
+import { hasPayrollReviewRouteAccess } from "../features/payroll/api";
 import { usePayrollAdministration } from "../features/payroll/usePayrollAdministration";
 // Theme is toggled directly via context; no hidden proxy button
 import { logger } from '../lib/logger/logger';
@@ -94,10 +95,7 @@ export function Sidebar() {
     },
   );
   const canShowTimeReviewNavigation = payrollApprovals.payrollReviewQueueQuery.data?.state === 'ok'
-    && (
-      payrollApprovals.payrollReviewQueueQuery.data.capabilities.canReviewAssigned
-      || payrollApprovals.payrollReviewQueueQuery.data.capabilities.canApproveAssigned
-    );
+    && hasPayrollReviewRouteAccess(payrollApprovals.payrollReviewQueueQuery.data.capabilities);
   const payrollAdministration = usePayrollAdministration(
     {
       organizationId: organizationId ?? 'NO_ORG',

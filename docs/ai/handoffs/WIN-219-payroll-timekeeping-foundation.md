@@ -634,3 +634,21 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - Review status: independent code, security, and test reviews approved the route-gating logic; the route fixture fix was re-reviewed after the exact-false contract was restored.
 - Result: `pass-with-blocked-browser-checks`.
 - Residual risk: exact-head CI and human critical-lane review remain required before merge or any downstream activation.
+
+#### Route Gate Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- required checks: focused payroll route/capability tests; policy; lint; typecheck; aggregate coverage; coverage threshold; build; Tier-0 routes; credentialed Playwright; responsive desktop/mobile observation; independent code, security, and test review
+- executed checks: focused `121/121`; bounded aggregate `4923/4923` with `100` environment-gated skips; `92.96%` line coverage; policy, lint, typecheck, build, and Tier-0 `244/244`; both responsive viewports attempted for both affected routes; code, security, test, and fixture re-reviews approved
+- blocked checks: credentialed Playwright lacks the required local `PW_*` credential pair; protected responsive surfaces lack a local authenticated synthetic administration fixture; the exact default-pool `verify:local` wrapper exits on Vitest worker `onTaskUpdate` after all assertions complete, while the bounded four-worker aggregate exits zero
+- result: `pass-with-blocked-browser-checks`
+- residual risk: exact-head hosted CI must adjudicate the credentialed browser path and default-pool runner; human critical-lane review is mandatory
+
+#### Route Gate PR Hygiene Verdict
+
+- branch isolation: pass (`codex/payroll-super-admin-route-gates`, clean worktree, based on current `origin/main` at `9029364f`)
+- scope: pass; client capability predicates, their consumers, tests, Cypress fixture, design/plan, and handoff only
+- protected-path drift: none; no `src/server/**`, Supabase, migration, RLS, grant, workflow, runtime-config, secret, or deploy change
+- reviewability: pass; focused commits and independent specialist approvals recorded
+- pr-ready: yes, with blocked local browser checks disclosed and exact-head CI plus human review required

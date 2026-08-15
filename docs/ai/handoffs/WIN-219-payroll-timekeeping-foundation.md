@@ -734,3 +734,33 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - hosted apply status: `not authorized and not applied` for `20260815191838_payroll_mutation_receipts_actor_user_id_index`.
 - residual risk: exact-head CI must adjudicate the locally blocked aggregate runner. A later plain hosted index build is safe only if a fresh row-count/size/write-window check still supports it. `CREATE INDEX IF NOT EXISTS` also requires exact post-apply definition/validity proof so an unexpected same-name object cannot be mistaken for success.
 - next action: push the isolated diff, open the WIN-219-linked PR for human review, wait boundedly for exact-head required checks, and stop without merging or applying the migration hosted.
+## Payroll Super-Admin Route Gate Alignment
+
+- Date: 2026-08-15
+- Branch: `codex/payroll-super-admin-route-gates`
+- Classification: `high-risk human-reviewed`
+- Lane: `critical`
+- Scope: aligned shared payroll review route access through `hasPayrollReviewRouteAccess` plus `hasOrgPayrollAccess`; included export-only `canExportPeriod` in payroll admin route access; reconciled `Sidebar`, `TimeReview`, and details-query gating; repaired the Cypress fixture schema mismatch.
+- Non-goals: no server, Supabase grant, migration, RLS, or deploy changes.
+- Verification: focused 7 files / 121 tests passed; bounded aggregate `541` files / `4923` tests passed with `100` env skips using `NODE_OPTIONS=12288` and `--maxWorkers=4`; coverage `92.96%`; `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, and `npm run build` passed; `npm run test:routes:tier0` passed `244/244`; `npm run verify:local` reached all `4923` assertions but exited `1` on the known Vitest `onTaskUpdate` worker timeout; `npm run ci:playwright` was blocked preflight by missing `PW_*` credentials; responsive observer attempted `/time/review` and `/payroll` at desktop and mobile but was blocked by protected synthetic route/runtime-auth surfaces, with no overflow or clipped-control failures recorded.
+- Review status: independent code, security, and test reviews approved the route-gating logic; the route fixture fix was re-reviewed after the exact-false contract was restored.
+- Result: `pass-with-blocked-browser-checks`.
+- Residual risk: exact-head CI and human critical-lane review remain required before merge or any downstream activation.
+
+#### Route Gate Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- required checks: focused payroll route/capability tests; policy; lint; typecheck; aggregate coverage; coverage threshold; build; Tier-0 routes; credentialed Playwright; responsive desktop/mobile observation; independent code, security, and test review
+- executed checks: focused `121/121`; bounded aggregate `4923/4923` with `100` environment-gated skips; `92.96%` line coverage; policy, lint, typecheck, build, and Tier-0 `244/244`; both responsive viewports attempted for both affected routes; code, security, test, and fixture re-reviews approved
+- blocked checks: credentialed Playwright lacks the required local `PW_*` credential pair; protected responsive surfaces lack a local authenticated synthetic administration fixture; the exact default-pool `verify:local` wrapper exits on Vitest worker `onTaskUpdate` after all assertions complete, while the bounded four-worker aggregate exits zero
+- result: `pass-with-blocked-browser-checks`
+- residual risk: exact-head hosted CI must adjudicate the credentialed browser path and default-pool runner; human critical-lane review is mandatory
+
+#### Route Gate PR Hygiene Verdict
+
+- branch isolation: pass (`codex/payroll-super-admin-route-gates`, clean worktree, synchronized with `origin/main` at `33099fc2`)
+- scope: pass; client capability predicates, their consumers, tests, Cypress fixture, design/plan, and handoff only
+- protected-path drift: none; no `src/server/**`, Supabase, migration, RLS, grant, workflow, runtime-config, secret, or deploy change
+- reviewability: pass; focused commits and independent specialist approvals recorded
+- pr-ready: yes, with blocked local browser checks disclosed and exact-head CI plus human review required

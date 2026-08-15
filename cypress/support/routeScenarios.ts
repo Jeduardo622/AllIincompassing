@@ -10,6 +10,39 @@ export type RouteScenario = {
 
 export const password = "password123";
 
+export const payrollAdministrationRouteFixture = {
+  statusCode: 200,
+  body: {
+    state: "ok",
+    selectedLocalDate: "2026-08-11",
+    capabilities: {
+      canConfigureEmployment: true,
+      canResolveExceptions: false,
+      canLockPeriod: false,
+      canReopenPeriod: false,
+      canGeneratePeriods: false,
+      canExportPeriod: false,
+      canViewCompensation: false,
+      canManagePolicyMutations: false,
+    },
+    orgSettings: [],
+    policies: [],
+    employments: [],
+    payGroups: [],
+    generationVersions: [],
+    payPeriods: [],
+    bounds: {
+      orgSettings: 50,
+      policies: 20,
+      employments: 50,
+      payGroups: 50,
+      generationVersions: 50,
+      payPeriods: 50,
+    },
+  },
+  headers: { "content-type": "application/json" },
+} as const;
+
 export const roleEmail = (role: AppRole): string => (
   role === "super_admin" ? "superadmin@test.com" : `${role}@test.com`
 );
@@ -206,37 +239,7 @@ export const installRouteDataStubs = (): void => {
       req.reply({ statusCode: 405, body: { error: "route_fixture_read_only" } });
       return;
     }
-    req.reply({
-      statusCode: 200,
-      body: {
-        state: "ok",
-        selectedLocalDate: "2026-08-11",
-        capabilities: {
-          canConfigureEmployment: true,
-          canResolveExceptions: false,
-          canLockPeriod: false,
-          canReopenPeriod: false,
-          canGeneratePeriods: false,
-          canViewCompensation: false,
-          canManagePolicyMutations: false,
-        },
-        orgSettings: [],
-        policies: [],
-        employments: [],
-        payGroups: [],
-        generationVersions: [],
-        payPeriods: [],
-        bounds: {
-          orgSettings: 50,
-          policies: 20,
-          employments: 50,
-          payGroups: 50,
-          generationVersions: 50,
-          payPeriods: 50,
-        },
-      },
-      headers: { "content-type": "application/json" },
-    });
+    req.reply(payrollAdministrationRouteFixture);
   });
   cy.intercept("POST", "**/api/payroll-approvals", (req) => {
     if (req.body?.action !== "review_queue") {

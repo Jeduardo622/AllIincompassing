@@ -3,6 +3,7 @@ import { AlertCircle } from "lucide-react";
 import { useAuth } from "../lib/authContext";
 import { useActiveOrganizationId } from "../lib/organization";
 import { usePayrollApprovals } from "../features/payroll/usePayrollApprovals";
+import { hasPayrollReviewRouteAccess } from "../features/payroll/api";
 
 const formatTimestamp = (value: string, timeZone?: string | null): string =>
   new Date(value).toLocaleString(undefined, {
@@ -103,7 +104,7 @@ export function TimeReview() {
   }
 
   const queue = payrollReviewQueueQuery.data;
-  const canReview = queue.capabilities.canReviewAssigned || queue.capabilities.canApproveAssigned;
+  const canReview = hasPayrollReviewRouteAccess(queue.capabilities);
   if (queue.state !== "ok" || !canReview) {
     return <FailurePanel title="Time review is unavailable" body="The authoritative payroll review queue did not grant review access for this route." />;
   }

@@ -445,6 +445,47 @@ describe("Sidebar navigation active styling", () => {
     expect(screen.getByRole("link", { name: /time review/i })).toBeInTheDocument();
   });
 
+  it("shows the Time Review navigation for super admins when authoritative org payroll access resolves true without assigned-review booleans", () => {
+    mockUseAuth.mockReturnValue({
+      signOut: vi.fn(),
+      hasRole: vi.fn((role: string) => role === "super_admin"),
+      user: {
+        id: "super-admin-1",
+        email: "superadmin@example.com",
+        user_metadata: {},
+      },
+      profile: {
+        id: "super-admin-1",
+        role: "super_admin",
+      },
+      isGuardian: false,
+      hasAnyRole: vi.fn(() => true),
+      effectiveRole: "super_admin",
+      hasCapability: vi.fn(capabilityForRole("super_admin")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("super_admin"))),
+    });
+    mockUsePayrollApprovals.mockReturnValue({
+      payrollReviewQueueQuery: {
+        data: {
+          state: "ok",
+          capabilities: {
+            canReviewAssigned: false,
+            canApproveAssigned: false,
+            canViewCompensation: false,
+            hasOrgPayrollAccess: true,
+          },
+          queue: [],
+        },
+        isLoading: false,
+        isError: false,
+      },
+    });
+
+    renderSidebar(["/"]);
+
+    expect(screen.getByRole("link", { name: /time review/i })).toBeInTheDocument();
+  });
+
   it("shows the Payroll navigation only when the authoritative administration capability view grants access", () => {
     mockUseAuth.mockReturnValue({
       signOut: vi.fn(),

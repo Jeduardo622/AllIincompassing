@@ -312,7 +312,7 @@ describe("Payroll page", () => {
             canLockPeriod: false,
             canReopenPeriod: false,
             canGeneratePeriods: false,
-            canExportPeriod: true,
+            canExportPeriod: false,
             canViewCompensation: false,
           },
         },
@@ -329,6 +329,35 @@ describe("Payroll page", () => {
     renderPage();
 
     expect(screen.getByText(/did not grant access for this route/i)).toBeInTheDocument();
+  });
+
+  it("renders payroll for export-only authoritative administration access", () => {
+    mockUsePayrollAdministration.mockReturnValue(buildPayrollAdministrationMock({
+      administrationQuery: {
+        data: {
+          ...administrationData,
+          capabilities: {
+            ...administrationData.capabilities,
+            canConfigureEmployment: false,
+            canResolveExceptions: false,
+            canLockPeriod: false,
+            canReopenPeriod: false,
+            canGeneratePeriods: false,
+            canExportPeriod: true,
+            canViewCompensation: false,
+          },
+        },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      },
+    }));
+
+    renderPage();
+
+    expect(screen.getByRole("heading", { name: "Payroll" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Periods" })).toBeInTheDocument();
+    expect(screen.queryByText(/did not grant access for this route/i)).not.toBeInTheDocument();
   });
 
   it.each([

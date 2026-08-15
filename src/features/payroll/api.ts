@@ -240,6 +240,15 @@ const payrollReviewCapabilitiesSchema = z.object({
   canViewCompensation: z.boolean(),
   hasOrgPayrollAccess: z.boolean(),
 }).strict();
+export type PayrollReviewCapabilities = z.infer<typeof payrollReviewCapabilitiesSchema>;
+
+export const hasPayrollReviewRouteAccess = (
+  capabilities: PayrollReviewCapabilities,
+): boolean =>
+  capabilities.canReviewAssigned
+  || capabilities.canApproveAssigned
+  || capabilities.hasOrgPayrollAccess;
+
 const payrollSelfApprovalHistoryItemSchema = z.object({
   action: z.string().min(1),
   occurredAt: z.string().min(1),

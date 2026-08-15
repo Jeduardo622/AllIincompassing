@@ -14,6 +14,7 @@ import {
   fetchPayrollReviewQueue,
   fetchPayrollTimesheetPeriod,
   fetchSessionPayrollContext,
+  hasPayrollReviewRouteAccess,
   lockPayrollTimesheet,
   reopenPayrollTimesheet,
   recordSessionAttendance,
@@ -43,6 +44,34 @@ const jsonResponse = (
 describe("payroll api client", () => {
   beforeEach(() => {
     mockedCallApi.mockReset();
+  });
+
+  it.each([
+    { canReviewAssigned: true, canApproveAssigned: false, canViewCompensation: false, hasOrgPayrollAccess: false },
+    { canReviewAssigned: false, canApproveAssigned: true, canViewCompensation: false, hasOrgPayrollAccess: false },
+    { canReviewAssigned: false, canApproveAssigned: false, canViewCompensation: false, hasOrgPayrollAccess: true },
+  ])("grants payroll review route access for authoritative review capabilities %o", (capabilities) => {
+    expect(hasPayrollReviewRouteAccess(capabilities)).toBe(true);
+  });
+
+  it("denies payroll review route access when all review capabilities are false regardless of compensation visibility", () => {
+    expect(
+      hasPayrollReviewRouteAccess({
+        canReviewAssigned: false,
+        canApproveAssigned: false,
+        canViewCompensation: false,
+        hasOrgPayrollAccess: false,
+      }),
+    ).toBe(false);
+
+    expect(
+      hasPayrollReviewRouteAccess({
+        canReviewAssigned: false,
+        canApproveAssigned: false,
+        canViewCompensation: true,
+        hasOrgPayrollAccess: false,
+      }),
+    ).toBe(false);
   });
 
   it("fetches the payroll day with the explicit get_day action and sanitizes bootstrap arrays", async () => {

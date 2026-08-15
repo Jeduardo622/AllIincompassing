@@ -262,6 +262,7 @@ export const hasAnyPayrollAdministrationCapability = (
   || capabilities.canLockPeriod
   || capabilities.canReopenPeriod
   || capabilities.canGeneratePeriods
+  || capabilities.canExportPeriod
   || capabilities.canViewCompensation;
 
 export async function fetchPayrollAdministration(

@@ -72,7 +72,7 @@ describe("payroll administration api client", () => {
     expect(JSON.parse(String(init?.body))).toEqual(action);
   });
 
-  it("keeps export-only administration access outside the broader administration surface gate", () => {
+  it("recognizes export-only administration access", () => {
     expect(hasAnyPayrollAdministrationCapability({
       canConfigureEmployment: false,
       canResolveExceptions: false,
@@ -80,6 +80,19 @@ describe("payroll administration api client", () => {
       canReopenPeriod: false,
       canGeneratePeriods: false,
       canExportPeriod: true,
+      canViewCompensation: false,
+      canManagePolicyMutations: false,
+    })).toBe(true);
+  });
+
+  it("returns false when every administration capability is unavailable", () => {
+    expect(hasAnyPayrollAdministrationCapability({
+      canConfigureEmployment: false,
+      canResolveExceptions: false,
+      canLockPeriod: false,
+      canReopenPeriod: false,
+      canGeneratePeriods: false,
+      canExportPeriod: false,
       canViewCompensation: false,
       canManagePolicyMutations: false,
     })).toBe(false);

@@ -272,4 +272,23 @@ describe("TimeReview", () => {
     expect(screen.queryByText(/gross:/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/1234\.56/)).not.toBeInTheDocument();
   });
+
+  it("renders the empty review state when authoritative org payroll access exists without assigned-review booleans", async () => {
+    queueData = {
+      state: "ok",
+      selectedLocalDate: "2026-08-12",
+      capabilities: {
+        canReviewAssigned: false,
+        canApproveAssigned: false,
+        canViewCompensation: false,
+        hasOrgPayrollAccess: true,
+      },
+      queue: [],
+    };
+
+    renderPage();
+
+    expect(await screen.findByText(/no assigned payroll reviews/i)).toBeInTheDocument();
+    expect(screen.queryByText(/did not grant review access for this route/i)).not.toBeInTheDocument();
+  });
 });

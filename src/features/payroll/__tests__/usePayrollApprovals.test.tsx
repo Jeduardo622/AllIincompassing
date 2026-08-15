@@ -8,6 +8,11 @@ vi.mock("../api", () => ({
   fetchPayrollReviewDetails: vi.fn(),
   fetchPayrollReviewQueue: vi.fn(),
   fetchPayrollSelfApproval: vi.fn(),
+  hasPayrollReviewRouteAccess: vi.fn((capabilities) =>
+    capabilities.canReviewAssigned
+    || capabilities.canApproveAssigned
+    || capabilities.hasOrgPayrollAccess
+  ),
   returnPayrollTimesheet: vi.fn(),
   submitPayrollApproval: vi.fn(),
 }));
@@ -238,6 +243,49 @@ describe("usePayrollApprovals", () => {
         "a".repeat(64),
       ),
     )?.fetchStatus).toBe("idle");
+  });
+
+  it("fetches review details when org payroll access is granted without assigned-review flags", async () => {
+    vi.mocked(fetchPayrollReviewQueue).mockResolvedValueOnce({
+      state: "ok",
+      selectedLocalDate: "2026-08-12",
+      capabilities: {
+        canReviewAssigned: false,
+        canApproveAssigned: false,
+        canViewCompensation: false,
+        hasOrgPayrollAccess: true,
+      },
+      queue: [{
+        employeeLabel: "Employee 1001",
+        employmentProfileId: "99999999-9999-4999-8999-999999999999",
+        payPeriodId: "88888888-8888-4888-8888-888888888888",
+        periodStart: "2026-08-10",
+        periodEnd: "2026-08-16",
+        state: "submitted",
+        blockerCount: 0,
+        submittedAt: "2026-08-12T18:00:00.000Z",
+        snapshot: {
+          id: "11111111-1111-1111-1111-111111111111",
+          hash: "a".repeat(64),
+        },
+        classifiedSeconds: { regular: 0, overtime: 0, doubleTime: 0 },
+      }],
+    } as never);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const detailsKey = payrollReviewDetailsQueryKey(
+      "org-1",
+      "user-1",
+      "11111111-1111-1111-1111-111111111111",
+      "a".repeat(64),
+    );
+
+    renderWithClient(<Probe />, client);
+
+    await waitFor(() => expect(client.getQueryState(detailsKey)?.status).toBe("success"));
+    expect(fetchPayrollReviewDetails).toHaveBeenCalledWith(expect.objectContaining({
+      snapshotId: "11111111-1111-1111-1111-111111111111",
+      snapshotHash: "a".repeat(64),
+    }));
   });
 
   it("does not cache review details when compensation is rejected without capability", async () => {

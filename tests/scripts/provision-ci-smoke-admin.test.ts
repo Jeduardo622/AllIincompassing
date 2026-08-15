@@ -8,21 +8,263 @@ import path from 'node:path';
 
 import {
   assertDedicatedSmokeEmail,
+  assertSmokeAdminScopeConfigured,
   assertSmokeAdminOwnership,
+  buildSmokeAdminUserMetadata,
   buildSmokeAdminOwnershipMetadata,
   buildSmokeAdminCleanupSteps,
   buildDefaultSmokeAdminEmail,
   cleanupVerificationColumn,
   cleanupSmokeAdminRows,
   discoverSmokeAdminCleanupTargets,
+  ensureSmokeAdminRoleMapping,
   getMissingProvisionSecrets,
+  isRunOwnedSmokeAdminActor,
+  resolveSmokeAdminOrganizationId,
   resolveCleanupSmokeAdminEmail,
+  readTrackedSmokeSessionIds,
   serializeError,
   shouldSkipForSecretlessPullRequest,
+  trackSmokeSessionId,
+  validateTrackedSmokeSessionOwnership,
   writeGitHubEnv,
 } from '../../scripts/provision-ci-smoke-admin';
 
 describe('provision-ci-smoke-admin safeguards', () => {
+  it('requires explicit tenant scope for the auth browser smoke job only', () => {
+    expect(() => assertSmokeAdminScopeConfigured({ GITHUB_JOB: 'auth_browser_smoke' })).toThrow(
+      'CI_SMOKE_ADMIN_SCOPE_EMAIL is required for auth_browser_smoke.',
+    );
+    expect(() => assertSmokeAdminScopeConfigured({
+      GITHUB_JOB: 'auth_browser_smoke',
+      CI_SMOKE_ADMIN_SCOPE_EMAIL: 'schedule@example.com',
+    })).not.toThrow();
+    expect(() => assertSmokeAdminScopeConfigured({ GITHUB_JOB: 'iehp_assessment_import_smoke' })).not.toThrow();
+  });
+
+  it('builds matching profile-resolution metadata from the resolved tenant scope', () => {
+    expect(buildSmokeAdminUserMetadata('5238e88b-6198-4862-80a2-dbe15bbeabdd')).toMatchObject({
+      role: 'super_admin',
+      signup_role: 'super_admin',
+      is_admin: true,
+      is_super_admin: true,
+      organization_id: '5238e88b-6198-4862-80a2-dbe15bbeabdd',
+      organizationId: '5238e88b-6198-4862-80a2-dbe15bbeabdd',
+    });
+  });
+
+  it('resolves an explicit tenant scope from the configured schedule smoke identity', async () => {
+    const client = {
+      auth: {
+        admin: {
+          listUsers: async () => ({
+            data: { users: [{ id: 'd4c6b27f-f11c-42c9-b8ff-58b906f3f395', email: 'schedule@example.com' }] },
+            error: null,
+          }),
+        },
+      },
+      from: (table: string) => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => table === 'profiles'
+              ? {
+                  data: { organization_id: '5238e88b-6198-4862-80a2-dbe15bbeabdd' },
+                  error: null,
+                }
+              : { data: null, error: { message: 'unexpected table' } },
+          }),
+        }),
+      }),
+    };
+
+    await expect(
+      resolveSmokeAdminOrganizationId(client as never, 'schedule@example.com'),
+    ).resolves.toBe('5238e88b-6198-4862-80a2-dbe15bbeabdd');
+  });
+
+  it('verifies the auth-sync-owned profile tenant binding without rewriting the profile', async () => {
+    const calls: string[] = [];
+    const client = {
+      from: (table: string) => {
+        if (table === 'roles') {
+          return {
+            select: () => ({
+              eq: () => ({ maybeSingle: async () => ({ data: { id: 'role-super-admin' }, error: null }) }),
+            }),
+          };
+        }
+        if (table === 'profiles') {
+          return {
+            upsert: async () => {
+              throw new Error('profile writes must remain owned by the auth sync trigger');
+            },
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: {
+                    email: 'playwright.ci.auth_browser_smoke.1.1@example.com',
+                    organization_id: '5238e88b-6198-4862-80a2-dbe15bbeabdd',
+                    is_active: true,
+                    role: 'super_admin',
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        return {
+          upsert: async () => {
+            calls.push('user-role-upsert');
+            return { error: null };
+          },
+        };
+      },
+    };
+
+    await expect(ensureSmokeAdminRoleMapping(
+      client as never,
+      'd4c6b27f-f11c-42c9-b8ff-58b906f3f395',
+      'playwright.ci.auth_browser_smoke.1.1@example.com',
+      'super_admin',
+      '5238e88b-6198-4862-80a2-dbe15bbeabdd',
+    )).resolves.toBeUndefined();
+    expect(calls).toEqual(['user-role-upsert']);
+  });
+
+  it('accepts the auth-sync fallback organization when the smoke job requested no tenant scope', async () => {
+    const client = {
+      from: (table: string) => {
+        if (table === 'roles') {
+          return {
+            select: () => ({
+              eq: () => ({ maybeSingle: async () => ({ data: { id: 'role-super-admin' }, error: null }) }),
+            }),
+          };
+        }
+        if (table === 'profiles') {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: {
+                    email: 'playwright.ci.iehp_assessment_import_smoke.1.1@example.com',
+                    organization_id: '5238e88b-6198-4862-80a2-dbe15bbeabdd',
+                    is_active: true,
+                    role: 'super_admin',
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        return { upsert: async () => ({ error: null }) };
+      },
+    };
+
+    await expect(ensureSmokeAdminRoleMapping(
+      client as never,
+      'd4c6b27f-f11c-42c9-b8ff-58b906f3f395',
+      'playwright.ci.iehp_assessment_import_smoke.1.1@example.com',
+      'super_admin',
+      null,
+    )).resolves.toBeUndefined();
+  });
+
+  it('fails closed when the synthetic profile tenant binding does not persist', async () => {
+    const client = {
+      from: (table: string) => {
+        if (table === 'roles') {
+          return {
+            select: () => ({
+              eq: () => ({ maybeSingle: async () => ({ data: { id: 'role-super-admin' }, error: null }) }),
+            }),
+          };
+        }
+        if (table === 'profiles') {
+          return {
+            upsert: async () => ({ error: null }),
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: {
+                    email: 'playwright.ci.auth_browser_smoke.1.1@example.com',
+                    organization_id: null,
+                    is_active: true,
+                    role: 'super_admin',
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        return { upsert: async () => ({ error: null }) };
+      },
+    };
+
+    await expect(ensureSmokeAdminRoleMapping(
+      client as never,
+      'd4c6b27f-f11c-42c9-b8ff-58b906f3f395',
+      'playwright.ci.auth_browser_smoke.1.1@example.com',
+      'super_admin',
+      '5238e88b-6198-4862-80a2-dbe15bbeabdd',
+    )).rejects.toThrow('Synthetic smoke admin profile tenant binding did not persist');
+  });
+
+  it('fails closed with the explicit binding error when auth sync did not create a profile row', async () => {
+    const client = {
+      from: (table: string) => {
+        if (table === 'roles') {
+          return {
+            select: () => ({
+              eq: () => ({ maybeSingle: async () => ({ data: { id: 'role-super-admin' }, error: null }) }),
+            }),
+          };
+        }
+        if (table === 'profiles') {
+          return {
+            select: () => ({
+              eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }),
+            }),
+          };
+        }
+        return { upsert: async () => ({ error: null }) };
+      },
+    };
+
+    await expect(ensureSmokeAdminRoleMapping(
+      client as never,
+      'd4c6b27f-f11c-42c9-b8ff-58b906f3f395',
+      'playwright.ci.auth_browser_smoke.1.1@example.com',
+      'super_admin',
+      '5238e88b-6198-4862-80a2-dbe15bbeabdd',
+    )).rejects.toThrow('Synthetic smoke admin profile tenant binding did not persist');
+  });
+
+  it('fails closed when a requested tenant scope cannot resolve to one profile organization', async () => {
+    const client = {
+      auth: {
+        admin: {
+          listUsers: async () => ({
+            data: { users: [{ id: 'd4c6b27f-f11c-42c9-b8ff-58b906f3f395', email: 'schedule@example.com' }] },
+            error: null,
+          }),
+        },
+      },
+      from: () => ({
+        select: () => ({
+          eq: () => ({ maybeSingle: async () => ({ data: { organization_id: null }, error: null }) }),
+        }),
+      }),
+    };
+
+    await expect(
+      resolveSmokeAdminOrganizationId(client as never, 'schedule@example.com'),
+    ).rejects.toThrow('does not resolve to one organization-scoped profile');
+  });
+
   it('uses an existing key column when verifying cleanup', () => {
     expect(cleanupVerificationColumn('session_goals')).toBe('session_id');
     expect(cleanupVerificationColumn('sessions')).toBe('id');
@@ -347,6 +589,10 @@ describe('provision-ci-smoke-admin safeguards', () => {
       workflow.indexOf('- name: Session browser smoke gate'),
       workflow.indexOf('- name: Cleanup auth smoke admin'),
     );
+    const provisionStep = workflow.slice(
+      workflow.indexOf('- name: Provision auth smoke admin'),
+      workflow.indexOf('- name: Provision synthetic BCBA smoke actor'),
+    );
 
     expect(authStep).toContain('npm run playwright:auth');
     expect(authStep).not.toContain('npm run playwright:preflight');
@@ -355,6 +601,75 @@ describe('provision-ci-smoke-admin safeguards', () => {
     expect(sessionStep).toContain('npm run ci:playwright');
     expect(packageJson.scripts?.['ci:playwright']).toContain('playwright:preflight');
     expect(sessionStep).toContain('SUPABASE_SERVICE_ROLE_KEY');
+    expect(provisionStep).toContain('CI_SMOKE_ADMIN_SCOPE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}');
+  });
+
+  it('tracks exact run-owned session ids for cleanup even when created_by is null', () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), 'smoke-session-tracking-'));
+    const env = {
+      RUNNER_TEMP: tmp,
+      GITHUB_RUN_ID: '31835386027',
+      GITHUB_RUN_ATTEMPT: '1',
+      GITHUB_JOB: 'auth_browser_smoke',
+    } as NodeJS.ProcessEnv;
+    const first = '63a0e4ae-0b24-4e8b-8c22-ea6c79ad7fe0';
+    const second = '73a0e4ae-0b24-4e8b-8c22-ea6c79ad7fe1';
+
+    try {
+      trackSmokeSessionId(first, env);
+      trackSmokeSessionId(second, env);
+      trackSmokeSessionId(first, env);
+      expect(readTrackedSmokeSessionIds(env)).toEqual([first, second]);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('only classifies the exact provisioned synthetic actor as run-owned', () => {
+    const env = { PW_SUPERADMIN_USER_ID: 'd4c6b27f-f11c-42c9-b8ff-58b906f3f395' } as NodeJS.ProcessEnv;
+    expect(isRunOwnedSmokeAdminActor('d4c6b27f-f11c-42c9-b8ff-58b906f3f395', env)).toBe(true);
+    expect(isRunOwnedSmokeAdminActor('63a0e4ae-0b24-4e8b-8c22-ea6c79ad7fe0', env)).toBe(false);
+  });
+
+  it('accepts tracked cleanup ids only when every session is bound to the run-owned actor', async () => {
+    const userId = 'd4c6b27f-f11c-42c9-b8ff-58b906f3f395';
+    const sessionId = '63a0e4ae-0b24-4e8b-8c22-ea6c79ad7fe0';
+    const client = {
+      from: () => ({
+        select: () => ({
+          in: async () => ({ data: [{ id: sessionId, created_by: userId }], error: null }),
+        }),
+      }),
+    };
+    await expect(validateTrackedSmokeSessionOwnership(client as never, userId, [sessionId])).resolves.toEqual([sessionId]);
+  });
+
+  it('rejects a tracked cleanup id that is not bound to the run-owned actor', async () => {
+    const userId = 'd4c6b27f-f11c-42c9-b8ff-58b906f3f395';
+    const sessionId = '63a0e4ae-0b24-4e8b-8c22-ea6c79ad7fe0';
+    const client = {
+      from: () => ({
+        select: () => ({
+          in: async () => ({ data: [{ id: sessionId, created_by: null }], error: null }),
+        }),
+      }),
+    };
+    await expect(validateTrackedSmokeSessionOwnership(client as never, userId, [sessionId])).rejects.toThrow(
+      'Tracked synthetic session ownership verification failed',
+    );
+  });
+
+  it('reasserts the run-owned synthetic tenant mapping after booking and before session start', () => {
+    const lifecycleScript = readFileSync(
+      path.join(process.cwd(), 'scripts/playwright-session-lifecycle.ts'),
+      'utf8',
+    );
+    const booking = lifecycleScript.indexOf('Object.assign(ids, booked)');
+    const reassertion = lifecycleScript.lastIndexOf('ensureSyntheticLifecycleActorScope');
+    const sessionStart = lifecycleScript.indexOf('startSessionViaScheduleModal(activePage');
+
+    expect(reassertion).toBeGreaterThan(booking);
+    expect(sessionStart).toBeGreaterThan(reassertion);
   });
 
   it('preserves the secretless pull_request skip path for provisioning and cleanup', () => {
@@ -380,13 +695,12 @@ describe('provision-ci-smoke-admin safeguards', () => {
     );
   });
 
-  it('does not write hosted generated profile columns', () => {
+  it('keeps profile organization writes owned by auth metadata sync', () => {
     const script = readFileSync(path.join(process.cwd(), 'scripts/provision-ci-smoke-admin.ts'), 'utf8');
-    const profilePayload = script.slice(
-      script.indexOf("const { error: profileError } = await client.from('profiles').upsert("),
-      script.indexOf("const { error: userRoleError } = await client.from('user_roles').upsert("),
-    );
 
-    expect(profilePayload).not.toContain('full_name');
+    expect(script).not.toMatch(/from\('profiles'\)\.upsert/);
+    expect(script).not.toContain('full_name');
+    expect(script).toMatch(/user_metadata:\s*\{\s*\.\.\.\(existing\.user_metadata \?\? \{\}\),\s*\.\.\.metadata,/);
+    expect(script).toContain('user_metadata: metadata,');
   });
 });

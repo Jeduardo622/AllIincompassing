@@ -10,17 +10,39 @@ const migrationsDir = path.join(process.cwd(), "supabase", "migrations");
 const baseMigrationName = "20260812103000_payroll_session_lifecycle_context.sql";
 const additiveMigrationName =
   "20260812113000_payroll_session_lifecycle_context_disabled_state.sql";
+const precedenceRepairMigrationName =
+  "20260814183500_payroll_session_context_disabled_precedence.sql";
+const enabledAuthorityRepairMigrationName =
+  "20260814191200_payroll_session_context_enabled_authority_repair.sql";
 const baseMigrationPath = path.join(migrationsDir, baseMigrationName);
 const additiveMigrationPath = path.join(migrationsDir, additiveMigrationName);
+const precedenceRepairMigrationPath = path.join(
+  migrationsDir,
+  precedenceRepairMigrationName,
+);
+const enabledAuthorityRepairMigrationPath = path.join(
+  migrationsDir,
+  enabledAuthorityRepairMigrationName,
+);
 const baseMigrationExists = existsSync(baseMigrationPath);
 const additiveMigrationExists = existsSync(additiveMigrationPath);
+const precedenceRepairMigrationExists = existsSync(precedenceRepairMigrationPath);
+const enabledAuthorityRepairMigrationExists = existsSync(
+  enabledAuthorityRepairMigrationPath,
+);
 const baseMigrationSql = baseMigrationExists
   ? readFileSync(baseMigrationPath, "utf8")
   : "";
 const additiveMigrationSql = additiveMigrationExists
   ? readFileSync(additiveMigrationPath, "utf8")
   : "";
-const effectiveSql = `${baseMigrationSql}\n${additiveMigrationSql}`;
+const precedenceRepairMigrationSql = precedenceRepairMigrationExists
+  ? readFileSync(precedenceRepairMigrationPath, "utf8")
+  : "";
+const enabledAuthorityRepairMigrationSql = enabledAuthorityRepairMigrationExists
+  ? readFileSync(enabledAuthorityRepairMigrationPath, "utf8")
+  : "";
+const effectiveSql = `${baseMigrationSql}\n${additiveMigrationSql}\n${precedenceRepairMigrationSql}\n${enabledAuthorityRepairMigrationSql}`;
 
 const functionDefinition = (qualifiedName: string): string => {
   const matches = effectiveSql.match(
@@ -75,15 +97,83 @@ const assertPgError = async (
 };
 
 describe("payroll session lifecycle context migration contract", () => {
-  it("keeps the governed base migration and adds one additive disabled-state override", () => {
+  it("keeps the governed history and adds a forward-only disabled-state precedence repair", () => {
     expect(baseMigrationExists).toBe(true);
     expect(additiveMigrationExists).toBe(true);
+    expect(precedenceRepairMigrationExists).toBe(true);
+    expect(enabledAuthorityRepairMigrationExists).toBe(true);
     expect(additiveMigrationSql).toMatch(
       /@migration-dependencies:\s*20260812103000_payroll_session_lifecycle_context\.sql/i,
     );
     expect(additiveMigrationSql).toMatch(
       /@migration-rollback:.*get_session_payroll_context/i,
     );
+    expect(precedenceRepairMigrationSql).toMatch(
+      /@migration-dependencies:\s*20260812113000_payroll_session_lifecycle_context_disabled_state\.sql/i,
+    );
+    expect(precedenceRepairMigrationSql).toMatch(
+      /@migration-rollback:.*get_session_payroll_context/i,
+    );
+    expect(enabledAuthorityRepairMigrationSql).toMatch(
+      /@migration-dependencies:\s*20260814183500_payroll_session_context_disabled_precedence\.sql/i,
+    );
+    expect(enabledAuthorityRepairMigrationSql).toMatch(
+      /@migration-rollback:.*get_session_payroll_context/i,
+    );
+  });
+
+  it("returns disabled after tenant, session, and assigned-attendance authority but before payroll employment", () => {
+    const definition = functionDefinition("public.get_session_payroll_context");
+    const organizationGate = definition.indexOf(
+      "app.payroll_actor_in_organization(v_actor_org)",
+    );
+    const sessionGate = definition.indexOf("session is out of scope");
+    const delegatedCapabilityGate = definition.indexOf(
+      "'session_attendance.record_assigned'",
+    );
+    const authorityGate = definition.indexOf("session attendance actor is out of scope");
+    const featureFlagLookup = definition.indexOf("from public.feature_flags flag");
+    const disabledReturn = definition.indexOf("'state', 'feature_disabled'");
+    const employmentLookup = definition.indexOf("from public.employment_profiles employment");
+
+    expect(organizationGate).toBeGreaterThan(-1);
+    expect(sessionGate).toBeGreaterThan(organizationGate);
+    expect(delegatedCapabilityGate).toBeGreaterThan(sessionGate);
+    expect(featureFlagLookup).toBeGreaterThan(delegatedCapabilityGate);
+    expect(disabledReturn).toBeGreaterThan(featureFlagLookup);
+    expect(employmentLookup).toBeGreaterThan(disabledReturn);
+    expect(authorityGate).toBeGreaterThan(employmentLookup);
+    expect(definition).toMatch(
+      /v_actor_is_assigned_employee\s*:=\s*v_employment\.user_id\s*=\s*v_actor/i,
+    );
+    expect(definition).not.toMatch(
+      /v_actor_is_assigned_employee\s*:=\s*v_session\.therapist_id\s*=\s*v_actor/i,
+    );
+  });
+
+  it("keeps the precedence repair isolated to the existing context RPC", () => {
+    expect(precedenceRepairMigrationSql).not.toMatch(
+      /\b(insert\s+into|update|delete\s+from|truncate)\b/i,
+    );
+    expect(precedenceRepairMigrationSql).not.toMatch(
+      /\b(create\s+trigger|alter\s+table|create\s+policy|alter\s+policy)\b/i,
+    );
+    expect(precedenceRepairMigrationSql).not.toMatch(
+      /\b(is_enabled\s*=\s*true|grant\s+.*payroll_capability)\b/i,
+    );
+    expect(
+      precedenceRepairMigrationSql.match(/create or replace function/gi),
+    ).toHaveLength(1);
+  });
+
+  it("keeps the enabled-authority repair isolated to the existing context RPC", () => {
+    expect(enabledAuthorityRepairMigrationSql).not.toMatch(
+      /\b(insert\s+into|update|delete\s+from|truncate)\b/i,
+    );
+    expect(enabledAuthorityRepairMigrationSql).not.toMatch(
+      /\b(create\s+trigger|alter\s+table|create\s+policy|alter\s+policy)\b/i,
+    );
+    expect(enabledAuthorityRepairMigrationSql.match(/create or replace function/gi)).toHaveLength(1);
   });
 
   it("overrides session payroll context with the exact disabled-or-ok union and fail-closed gating", () => {
@@ -124,6 +214,30 @@ describe("payroll session lifecycle context migration contract", () => {
     );
     expect(additiveMigrationSql).toMatch(
       /grant execute on function public\.get_session_payroll_context\(uuid\) to authenticated/i,
+    );
+    expect(precedenceRepairMigrationSql).toMatch(
+      /revoke all on function public\.get_session_payroll_context\(uuid\) from public, anon, authenticated/i,
+    );
+    expect(precedenceRepairMigrationSql).toMatch(
+      /revoke all on function public\.get_session_payroll_context\(uuid\) from service_role/i,
+    );
+    expect(precedenceRepairMigrationSql).toMatch(
+      /grant execute on function public\.get_session_payroll_context\(uuid\) to authenticated/i,
+    );
+    expect(precedenceRepairMigrationSql).not.toMatch(
+      /grant execute on function public\.get_session_payroll_context\(uuid\) to (?:anon|service_role)/i,
+    );
+    expect(enabledAuthorityRepairMigrationSql).toMatch(
+      /revoke all on function public\.get_session_payroll_context\(uuid\) from public, anon, authenticated/i,
+    );
+    expect(enabledAuthorityRepairMigrationSql).toMatch(
+      /revoke all on function public\.get_session_payroll_context\(uuid\) from service_role/i,
+    );
+    expect(enabledAuthorityRepairMigrationSql).toMatch(
+      /grant execute on function public\.get_session_payroll_context\(uuid\) to authenticated/i,
+    );
+    expect(enabledAuthorityRepairMigrationSql).not.toMatch(
+      /grant execute on function public\.get_session_payroll_context\(uuid\) to (?:anon|service_role)/i,
     );
   });
 
@@ -362,10 +476,15 @@ describe.skipIf(!hasSafeLocalDatabase)(
       }
     });
 
-    it("returns feature_disabled only after the scoped session and authority gates succeed", async () => {
+    it("returns feature_disabled for assigned-attendance authority without requiring payroll employment", async () => {
       await seed();
 
-      const result = await getSessionPayrollContext(IDS.userA, IDS.sessionA);
+      await admin.query(
+        "delete from public.employment_profiles where id = $1",
+        [IDS.employmentA],
+      );
+
+      const result = await getSessionPayrollContext(IDS.payrollAdminA, IDS.sessionA);
 
       expect(result).toEqual({
         state: "feature_disabled",
@@ -377,6 +496,11 @@ describe.skipIf(!hasSafeLocalDatabase)(
         "sessionId",
         "state",
       ]);
+
+      await assertPgError(
+        () => getSessionPayrollContext(IDS.linkOnlyA, IDS.sessionA),
+        /exactly one active payroll employment profile/i,
+      );
     });
 
     it("returns ok with the exact resolved authority fields when the flag is enabled and policy is active", async () => {
@@ -410,6 +534,34 @@ describe.skipIf(!hasSafeLocalDatabase)(
         "sessionId",
         "state",
       ]);
+    });
+
+    it("derives enabled-mode assigned identity from the employment user rather than the therapist row id", async () => {
+      await seed();
+      await admin.query(
+        "update public.organization_feature_flags set is_enabled = true where organization_id = $1",
+        [IDS.orgA],
+      );
+      await admin.query(
+        "update public.employment_profiles set user_id = $1 where id = $2",
+        [IDS.priorEmployeeA, IDS.employmentA],
+      );
+
+      const result = await getSessionPayrollContext(
+        IDS.priorEmployeeA,
+        IDS.sessionA,
+      );
+
+      expect(result).toMatchObject({
+        state: "ok",
+        employmentProfileId: IDS.employmentA,
+        actorIsAssignedEmployee: true,
+        canClockSelf: true,
+      });
+      await assertPgError(
+        () => getSessionPayrollContext(IDS.userA, IDS.sessionA),
+        /session attendance actor is out of scope/i,
+      );
     });
 
     it("fails closed when the payroll feature flag definition is missing", async () => {
@@ -483,6 +635,10 @@ describe.skipIf(!hasSafeLocalDatabase)(
       await admin.query(
         "update public.employment_profiles set active_from = '2026-09-01', active_through = null where id = $1",
         [IDS.employmentA],
+      );
+      await admin.query(
+        "update public.organization_feature_flags set is_enabled = true where organization_id = $1",
+        [IDS.orgA],
       );
       await assertPgError(
         () => getSessionPayrollContext(IDS.userA, IDS.sessionA),

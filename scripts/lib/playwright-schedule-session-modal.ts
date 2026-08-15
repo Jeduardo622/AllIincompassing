@@ -169,7 +169,7 @@ export const openScheduleSessionModalFromDeepLink = async (
   url.searchParams.set("scheduleModal", "edit");
   url.searchParams.set("scheduleSessionId", target.sessionId);
   url.searchParams.set("scheduleExp", String(Math.trunc(expiresAtMs)));
-  await page.goto(url.toString(), { waitUntil: "networkidle", timeout: 60_000 });
+  await page.goto(url.toString(), { waitUntil: "domcontentloaded", timeout: 60_000 });
   const dialog = page.locator('[role="dialog"]').filter({ hasText: /Edit Session|Live session/i }).first();
   await dialog.waitFor({ state: "visible", timeout: 30_000 });
 };
@@ -182,7 +182,7 @@ export const openScheduleSessionModalFromCalendar = async (
 ): Promise<void> => {
   validateTarget(scheduleUrl, target);
   await page.goto(`${scheduleUrl}?_${Date.now()}`, {
-    waitUntil: "networkidle",
+    waitUntil: "domcontentloaded",
     timeout: 60_000,
   });
 

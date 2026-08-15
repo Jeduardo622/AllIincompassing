@@ -228,7 +228,7 @@ async function run(): Promise<void> {
     const scheduleUrl = `${base}/schedule`;
     await withStepTimeout("refresh-schedule", async () => {
       const bust = Date.now();
-      await activePage.goto(`${scheduleUrl}?_${bust}`, { waitUntil: "networkidle", timeout: 90_000 });
+      await activePage.goto(`${scheduleUrl}?_${bust}`, { waitUntil: "domcontentloaded", timeout: 90_000 });
     });
 
     await withStepTimeout("open-modal-and-save-adhoc-capture", async () => {

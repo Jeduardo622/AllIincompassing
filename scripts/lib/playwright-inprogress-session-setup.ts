@@ -887,7 +887,7 @@ export async function bookSession(
 ): Promise<LifecycleIds> {
   console.log("[in-progress-setup] book-session goto-schedule");
   await page.goto(`${getEnv("PW_BASE_URL", "https://app.allincompassing.ai")}/schedule`, {
-    waitUntil: "networkidle",
+    waitUntil: "domcontentloaded",
     timeout: 60000,
   });
   await page.waitForSelector("text=Schedule", { timeout: 15_000 }).catch(() => undefined);

@@ -34,6 +34,28 @@ const sessionLifecycleAdditiveSql = readFileSync(
   path.join(process.cwd(), "supabase", "migrations", sessionLifecycleAdditiveMigrationName),
   "utf8",
 );
+const sessionLifecyclePrecedenceRepairMigrationName =
+  "20260814183500_payroll_session_context_disabled_precedence.sql";
+const sessionLifecyclePrecedenceRepairSql = readFileSync(
+  path.join(
+    process.cwd(),
+    "supabase",
+    "migrations",
+    sessionLifecyclePrecedenceRepairMigrationName,
+  ),
+  "utf8",
+);
+const sessionLifecycleEnabledAuthorityRepairMigrationName =
+  "20260814191200_payroll_session_context_enabled_authority_repair.sql";
+const sessionLifecycleEnabledAuthorityRepairSql = readFileSync(
+  path.join(
+    process.cwd(),
+    "supabase",
+    "migrations",
+    sessionLifecycleEnabledAuthorityRepairMigrationName,
+  ),
+  "utf8",
+);
 const approvalMigrationName =
   readdirSync(path.join(process.cwd(), "supabase", "migrations")).find((name) =>
     name.endsWith("payroll_approval_workflow.sql"),
@@ -54,7 +76,23 @@ const reviewReadModelsSql = reviewReadModelsMigrationName
       "utf8",
     )
   : "";
-const sessionLifecycleSql = `${sessionLifecycleBaseSql}\n${sessionLifecycleAdditiveSql}`;
+const managerAssignmentAdvisorRemediationMigrationName =
+  readdirSync(path.join(process.cwd(), "supabase", "migrations")).find((name) =>
+    name.endsWith("payroll_manager_assignment_advisor_remediation.sql"),
+  ) ?? "";
+const managerAssignmentAdvisorRemediationSql =
+  managerAssignmentAdvisorRemediationMigrationName
+    ? readFileSync(
+        path.join(
+          process.cwd(),
+          "supabase",
+          "migrations",
+          managerAssignmentAdvisorRemediationMigrationName,
+        ),
+        "utf8",
+      )
+    : "";
+const sessionLifecycleSql = `${sessionLifecycleBaseSql}\n${sessionLifecycleAdditiveSql}\n${sessionLifecyclePrecedenceRepairSql}\n${sessionLifecycleEnabledAuthorityRepairSql}`;
 const functionDefinition = (qualifiedName: string): string => {
   const matches = `${sql}\n${captureSql}\n${sessionLifecycleSql}\n${approvalSql}\n${reviewReadModelsSql}`.match(
     new RegExp(
@@ -86,7 +124,7 @@ describe("payroll timekeeping tenant and RLS contract", () => {
     );
   });
 
-  it("keeps the bounded Task 2E lifecycle base migration and adds a scoped disabled-state override without widening raw source-event access", () => {
+  it("keeps the bounded Task 2E lifecycle history and adds a capability-gated disabled-state precedence repair", () => {
     expect(sessionLifecycleBaseSql).toMatch(
       /@migration-dependencies:\s*20260811214856_payroll_timekeeping_capture_read_model\.sql/i,
     );
@@ -101,6 +139,24 @@ describe("payroll timekeeping tenant and RLS contract", () => {
     );
     expect(sessionLifecycleAdditiveSql).toMatch(
       /grant execute on function public\.get_session_payroll_context\(uuid\) to authenticated/i,
+    );
+    expect(sessionLifecyclePrecedenceRepairSql).toMatch(
+      /@migration-dependencies:\s*20260812113000_payroll_session_lifecycle_context_disabled_state\.sql/i,
+    );
+    expect(sessionLifecyclePrecedenceRepairSql).toMatch(
+      /v_can_record_assigned\s*:=\s*app\.payroll_actor_has_capability\([\s\S]*?'session_attendance\.record_assigned'/i,
+    );
+    expect(sessionLifecyclePrecedenceRepairSql).toMatch(
+      /v_feature_flag_found is true[\s\S]*?v_can_record_assigned[\s\S]*?'state',\s*'feature_disabled'/i,
+    );
+    expect(sessionLifecycleEnabledAuthorityRepairSql).toMatch(
+      /@migration-dependencies:\s*20260814183500_payroll_session_context_disabled_precedence\.sql/i,
+    );
+    expect(sessionLifecycleEnabledAuthorityRepairSql).toMatch(
+      /v_actor_is_assigned_employee\s*:=\s*v_employment\.user_id\s*=\s*v_actor/i,
+    );
+    expect(sessionLifecycleEnabledAuthorityRepairSql).not.toMatch(
+      /v_actor_is_assigned_employee\s*:=\s*v_session\.therapist_id\s*=\s*v_actor/i,
     );
     expect(sessionLifecycleSql).not.toMatch(
       /grant execute on function public\.get_session_payroll_context\(uuid\) to authenticated,\s*service_role/i,
@@ -204,6 +260,27 @@ describe("payroll timekeeping tenant and RLS contract", () => {
     const mutationReceipts = policyDefinition("payroll_mutation_receipts_authenticated_select");
     expect(mutationReceipts).toMatch(/app\.payroll_actor_in_organization\(organization_id\)/i);
     expect(mutationReceipts).toMatch(/actor_user_id = auth\.uid\(\)/i);
+  });
+
+  it("keeps the foundation policy shape while the effective remediation policy uses initplan-safe auth uid evaluation", () => {
+    const foundationManagerAssignments = policyDefinition(
+      "employee_manager_assignments_authenticated_select",
+    );
+
+    expect(foundationManagerAssignments).toMatch(
+      /app\.payroll_actor_in_organization\(organization_id\)/i,
+    );
+    expect(foundationManagerAssignments).toMatch(/manager_user_id = auth\.uid\(\)/i);
+    expect(foundationManagerAssignments).toMatch(/time\.review_assigned/i);
+    expect(foundationManagerAssignments).toMatch(/time\.approve_assigned/i);
+    expect(foundationManagerAssignments).toMatch(/payroll\.configure_employment/i);
+
+    expect(managerAssignmentAdvisorRemediationSql).toMatch(
+      /alter policy employee_manager_assignments_authenticated_select\s+on public\.employee_manager_assignments\s+using\s*\(\s*\(\s*app\.payroll_actor_in_organization\(organization_id\)\s+and manager_user_id = \(select auth\.uid\(\)\)\s+and\s+\(\s*app\.payroll_actor_has_capability\(organization_id,\s*'time\.review_assigned'\)\s+or app\.payroll_actor_has_capability\(organization_id,\s*'time\.approve_assigned'\)\s*\)\s*\)\s+or app\.payroll_actor_has_capability\(organization_id,\s*'payroll\.configure_employment'\)\s*\);/i,
+    );
+    expect(managerAssignmentAdvisorRemediationSql).not.toMatch(
+      /payroll\.resolve_exceptions|payroll\.view_compensation|time\.view_self/i,
+    );
   });
 
   it("rejects metadata-only and profiles.role-only authority", () => {

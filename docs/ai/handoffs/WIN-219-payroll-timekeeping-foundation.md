@@ -1108,3 +1108,19 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - independent review: inline code, security, performance, test, and Supabase boundary review found the diff stayed index-only plus required parity and handoff mirrors; RLS, grants, append-only triggers, capability gates, and tenant isolation were preserved
 - residual risk: the ten new btrees add ordinary write amplification once export traffic exists; representative performance benefit cannot be measured while both hosted tables remain empty; exact-head CI and human critical-lane review remain mandatory before any merge or hosted apply
 - next action: complete PR hygiene, push the WIN-219-linked PR, wait boundedly for exact-head checks, and stop for owner review without merging or applying hosted
+
+## Payroll Export FK Hosted Apply Evidence
+
+- Date: 2026-08-16
+- Evidence branch: `codex/win-219-payroll-export-fk-hosted-evidence`
+- Source review: PR #964 merged at `3ef01a33d34861c23ff9d2e34d4f9d6e14785343`; all required exact-head checks passed. The optional Supabase Preview check failed before the new migration on the inherited `profiles_organization_id_fkey` seed error.
+- Authorization: the owner separately authorized applying merged file `20260816201115_payroll_export_fk_indexes.sql` to project `wnnjeqheqxxyrgsjmygy`.
+- Pre-apply gate: project status `ACTIVE_HEALTHY` on PostgreSQL 17.6; hosted migration absent; exactly ten targeted unindexed-FK notices remained; neither export table had an existing index with the required FK-leading order; both tables had zero rows and zero-byte heaps.
+- Apply result: success through Supabase `apply_migration`. The hosted migration ledger assigned `20260816215743 / payroll_export_fk_indexes` to the exact merged SQL.
+- Index proof: all ten expected indexes exist with exact definitions and are valid, ready, nonunique, and nonpartial.
+- Advisor delta: targeted unindexed-FK notices on `public.payroll_export_runs` and `public.payroll_export_rows` changed from ten to zero. Targeted security advisors remain empty. The expected unused-index notices remain because both tables are empty; no index deletion is authorized.
+- Authorization proof: the two authenticated permissive `SELECT` policies retain the same `app.current_user_is_payroll_admin(organization_id)` and `app.payroll_actor_has_capability(organization_id, 'payroll.export_period')` predicates. RLS remains enabled and forced; ACLs remain `postgres=arwdDxtm/postgres` and `authenticated=r/postgres`; both append-only triggers remain unchanged.
+- Data and activation proof: both export tables remain at zero rows with zero-byte heaps. `payroll_timekeeping_v1` remains default-disabled with zero enabled organization overrides, and capability grants, employment profiles, employee time events, session attendance events, and mutation receipts all remain zero.
+- Residual risk: the ten indexes add expected storage and write amplification after export traffic begins. Representative usage cannot be measured while the tables remain empty.
+- Hosted apply status: `applied and verified`; no other hosted mutation, deployment, capability grant, payroll activation, or customer/PHI access occurred.
+- Next action: merge this evidence-only PR, perform merge-proven branch/worktree cleanup, and route any remaining advisor family as a new bounded slice.

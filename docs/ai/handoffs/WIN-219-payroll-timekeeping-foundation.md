@@ -86,6 +86,37 @@
 - Local evidence across the integrated stack includes focused Vitest/Deno suites, loopback SQL/RPC/RLS proof, responsive `/time` `/schedule` `/time/review` `/payroll` evidence, aggregate `test:ci`/coverage/build/tier-0 reruns where documented, and exact local blocked-check caveats for missing credentialed `ci:playwright`.
 - Hosted deployment, hosted activation, and production rollout were not performed; activation remains a separate explicit manual dispatch after critical-lane human review, CI, and payroll/legal approval.
 
+## Task 6 Employee Rate Versions FK Coverage
+
+- Date: 2026-08-16
+- Branch: `codex/win-219-employee-rate-versions-fk-indexes`
+- Classification: `high-risk human-reviewed`
+- Lane: `critical`
+- Scope: cover the remaining `public.employee_rate_versions` advisor surface with exact-order FK-leading indexes only
+- Live hosted baseline:
+  - project `wnnjeqheqxxyrgsjmygy` is `ACTIVE_HEALTHY`
+  - `public.employee_rate_versions` is empty (`0` live rows, `0 bytes` table size, `32 kB` total size)
+  - RLS is enabled and forced; ACL remains `postgres=arwdDxtm/postgres` and `authenticated=r/postgres`
+  - constraints are `created_by -> auth.users(id)`, `(employment_profile_id, organization_id) -> employment_profiles(id, organization_id)`, and `organization_id -> organizations(id)`
+  - existing index coverage is `employee_rate_versions_history_lookup_idx (organization_id, employment_profile_id, effective_from desc, created_at desc, id desc)`, which does not cover the exact FK column order for `(employment_profile_id, organization_id)`
+- Non-goals: no policy rewrite, no grant change, no data mutation, no function/trigger change, no capability activation
+- Implementation:
+  - `employee_rate_versions_created_by_idx` covers `(created_by)`
+  - `employee_rate_versions_employment_profile_org_idx` covers `(employment_profile_id, organization_id)`
+  - migration `20260816033808_payroll_employee_rate_versions_fk_indexes` is included in every explicit WIN-219 runtime-parity mirror
+- TDD evidence:
+  - RED: focused contract reported `3 failed, 2 passed` for the missing migration, both absent exact index definitions, and missing parity version
+  - GREEN: focused migration plus runtime-parity contracts reported `9 passed`; deploy-safety omission regression reported `1 passed`; broader payroll/tenant/parity contract bundle reported `302 passed`
+- Verification card:
+  - required checks: focused migration and payroll contracts, `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run validate:tenant`, `npm run build`, `npm run verify:local`, `git diff --check`
+  - passed: focused and broader contracts, `ci:check-focused`, `lint`, `typecheck`, `validate:tenant`, `build`, local migration inventory, `git diff --check`
+  - blocked locally: the first `test:ci` attempt exhausted Node's default 4 GB heap; an 8 GB retry completed `545` files and `4,944` tests but four unrelated `ProgramsGoalsTab` tests plus a Vitest worker RPC timed out under aggregate load; the isolated file then passed `120/120`. `verify:local` cannot complete past the same aggregate gate, and coverage verification has no completed aggregate summary.
+  - result: `pass-with-blocked-checks`, pending exact-head CI
+  - residual risk: plain `CREATE INDEX` briefly blocks writes; recheck the empty/small table and lock window before any separately authorized hosted apply
+- Independent reviews: specification, architecture, implementation, code, security, performance, test, and Supabase reviews approved with no actionable findings
+- Hosted apply status: not authorized and not applied in this slice
+- Next action: finish independent review and exact diff hygiene, open the WIN-219 PR, and use exact-head CI plus human critical-lane review as the merge gate
+
 ## Handoff Summary
 
 Task 1 establishes a default-disabled payroll timekeeping schema and stable RPC boundary while keeping payroll time separate from insurance/audit session attendance. It includes event-effective employment binding, pay-group-scoped locks, append-only corrections, tenant-safe RLS, explicit delegated-attendance authority, and compensation privacy. Focused tests, clean reset, executable local security proof, policy, lint, typecheck, tenant validation, and build pass; the unrelated repository-wide coverage failure remains explicitly blocked for CI/human review.

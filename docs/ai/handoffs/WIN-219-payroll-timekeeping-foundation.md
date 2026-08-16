@@ -914,3 +914,71 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - protected-path drift: none; no `src/server/**`, Supabase, migration, RLS, grant, workflow, runtime-config, secret, or deploy change
 - reviewability: pass; focused commits and independent specialist approvals recorded
 - pr-ready: yes, with blocked local browser checks disclosed and exact-head CI plus human review required
+
+## Pay-Cycle FK Index Remediation
+
+- Date: 2026-08-15
+- Branch: `codex/win-219-pay-cycle-fk-indexes`
+- Classification: `high-risk human-reviewed`
+- Lane: `critical`
+- Scope: add only the six minimum nonredundant btree indexes whose leading columns exactly cover the remaining foreign-key advisor notices on `public.pay_groups`, `public.pay_group_assignments`, `public.pay_group_generation_versions`, and `public.pay_periods`; add one focused migration contract; and append the migration to every required WIN-219 runtime-parity mirror.
+- Non-goals: no policy, RLS, ACL, grant, function, trigger, table, data, capability, feature flag, payroll activation, deployment, historical migration edit, unused-index deletion, other advisor remediation, customer/PHI access, secret access, `.env*` access, or hosted apply.
+
+### Hosted Read-Only Baseline
+
+- Supabase project `wnnjeqheqxxyrgsjmygy` was `ACTIVE_HEALTHY` on PostgreSQL 17.6.1.029. Hosted migrations included `20260816031108 payroll_employee_time_events_fk_indexes` and `20260816044607 payroll_employee_rate_versions_fk_indexes`.
+- The performance advisor reported exactly six scoped `unindexed_foreign_keys` notices: `pay_groups_created_by_fkey` on `(created_by)`; `pay_group_assignments_employment_profile_id_organization_i_fkey` on `(employment_profile_id, organization_id)`; `pay_group_assignments_pay_group_id_organization_id_fkey` on `(pay_group_id, organization_id)`; `pay_group_generation_versions_created_by_fkey` on `(created_by)`; `pay_group_generation_versions_pay_group_id_organization_id_fkey` on `(pay_group_id, organization_id)`; and `pay_periods_pay_group_id_organization_id_fkey` on `(pay_group_id, organization_id)`. The security advisor reported zero scoped notices.
+- All four target tables had zero rows and zero-byte heaps. `pay_group_assignments`, `pay_groups`, and `pay_periods` each had 32,768 index bytes; `pay_group_generation_versions` had 32,768 index bytes. Total sizes were 32,768, 40,960, 40,960, and 32,768 bytes respectively. No competing locks were present.
+- Existing valid and ready indexes were id-first or organization-first. None covered any target FK sequence in leading-column order, and the proposed definitions do not duplicate the existing organization-first payroll read indexes.
+- RLS was enabled and forced on all four tables. Each retained one permissive authenticated `SELECT` policy with its existing organization, employee-read, payroll-admin, and capability checks. ACLs remained authenticated `SELECT` only and postgres full privileges; existing triggers were captured unchanged.
+- Payroll remained default-disabled with zero enabled organization overrides, active policy versions, capability grants, employment profiles, employee time events, session attendance events, or mutation receipts. Existing scoped unused-index notices remain informational and out of scope.
+
+### Implementation And TDD
+
+- RED: the focused contract ran six assertions and failed the expected three because the migration was absent, the six exact definitions were absent, and runtime parity omitted the new version. Tenant/policy invariants and forbidden-statement assertions already passed.
+- GREEN: `20260816063149_payroll_pay_cycle_fk_indexes.sql` creates only `pay_groups_created_by_idx` on `(created_by)`; `pay_group_assignments_employment_profile_org_idx` on `(employment_profile_id, organization_id)`; `pay_group_assignments_pay_group_org_idx` on `(pay_group_id, organization_id)`; `pay_group_generation_versions_created_by_idx` on `(created_by)`; `pay_group_generation_versions_pay_group_org_idx` on `(pay_group_id, organization_id)`; and `pay_periods_pay_group_org_idx` on `(pay_group_id, organization_id)`, all btree and inside one transaction. Every deterministic identifier is below PostgreSQL's 63-byte limit.
+- The contract proves exact FK-leading key order, rejects organization-first duplicates, pins the existing policy expressions plus enabled/forced RLS and ACL semantics, and rejects grants, revokes, functions, triggers, tables, policy changes, data mutation, capability changes, and activation statements. Runtime parity includes the version in the workflow, both policy scripts, and their tests, with a fail-closed omission regression.
+- Rollback: a compensating forward migration can drop the six named indexes. Plain `CREATE INDEX` briefly blocks writes; the zero-row baseline makes that strategy acceptable only if a fresh hosted pre-apply size and lock-window check remains materially unchanged.
+
+### Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: `database/migration/tenant isolation` and `CI/workflow/policy`
+- required checks: focused pay-cycle migration test; payroll foundation, approval, security-repair, manager-index/advisor, employee-time/rate-index, tenant/RLS, runtime-parity, and deploy-safety tests; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; `git diff --check`.
+- executed checks:
+  - focused migration and parity batch: pass; 237/237 assertions across 3 files
+  - broader targeted payroll/security/parity batch: pass; 345/345 assertions across 16 files
+  - `npm run ci:check-focused`: pass
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run validate:tenant`: pass
+  - `npm run build`: pass
+  - `npm run test:ci`: blocked locally; the default run exhausted the approximately 4 GiB Node heap and closed worker IPC. An 8 GiB retry completed 547 runnable files and 4,954 tests successfully with 100 environment-gated skips, but exited nonzero on one Vitest worker RPC `onTaskUpdate` timeout.
+  - `npm run verify:local`: blocked at its embedded default-heap `npm run test:ci`; policy, lint, and typecheck passed before the test runner exhausted the approximately 4 GiB Node heap and closed worker IPC, so later wrapper stages did not run
+  - `git diff --check`: pass on the final pre-commit diff
+- blocked checks:
+  - DB-backed privileged-function grant, sensitive-table overlap, and preview-drift subchecks -> no local `SUPABASE_DB_URL`/`DATABASE_URL`; no `.env*` file was read
+  - exact-head aggregate adjudication -> pending GitHub PR CI
+- result: `blocked` pending exact-head CI; local infrastructure failures are not converted to passes
+- independent review: specification, architecture, security, performance, test, and Supabase design reviews approved the six-index boundary. Post-implementation code, security, performance, test, and Supabase reviews found no defect. Code review suggested and received a tighter table-anchored FK source assertion; the affected focused suite remained green.
+- hosted apply status: `not authorized and not applied` for `20260816063149_payroll_pay_cycle_fk_indexes`.
+- residual risk: exact-head CI and human critical-lane review remain mandatory. A later plain hosted index build is safe only if fresh row-count, size, lock, advisor, and index-coverage checks remain materially unchanged. Empty-table conditions preclude representative performance measurement and can produce expected unused-index notices until legitimate payroll traffic exists.
+- next action: complete PR hygiene; push a WIN-219-linked PR; wait boundedly for exact-head checks; and stop for human review without merging or applying the migration hosted.
+
+### PR Hygiene Verdict
+
+- pr-ready: yes
+- lane: `critical`
+- branch-ready: yes; isolated `codex/win-219-pay-cycle-fk-indexes`
+- linear-ready: yes; WIN-219 contains the scoped hosted baseline, branch, verification plan, and next action
+- single-purpose: yes; six exact FK-leading indexes, one focused contract, required runtime-parity mirrors, and this handoff only
+- unrelated changes: none; `.codex-remote-attachments/` and `.codex-tmp/` remain untracked and excluded
+- generated artifact drift: none
+- protected-path drift: none beyond the routed migration and required parity workflow/policy mirrors
+- change summary: present
+- verification summary: present, with local aggregate infrastructure failures disclosed rather than converted to passes
+- pr handoff: ready; [PR #960](https://github.com/Jeduardo622/AllIincompassing/pull/960) targets `main`
+- reviewer: code, security, performance, test, and Supabase reviews completed
+- required follow-up: require exact-head CI and human critical-lane review; do not merge or apply hosted
+- handoff summary: adds only the six minimum FK-leading indexes across four pay-cycle configuration tables and pins unchanged RLS/ACL/tenant behavior. Focused and tenant suites pass; the default local aggregate remains infrastructure-blocked, so exact-head CI and human review are mandatory.

@@ -803,7 +803,7 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - independent review: specification, architecture, security, performance, test, and Supabase design reviews approved the index-only boundary. Post-implementation security, performance, and test reviews found no defect; Supabase review approved the index/RLS boundary and retained the fresh empty-table plus pre-apply lock-window gate. Code review requested only completion of this verification card and the PR-hygiene artifact, both now resolved.
 - hosted apply status: `not authorized and not applied` for `20260816014726_payroll_employee_time_events_fk_indexes`.
 - residual risk: exact-head CI and human critical-lane review remain mandatory. A later plain hosted index build is safe only if a fresh row-count, size, lock, advisor, and index-coverage check remains materially unchanged. Empty-table conditions preclude representative performance measurement and can produce expected unused-index notices until legitimate payroll traffic exists.
-- next action: finish the verification wrapper and independent review, push the isolated diff, open the WIN-219-linked PR, wait boundedly for exact-head required checks, and stop without merging or applying the migration hosted.
+- next action: wait boundedly for exact-head required checks on PR #956, resolve only in-scope findings, and stop for human review without merging or applying the migration hosted.
 
 ### PR Hygiene Verdict
 
@@ -817,7 +817,7 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - protected-path drift: none beyond the routed migration and required parity workflow/policy mirrors
 - change summary: present
 - verification summary: present, with local aggregate infrastructure failure disclosed rather than converted to a pass
-- pr handoff: ready; pending only commit, push, and PR URL population
+- pr handoff: ready; [PR #956](https://github.com/Jeduardo622/AllIincompassing/pull/956) targets `main`
 - reviewer: code, security, performance, test, and Supabase reviews completed
 - required follow-up: finalize review and diff checks, commit/push, open the WIN-219-linked PR, require exact-head CI and human critical-lane review, and do not merge or apply hosted
 - handoff summary: adds only the three minimum FK-leading indexes for `public.employee_time_events` and pins unchanged RLS/ACL/tenant behavior. Focused and tenant suites pass; the default local aggregate remains infrastructure-blocked, so exact-head CI and human review are mandatory.

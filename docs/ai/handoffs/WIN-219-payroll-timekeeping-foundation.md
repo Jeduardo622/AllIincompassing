@@ -1070,3 +1070,30 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - hosted apply status: `not authorized and not applied` for `20260816153226_payroll_admin_helper_authenticated_execute.sql`.
 - residual risk: authenticated users can directly invoke this boolean helper, which is required by the existing policies; confidentiality remains bounded by caller identity, active admin/super-admin membership, same-org resolution, and unchanged capability predicates. Exact-head CI and human critical-lane review remain mandatory.
 - next action: complete PR hygiene, push the WIN-219-linked PR, wait boundedly for exact-head required checks, and stop for owner review without merging or applying hosted.
+
+## Payroll Admin Helper Execute Hosted Apply Evidence
+
+- Date and authority: PR [#962](https://github.com/Jeduardo622/AllIincompassing/pull/962) merged to `main` as `2365e30bcbf59d4adfdb0b9ee1955ec489429b3e`. On 2026-08-16, the owner separately authorized applying the merged migration to Supabase project `wnnjeqheqxxyrgsjmygy`.
+- Post-merge cleanup: `main` was fast-forwarded to the merge commit. The clean dedicated `win-219-payroll-admin-helper-execute` worktree and local branch were removed; unrelated worktrees plus `.codex-remote-attachments/` and `.codex-tmp/` were preserved.
+- Immediate gate: the project was `ACTIVE_HEALTHY` on PostgreSQL 17.6.1.029, the migration was absent, and the merged file contained only the transactional `GRANT EXECUTE` to `authenticated`. The three dependent tables remained empty with zero-byte heaps, enabled and forced RLS, one permissive authenticated `SELECT` policy each, and authenticated read-only table ACLs.
+- Apply result: Supabase `apply_migration` succeeded exactly once using the merged file contents and logical name `payroll_admin_helper_authenticated_execute`. The hosted migration ledger records generated version `20260816172750`; Supabase assigned this apply-time version independently of repository filename `20260816153226_payroll_admin_helper_authenticated_execute.sql`.
+- Privilege proof: `app.current_user_is_payroll_admin(uuid)` now has ACL `{postgres=X/postgres,authenticated=X/postgres}`. `has_function_privilege` is true only for `authenticated` among the tested application roles; `anon`, `service_role`, and `public` remain false.
+- Authorization parity: the helper definition is unchanged: `STABLE SECURITY DEFINER`, empty `search_path`, caller binding through `auth.uid()`, active `admin`/`super_admin` membership, and same-organization enforcement through `app.payroll_actor_in_organization(...)`. The three policy names, roles, commands, permissiveness, organization predicates, and payroll capability predicates are byte-equivalent to the preflight catalog readback.
+- Synthetic runtime proof: a rolled-back, PHI-free authenticated transaction used reserved UUIDs only. It invoked the helper successfully, returned `false` for a caller with no membership, and evaluated all three RLS-protected reads without SQLSTATE `42501`; each returned zero visible rows. No fixture or operational row was created.
+- Catalog parity: `pay_group_generation_versions`, `payroll_export_runs`, and `payroll_export_rows` retain enabled and forced RLS, unchanged ACLs, exactly the expected three policies, unchanged append-only triggers, and zero rows. No function body, policy, RLS flag, table ACL, trigger, data, feature flag, capability, or deployment was changed.
+- Advisor comparison: targeted security advisors remained empty. Existing performance notices for export-table foreign keys and unused indexes were unchanged and are outside this grant-only slice; see [unindexed foreign keys](https://supabase.com/docs/guides/database/database-linter?lint=0001_unindexed_foreign_keys) and [unused indexes](https://supabase.com/docs/guides/database/database-linter?lint=0005_unused_index).
+- Payroll invariants: `payroll_timekeeping_v1` remains globally default-disabled with zero enabled organization overrides, active policy versions, capability grants, employment profiles, employee time events, session attendance events, or mutation receipts. No customer/PHI data, secrets, or `.env*` files were accessed.
+- Rollback and residual risk: no rollback is indicated. A separately reviewed compensating forward migration can revoke helper EXECUTE from `authenticated`. Residual risk is the intentional direct availability of a fail-closed boolean helper to authenticated callers; all membership, organization, and downstream capability checks remain intact.
+- Hosted apply status: `applied` as hosted version `20260816172750`. This evidence-only PR does not authorize payroll activation, capability grants, deployment, rollback, or any future hosted migration.
+
+### Hosted Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: hosted database grant migration and tenant-isolation verification; repository evidence update is docs-only
+- required checks: merged-commit and exact-file proof; project health; migration absence; pre/post function ACL and definition; policy/RLS/table ACL/trigger parity; target row counts and sizes; synthetic authenticated fail-closed runtime probe; security/performance advisor comparison; payroll-disabled invariants; hosted ledger readback; `git diff --check`; evidence-PR checks
+- executed checks: all hosted apply and postflight checks passed; exact-head implementation CI for PR #962 passed before owner merge
+- blocked checks: none for the hosted apply; evidence-PR checks are pending PR creation and are not treated as passed here
+- result: `pass`; the grant-only hosted objective is complete and safe to retain
+- residual risk: authenticated callers can directly invoke the boolean helper, but it returns authorization only for active same-organization admin/super-admin membership; dependent RLS policies still require the original payroll capabilities
+- next action: review and merge the evidence-only PR; separately route any remaining payroll performance-advisor remediation

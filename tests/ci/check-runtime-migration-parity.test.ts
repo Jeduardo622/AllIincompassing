@@ -45,6 +45,9 @@ describe("check-runtime-migration-parity", () => {
     expect(entries).toContain(
       "20260816153226|payroll_admin_helper_authenticated_execute",
     );
+    expect(entries).toContain(
+      "20260816201115|payroll_export_fk_indexes",
+    );
   });
 
   it("fails closed for manual payroll activation when the explicit WIN-219 migration contract is missing", () => {

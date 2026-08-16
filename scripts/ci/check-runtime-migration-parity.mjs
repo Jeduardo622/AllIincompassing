@@ -29,6 +29,7 @@ export const WIN_219_PAYROLL_MIGRATION_CONTRACT = [
   "20260816033808|payroll_employee_rate_versions_fk_indexes",
   "20260816063149|payroll_pay_cycle_fk_indexes",
   "20260816153226|payroll_admin_helper_authenticated_execute",
+  "20260816201115|payroll_export_fk_indexes",
 ].join(",");
 
 const baseSha = process.env.MIGRATION_PARITY_BASE_SHA ?? process.env.GITHUB_EVENT_BEFORE ?? "";

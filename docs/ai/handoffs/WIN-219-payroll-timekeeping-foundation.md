@@ -1070,3 +1070,41 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - hosted apply status: `not authorized and not applied` for `20260816153226_payroll_admin_helper_authenticated_execute.sql`.
 - residual risk: authenticated users can directly invoke this boolean helper, which is required by the existing policies; confidentiality remains bounded by caller identity, active admin/super-admin membership, same-org resolution, and unchanged capability predicates. Exact-head CI and human critical-lane review remain mandatory.
 - next action: complete PR hygiene, push the WIN-219-linked PR, wait boundedly for exact-head required checks, and stop for owner review without merging or applying hosted.
+
+## Payroll Export FK Index Advisor Remediation
+
+- Date: 2026-08-16
+- Branch: `codex/win-219-payroll-export-fk-indexes`
+- Classification: `high-risk human-reviewed`
+- Lane: `critical`
+- Scope: one forward-only index migration for the remaining `public.payroll_export_runs` and `public.payroll_export_rows` unindexed-FK advisor notices; one focused contract; five explicit WIN-219 runtime-parity mirrors; and this handoff addendum.
+- Hosted preflight baseline: project `wnnjeqheqxxyrgsjmygy` remained `ACTIVE_HEALTHY`; `20260816143529/payroll_pay_cycle_fk_indexes` and `20260816172750/payroll_admin_helper_authenticated_execute` were present; targeted advisors remained ten unindexed FKs on the two export tables; both tables stayed empty with zero-byte heaps; existing organization-first indexes did not lead with the FK column order and therefore did not satisfy the advisor.
+- TDD: RED was proven before implementation by the focused contract with the migration absent, producing 3 failed / 3 passed assertions. GREEN is bounded to [`20260816201115_payroll_export_fk_indexes.sql`](../../../supabase/migrations/20260816201115_payroll_export_fk_indexes.sql), which adds exactly ten nonunique plain btree indexes for the advisor-reported FK column orders and no policy, grant, ACL, function, trigger, data, capability, or activation statements.
+- Runtime parity: the explicit mirrors now require `20260816201115|payroll_export_fk_indexes`.
+- Hosted apply status: `not authorized and not applied`.
+
+### Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: database/RLS/tenant isolation and CI/workflow policy
+- required checks: focused export migration and parity contracts; existing payroll foundation, approval, export, security, tenant/RLS, and parity suites; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; `git diff --check`.
+- executed checks:
+  - `npm test -- --run tests/payroll-export-fk-indexes-migration.test.ts tests/ci/check-runtime-migration-parity.test.ts tests/ci/check-session-deploy-safety.test.ts tests/payroll-export-ledger-migration.test.ts tests/payroll-admin-helper-authenticated-execute-migration.test.ts`: pass, 253/253
+  - `npm test -- --run tests/payroll-timekeeping-foundation-migration.test.ts tests/payroll-approval-workflow-migration.test.ts tests/payroll-approval-workflow-repair-migration.test.ts tests/payroll-security-repair-migration.test.ts tests/payroll-manager-assignment-advisor-remediation-migration.test.ts tests/payroll-export-ledger-migration.test.ts tests/payroll-admin-helper-authenticated-execute-migration.test.ts tests/payroll-pay-cycle-fk-indexes-migration.test.ts tests/payroll-export-fk-indexes-migration.test.ts tests/integration/payroll-timekeeping-tenant-rls.contract.test.ts tests/ci/check-runtime-migration-parity.test.ts tests/ci/check-session-deploy-safety.test.ts`: pass, 322/322
+  - final focused export/foundation/administration/security/tenant/parity regression run with single-worker forks: pass, 305/305
+  - `npm run ci:check-focused`: pass
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run validate:tenant`: pass
+  - `npm run build`: pass
+  - `git diff --check`: pass
+- blocked checks:
+  - `npm run test:ci`: blocked after broad passing progress; two unrelated UI tests timed out (`TherapistOnboarding` at 20 seconds and `SessionModal` at 10 seconds), then Vitest exhausted the default approximately 4 GiB Node heap and closed worker IPC
+  - `npm run verify:local`: blocked at its embedded `npm run test:ci` after policy, lint, and typecheck passed; Vitest again exhausted the default approximately 4 GiB Node heap and closed worker IPC, so its later coverage, build, and route stages did not run inside the wrapper
+  - DB-backed privileged-function grant, sensitive-table overlap, preview-drift, and runtime assertions: no local `SUPABASE_DB_URL`/`DATABASE_URL`; no `.env*` file was read
+  - exact-head aggregate adjudication: pending GitHub PR CI
+- result: `pass-with-blocked-checks`; focused and targeted critical-lane checks passed and the bounded slice remains review-ready, while long-running local aggregate wrappers are reported as blocked instead of converted to passes
+- independent review: inline code, security, performance, test, and Supabase boundary review found the diff stayed index-only plus required parity and handoff mirrors; RLS, grants, append-only triggers, capability gates, and tenant isolation were preserved
+- residual risk: the ten new btrees add ordinary write amplification once export traffic exists; representative performance benefit cannot be measured while both hosted tables remain empty; exact-head CI and human critical-lane review remain mandatory before any merge or hosted apply
+- next action: complete PR hygiene, push the WIN-219-linked PR, wait boundedly for exact-head checks, and stop for owner review without merging or applying hosted

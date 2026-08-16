@@ -1012,3 +1012,61 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - residual risk: representative index benefit cannot be measured on empty tables; six btrees add normal write amplification; the separate authenticated generation-version read path remains fail-closed pending its own protected fix
 - exact-head evidence-PR checks: pending PR creation and recorded in the final PR handoff; they are not treated as passed here
 - next action: review and merge the linked evidence-only PR identified in the final PR handoff, then route the `app.current_user_is_payroll_admin(uuid)` policy/helper execute-contract repair as the next critical WIN-219 slice
+
+## Payroll Admin Helper Execute Contract Repair
+
+- Date: 2026-08-16
+- Branch: `codex/win-219-payroll-admin-helper-execute`
+- Classification: `high-risk human-reviewed`
+- Lane: `critical`
+- Scope: restore authenticated `EXECUTE` on `app.current_user_is_payroll_admin(uuid)` with one forward-only grant migration; add a focused migration/runtime contract; and append the migration to the WIN-219 runtime-parity mirrors.
+- Protected paths: `supabase/migrations/**`, `scripts/ci/**`, and `.github/workflows/**`.
+- Non-goals: no helper or policy rewrite, RLS/table ACL change, function or trigger creation, data mutation, capability grant, activation, deployment, customer/PHI access, secret access, `.env*` access, or hosted apply.
+- Stop conditions: any hosted helper/policy/ACL drift, new dependent policy, broader grantee, changed tenant/capability semantics, or need for a policy rewrite.
+
+### Hosted Read-Only Baseline
+
+- Supabase project `wnnjeqheqxxyrgsjmygy` was `ACTIVE_HEALTHY` on PostgreSQL 17.6.1.029 and included hosted migration `20260816143529 payroll_pay_cycle_fk_indexes`.
+- `app.current_user_is_payroll_admin(uuid)` remained `STABLE SECURITY DEFINER` with `search_path = ''`, caller binding through `auth.uid()`, active `admin`/`super_admin` membership, and same-organization enforcement through `app.payroll_actor_in_organization(...)`.
+- Hosted function ACL was `{postgres=X/postgres}`; `authenticated`, `anon`, and `service_role` lacked `EXECUTE`. Authenticated `EXPLAIN` on each dependent surface failed closed with SQLSTATE `42501 permission denied for function current_user_is_payroll_admin`.
+- Exactly three authenticated `SELECT` policies depended on the helper: `pay_group_generation_versions_authenticated_select`, `payroll_export_runs_authenticated_select`, and `payroll_export_rows_authenticated_select`. Their organization and capability predicates remained unchanged.
+- `pay_group_generation_versions`, `payroll_export_runs`, and `payroll_export_rows` each had zero rows and a zero-byte heap, enabled and forced RLS, and one permissive authenticated `SELECT` policy. Their ACLs and existing trigger counts were captured unchanged.
+- Targeted security advisors were empty. Payroll remained globally default-disabled with zero enabled organization overrides, active policy versions, capability grants, employment profiles, employee time events, session attendance events, or mutation receipts.
+
+### Implementation And TDD
+
+- RED: before the migration existed, the focused contract failed three expected assertions: missing migration, missing authenticated helper grant, and missing runtime-parity entry.
+- GREEN: [`20260816153226_payroll_admin_helper_authenticated_execute.sql`](../../../supabase/migrations/20260816153226_payroll_admin_helper_authenticated_execute.sql) contains one transactional statement: `grant execute on function app.current_user_is_payroll_admin(uuid) to authenticated;`.
+- The focused contract requires exactly one grant in executable SQL, rejects any revoke or broader grantee, pins the unchanged helper and all three dependent policy/capability branches, preserves enabled/forced RLS and table-read scope, and rejects policy, function, table, data, capability, or activation drift.
+- The synthetic local runtime contract asserts authenticated execute is true while `service_role`, `anon`, and `public` remain false; an in-scope admin returns true, while a cross-org admin check and same-org manager check return false. It remains environment-gated when the approved local database is unavailable.
+- Runtime parity now requires `20260816153226|payroll_admin_helper_authenticated_execute` in the workflow, both CI policy scripts, and both contract suites, including a fail-closed omission regression.
+- Rollback is a separate compensating forward migration: `revoke execute on function app.current_user_is_payroll_admin(uuid) from authenticated;`.
+
+### Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: database/RLS/grant/tenant isolation and CI/workflow policy
+- required checks: focused migration and runtime-parity contracts; deploy-safety contract; existing payroll administration/foundation/export/security/tenant/RLS/parity suites; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; `git diff --check`.
+- executed checks:
+  - `npm ci`: pass
+  - RED focused contract: expected fail, 3 failed / 2 passed before implementation
+  - `npm test -- --run tests/payroll-admin-helper-authenticated-execute-migration.test.ts tests/ci/check-runtime-migration-parity.test.ts`: pass, 9/9
+  - `npx vitest run tests/ci/check-session-deploy-safety.test.ts --pool=forks --maxWorkers=1`: pass, 228/228
+  - targeted payroll foundation, administration, export, security, tenant/RLS, and parity suites: pass for all runnable assertions; database-backed RPC assertions remained environment-gated
+  - `npm run ci:check-focused`: pass
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run validate:tenant`: pass
+  - `npm run build`: pass
+  - `npm run test:ci`: blocked locally after broad passing progress; Vitest exhausted the default approximately 4 GiB Node heap and then closed worker IPC
+  - `npm run verify:local`: blocked at its embedded `npm run test:ci` for the same default-heap/closed-IPC failure; its policy, lint, and typecheck stages passed, while later coverage, build, and route stages did not run inside the wrapper
+  - `git diff --check`: pass on the final pre-commit diff
+- blocked checks:
+  - DB-backed privileged-function grant, sensitive-table overlap, preview drift, and local RPC runtime assertions: no local `SUPABASE_DB_URL`/`DATABASE_URL`; no `.env*` file was read
+  - exact-head aggregate adjudication: pending GitHub PR CI
+- result: `pass-with-blocked-checks`; deterministic scoped checks pass, while local aggregate infrastructure failures are not converted to passes
+- independent review: specification, architecture, implementation, code, security, performance, test, Supabase, and documentation specialists support the grant-only boundary. Code review's optional stricter grant-count assertion was implemented and the focused suite reran green.
+- hosted apply status: `not authorized and not applied` for `20260816153226_payroll_admin_helper_authenticated_execute.sql`.
+- residual risk: authenticated users can directly invoke this boolean helper, which is required by the existing policies; confidentiality remains bounded by caller identity, active admin/super-admin membership, same-org resolution, and unchanged capability predicates. Exact-head CI and human critical-lane review remain mandatory.
+- next action: complete PR hygiene, push the WIN-219-linked PR, wait boundedly for exact-head required checks, and stop for owner review without merging or applying hosted.

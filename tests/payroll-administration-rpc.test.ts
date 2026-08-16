@@ -1997,4 +1997,51 @@ describe.skipIf(!hasSafeLocalDatabase)("payroll administration rpc runtime contr
       auth_delete_pay_periods: false,
     });
   });
+
+  it("allows authenticated payroll-admin helper execution without broadening other roles", async () => {
+    const grants = (
+      await admin.query(
+        `select
+           has_function_privilege('authenticated', 'app.current_user_is_payroll_admin(uuid)', 'EXECUTE') as auth_execute,
+           has_function_privilege('service_role', 'app.current_user_is_payroll_admin(uuid)', 'EXECUTE') as service_execute,
+           has_function_privilege('anon', 'app.current_user_is_payroll_admin(uuid)', 'EXECUTE') as anon_execute,
+           has_function_privilege('public', 'app.current_user_is_payroll_admin(uuid)', 'EXECUTE') as public_execute`,
+      )
+    ).rows[0];
+
+    expect(grants).toEqual({
+      auth_execute: true,
+      service_execute: false,
+      anon_execute: false,
+      public_execute: false,
+    });
+
+    const adminOrgA = await withRole(admin, "authenticated", IDS.adminA, async () => {
+      const result = await admin.query(
+        "select app.current_user_is_payroll_admin($1::uuid) as is_admin",
+        [IDS.orgA],
+      );
+      return result.rows[0]?.is_admin;
+    });
+
+    const adminOrgB = await withRole(admin, "authenticated", IDS.adminA, async () => {
+      const result = await admin.query(
+        "select app.current_user_is_payroll_admin($1::uuid) as is_admin",
+        [IDS.orgB],
+      );
+      return result.rows[0]?.is_admin;
+    });
+
+    const managerOrgA = await withRole(admin, "authenticated", IDS.managerA, async () => {
+      const result = await admin.query(
+        "select app.current_user_is_payroll_admin($1::uuid) as is_admin",
+        [IDS.orgA],
+      );
+      return result.rows[0]?.is_admin;
+    });
+
+    expect(adminOrgA).toBe(true);
+    expect(adminOrgB).toBe(false);
+    expect(managerOrgA).toBe(false);
+  });
 });

@@ -997,6 +997,7 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - Final invariants: all four target tables remain empty; payroll remains globally default-disabled; enabled overrides, active policy versions, capability grants, employment profiles, employee time events, session attendance events, and mutation receipts remain zero. No Edge/Netlify deployment, payroll activation, capability grant, customer/PHI access, secret access, or `.env*` access occurred.
 - Rollback and residual risk: no rollback is indicated. If a separately reviewed compensating migration is ever required, it can drop the six named indexes. Residual performance risk is limited to ordinary write amplification and the absence of representative workload evidence while the tables are empty.
 - Hosted apply status: `applied` as hosted version `20260816143529`. This evidence-only PR does not authorize deployment, payroll activation, capability grants, rollback, or future hosted migrations.
+- Evidence PR: [#961](https://github.com/Jeduardo622/AllIincompassing/pull/961) contains only this hosted verification record and remains human-reviewed.
 
 ### Hosted Verification Card
 

@@ -752,6 +752,76 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - Hosted verification card: classification `high-risk human-reviewed`; lane `critical`; required checks were exact merged-SQL identity, migration-absence proof, live catalog/advisor/security/payroll preflight, one authorized apply, migration-ledger and index validity/readiness readback, targeted advisor comparison, invariant comparison, and PHI-free rolled-back synthetic smoke. All required checks passed; blocked checks: none; result: `pass`; residual risk: empty-table conditions preclude representative workload measurement.
 - Hosted apply status: `applied` as hosted version `20260815213756`. This evidence update remains a separate human-reviewed PR and does not authorize deployment, payroll activation, capability grants, or future hosted migrations.
 
+## Employee Time Events FK Index Remediation
+
+- Date: 2026-08-15
+- Branch: `codex/win-219-employee-time-events-fk-indexes`
+- Classification: `high-risk human-reviewed`
+- Lane: `critical`
+- Scope: add only the three minimum nonredundant btree indexes whose leading columns exactly cover the remaining foreign-key advisor notices on `public.employee_time_events`, add a focused migration contract, and append the migration to every required WIN-219 runtime-parity mirror.
+- Non-goals: no policy, RLS, ACL, grant, function, trigger, table, data, capability, feature flag, payroll activation, deployment, historical migration edit, unused-index deletion, other advisor remediation, customer/PHI access, secret access, `.env*` access, or hosted apply.
+
+### Hosted Read-Only Baseline
+
+- Supabase project `wnnjeqheqxxyrgsjmygy` was `ACTIVE_HEALTHY` on PostgreSQL 17.6.1.029. The prior actor-index migration remained hosted as version `20260815213756`.
+- The performance advisor reported exactly three scoped `unindexed_foreign_keys` notices: `employee_time_events_actor_user_id_fkey` on `(actor_user_id)`, `employee_time_events_employment_profile_id_organization_id_fkey` on `(employment_profile_id, organization_id)`, and `employee_time_events_replacement_for_event_id_organization_fkey` on `(replacement_for_event_id, organization_id)`. The security advisor reported zero scoped notices.
+- The target table had zero rows, a zero-byte heap, 32,768 index bytes, and 40,960 total bytes. Only the preflight query's granted `AccessShareLock` was present. The empty table supports a plain transactional index strategy only while a later pre-apply refresh remains materially unchanged.
+- Existing valid and ready indexes led on `(id)`, `(id, organization_id)`, `(id, organization_id, employment_profile_id)`, and `(organization_id, employment_profile_id, event_at, created_at, id)`. None covered any of the three target FK sequences in leading-column order. The separate organization FK was already covered and remains out of scope.
+- RLS was enabled and forced. The single permissive authenticated `SELECT` policy remained `app.current_user_can_read_payroll_employee(organization_id, employment_profile_id)`. ACLs were `postgres=arwdDxtm/postgres` and `authenticated=r/postgres`; authenticated retained only `SELECT`. The three existing enabled application triggers were unchanged.
+- Payroll remained default-disabled with zero organization overrides, active policy versions, capability grants, employment profiles, employee time events, or session attendance events. The existing unused-index notice for `employee_time_events_org_employment_event_at_idx` is informational and out of scope.
+
+### Implementation And TDD
+
+- RED: after removing premature implementation drift, the focused contract ran five assertions and failed the expected three because the migration was absent, the exact index definitions were absent, and runtime parity omitted the new version. Policy/RLS/ACL and forbidden-statement assertions already passed.
+- GREEN: `20260816014726_payroll_employee_time_events_fk_indexes.sql` creates only `employee_time_events_actor_user_id_idx` on `(actor_user_id)`, `employee_time_events_employment_profile_org_idx` on `(employment_profile_id, organization_id)`, and `employee_time_events_replacement_event_org_idx` on `(replacement_for_event_id, organization_id)`, all btree and inside one transaction. Each deterministic identifier is below PostgreSQL's 63-byte limit.
+- The contract proves exact FK-leading key order, rejects an organization-first duplicate, pins the existing helper-only policy plus enabled/forced RLS and ACL semantics, and rejects grants, revokes, functions, triggers, tables, policy changes, data mutation, capability changes, and activation statements. Runtime parity includes the version in the workflow, both policy scripts, and their tests, with a fail-closed omission regression.
+- Rollback: a compensating forward migration can drop the three named indexes. Plain `CREATE INDEX` briefly blocks writes; the zero-row baseline makes that strategy acceptable only if a fresh hosted pre-apply size and lock-window check remains materially unchanged.
+
+### Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: `database/migration/tenant isolation` and `CI/workflow/policy`
+- required checks: focused employee-time-events migration test; payroll foundation, approval, security-repair, manager-index/advisor, mutation-receipts initplan/index, tenant/RLS, runtime-parity, and deploy-safety tests; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; `git diff --check`.
+- executed checks:
+  - focused migration and runtime-parity batch: pass; 9/9 assertions across 2 files
+  - focused deploy-safety omission regression: pass; 1/1 selected assertion
+  - broader targeted payroll/security/parity batch: pass; 85/85 assertions across 11 files
+  - `npm run ci:check-focused`: pass
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run validate:tenant`: pass
+  - `npm run build`: pass
+  - isolated rerun of the only timed-out aggregate assertion: pass in 2.1 seconds
+  - `npm run test:ci`: blocked locally after broad passing assertion progress; one unrelated SessionModal assertion timed out under aggregate contention, then the default run exhausted the approximately 4 GiB Node heap and closed worker IPC
+  - `npm run verify:local`: blocked at its embedded default-heap `npm run test:ci`; policy, lint, and typecheck passed before the test runner exhausted the approximately 4 GiB Node heap and closed worker IPC, so later wrapper stages did not run
+  - `git diff --check`: pass on the final pre-commit diff
+- blocked checks:
+  - DB-backed privileged-function grant, sensitive-table overlap, and preview-drift subchecks -> no local `SUPABASE_DB_URL`/`DATABASE_URL`; no `.env*` file was read
+  - exact-head aggregate adjudication -> pending GitHub PR CI
+- result: `blocked` pending exact-head CI; local infrastructure failures are not converted to passes
+- independent review: specification, architecture, security, performance, test, and Supabase design reviews approved the index-only boundary. Post-implementation security, performance, and test reviews found no defect; Supabase review approved the index/RLS boundary and retained the fresh empty-table plus pre-apply lock-window gate. Code review requested only completion of this verification card and the PR-hygiene artifact, both now resolved.
+- hosted apply status: `not authorized and not applied` for `20260816014726_payroll_employee_time_events_fk_indexes`.
+- residual risk: exact-head CI and human critical-lane review remain mandatory. A later plain hosted index build is safe only if a fresh row-count, size, lock, advisor, and index-coverage check remains materially unchanged. Empty-table conditions preclude representative performance measurement and can produce expected unused-index notices until legitimate payroll traffic exists.
+- next action: finish the verification wrapper and independent review, push the isolated diff, open the WIN-219-linked PR, wait boundedly for exact-head required checks, and stop without merging or applying the migration hosted.
+
+### PR Hygiene Verdict
+
+- pr-ready: yes
+- lane: `critical`
+- branch-ready: yes; isolated `codex/win-219-employee-time-events-fk-indexes`
+- linear-ready: yes; WIN-219 contains the scoped hosted baseline, branch, verification plan, and next action
+- single-purpose: yes; three exact FK-leading indexes, their focused contract, required runtime-parity mirrors, and this handoff only
+- unrelated changes: none; `.codex-remote-attachments/` and `.codex-tmp/` remain untracked and excluded
+- generated artifact drift: none
+- protected-path drift: none beyond the routed migration and required parity workflow/policy mirrors
+- change summary: present
+- verification summary: present, with local aggregate infrastructure failure disclosed rather than converted to a pass
+- pr handoff: ready; pending only commit, push, and PR URL population
+- reviewer: code, security, performance, test, and Supabase reviews completed
+- required follow-up: finalize review and diff checks, commit/push, open the WIN-219-linked PR, require exact-head CI and human critical-lane review, and do not merge or apply hosted
+- handoff summary: adds only the three minimum FK-leading indexes for `public.employee_time_events` and pins unchanged RLS/ACL/tenant behavior. Focused and tenant suites pass; the default local aggregate remains infrastructure-blocked, so exact-head CI and human review are mandatory.
+
 ## Payroll Super-Admin Route Gate Alignment
 
 - Date: 2026-08-15

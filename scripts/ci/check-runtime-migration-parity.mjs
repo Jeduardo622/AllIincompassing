@@ -25,6 +25,7 @@ export const WIN_219_PAYROLL_MIGRATION_CONTRACT = [
   "20260814213754|session_audit_created_by_typo_repair",
   "20260815002241|payroll_mutation_receipts_initplan",
   "20260815191838|payroll_mutation_receipts_actor_user_id_index",
+  "20260816014726|payroll_employee_time_events_fk_indexes",
 ].join(",");
 
 const baseSha = process.env.MIGRATION_PARITY_BASE_SHA ?? process.env.GITHUB_EVENT_BEFORE ?? "";

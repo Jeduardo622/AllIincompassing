@@ -287,7 +287,7 @@ jobs:
         env:
           MIGRATION_PARITY_BASE_SHA: ${{ needs.change_scope.outputs.base_sha }}
           MIGRATION_PARITY_HEAD_SHA: ${{ needs.change_scope.outputs.head_sha }}
-          MIGRATION_PARITY_REQUIRED_MIGRATIONS: "20260811214856|payroll_timekeeping_capture_read_model,20260812060529|payroll_timesheet_snapshots,20260812103000|payroll_session_lifecycle_context,20260812113000|payroll_session_lifecycle_context_disabled_state,20260812122436|payroll_approval_workflow,20260812141324|payroll_review_read_models,20260812153628|payroll_administration,20260812185531|payroll_approval_workflow_repair,20260812212854|payroll_timesheet_period_contract_repair,20260812230837|payroll_export_ledger,20260813013000|payroll_approval_codex_review_fixes,20260813103000|payroll_security_repair,20260814172117|payroll_manager_assignment_advisor_remediation,20260814183500|payroll_session_context_disabled_precedence,20260814191200|payroll_session_context_enabled_authority_repair,20260814205000|profile_insert_sync_bypass,20260814213754|session_audit_created_by_typo_repair,20260815002241|payroll_mutation_receipts_initplan,20260815191838|payroll_mutation_receipts_actor_user_id_index,20260816014726|payroll_employee_time_events_fk_indexes,20260816033808|payroll_employee_rate_versions_fk_indexes,20260816063149|payroll_pay_cycle_fk_indexes,20260816153226|payroll_admin_helper_authenticated_execute,20260816201115|payroll_export_fk_indexes"
+          MIGRATION_PARITY_REQUIRED_MIGRATIONS: "20260811214856|payroll_timekeeping_capture_read_model,20260812060529|payroll_timesheet_snapshots,20260812103000|payroll_session_lifecycle_context,20260812113000|payroll_session_lifecycle_context_disabled_state,20260812122436|payroll_approval_workflow,20260812141324|payroll_review_read_models,20260812153628|payroll_administration,20260812185531|payroll_approval_workflow_repair,20260812212854|payroll_timesheet_period_contract_repair,20260812230837|payroll_export_ledger,20260813013000|payroll_approval_codex_review_fixes,20260813103000|payroll_security_repair,20260814172117|payroll_manager_assignment_advisor_remediation,20260814183500|payroll_session_context_disabled_precedence,20260814191200|payroll_session_context_enabled_authority_repair,20260814205000|profile_insert_sync_bypass,20260814213754|session_audit_created_by_typo_repair,20260815002241|payroll_mutation_receipts_initplan,20260815191838|payroll_mutation_receipts_actor_user_id_index,20260816014726|payroll_employee_time_events_fk_indexes,20260816033808|payroll_employee_rate_versions_fk_indexes,20260816063149|payroll_pay_cycle_fk_indexes,20260816153226|payroll_admin_helper_authenticated_execute,20260816201115|payroll_export_fk_indexes,20260817012347|payroll_blocker_resolutions_advisor_remediation"
           ACTIVATE_PAYROLL_TIMESHEETS: ${{ inputs.activate_payroll_timesheets || false }}
           ACTIVATE_PAYROLL_EXPORT: ${{ inputs.activate_payroll_export || false }}
           ACTIVATE_PAYROLL_APPROVALS: ${{ inputs.activate_payroll_approvals || false }}
@@ -931,6 +931,15 @@ jobs:
           CI_SMOKE_ADMIN_SCOPE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}
         run: npx tsx scripts/provision-ci-smoke-admin.ts
 
+      - name: Provision synthetic therapist smoke actor
+        if: steps.browser_scope.outputs.auth_smoke_required == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          CI_SMOKE_THERAPIST_SCOPE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}
+        run: npx tsx scripts/provision-ci-smoke-therapist.ts
+
       - name: Provision synthetic BCBA smoke actor
         if: steps.browser_scope.outputs.auth_smoke_required == 'true' && github.event_name != 'pull_request'
         env:
@@ -949,8 +958,6 @@ jobs:
           PW_BASE_URL: ${{ github.event_name == 'pull_request' && format('https://deploy-preview-{0}--velvety-cendol-dae4d6.netlify.app', github.event.pull_request.number) || secrets.PW_BASE_URL }}
           PW_ADMIN_EMAIL: ${{ secrets.PW_ADMIN_EMAIL }}
           PW_ADMIN_PASSWORD: ${{ secrets.PW_ADMIN_PASSWORD }}
-          PW_THERAPIST_EMAIL: ${{ secrets.PW_THERAPIST_EMAIL }}
-          PW_THERAPIST_PASSWORD: ${{ secrets.PW_THERAPIST_PASSWORD }}
           PW_SCHEDULE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}
           PW_SCHEDULE_PASSWORD: ${{ secrets.PW_SCHEDULE_PASSWORD }}
           PW_FOREIGN_CLIENT_ID: ${{ secrets.PW_FOREIGN_CLIENT_ID }}
@@ -994,8 +1001,6 @@ jobs:
           PW_BASE_URL: ${{ github.event_name == 'pull_request' && format('https://deploy-preview-{0}--velvety-cendol-dae4d6.netlify.app', github.event.pull_request.number) || secrets.PW_BASE_URL }}
           PW_ADMIN_EMAIL: ${{ secrets.PW_ADMIN_EMAIL }}
           PW_ADMIN_PASSWORD: ${{ secrets.PW_ADMIN_PASSWORD }}
-          PW_THERAPIST_EMAIL: ${{ secrets.PW_THERAPIST_EMAIL }}
-          PW_THERAPIST_PASSWORD: ${{ secrets.PW_THERAPIST_PASSWORD }}
           PW_SCHEDULE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}
           PW_SCHEDULE_PASSWORD: ${{ secrets.PW_SCHEDULE_PASSWORD }}
           PW_FOREIGN_CLIENT_ID: ${{ secrets.PW_FOREIGN_CLIENT_ID }}
@@ -1061,6 +1066,15 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npx tsx scripts/provision-ci-smoke-bcba.ts --cleanup
 
+      - name: Cleanup synthetic therapist smoke actor
+        if: always() && steps.browser_scope.outputs.auth_smoke_required == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          CI_SMOKE_THERAPIST_SCOPE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}
+        run: npx tsx scripts/provision-ci-smoke-therapist.ts --cleanup
+
       - name: Cleanup auth smoke admin
         if: always() && steps.browser_scope.outputs.auth_smoke_required == 'true'
         env:
@@ -1123,10 +1137,9 @@ jobs:
           PW_BASE_URL: ${{ github.event_name == 'pull_request' && format('https://deploy-preview-{0}--velvety-cendol-dae4d6.netlify.app', github.event.pull_request.number) || secrets.PW_BASE_URL }}
           PW_ADMIN_EMAIL: ${{ secrets.PW_ADMIN_EMAIL }}
           PW_ADMIN_PASSWORD: ${{ secrets.PW_ADMIN_PASSWORD }}
-          PW_THERAPIST_EMAIL: ${{ secrets.PW_THERAPIST_EMAIL }}
-          PW_THERAPIST_PASSWORD: ${{ secrets.PW_THERAPIST_PASSWORD }}
           PW_SCHEDULE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}
           PW_SCHEDULE_PASSWORD: ${{ secrets.PW_SCHEDULE_PASSWORD }}
+          CI_SMOKE_THERAPIST_SCOPE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}
           PW_FOREIGN_CLIENT_ID: ${{ secrets.PW_FOREIGN_CLIENT_ID }}
           PW_FOREIGN_THERAPIST_ID: ${{ secrets.PW_FOREIGN_THERAPIST_ID }}
           PW_ASSESSMENT_CLIENT_ID: ${{ secrets.PW_ASSESSMENT_CLIENT_ID }}
@@ -1143,6 +1156,7 @@ jobs:
           PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR: ${{ secrets.PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR }}
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}

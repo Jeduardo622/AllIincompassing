@@ -437,6 +437,19 @@ const resolveDownloadUri = (body: Record<string, unknown>): string | null => {
   return null;
 };
 
+const readAdobeErrorStatus = (body: Record<string, unknown>): number | null => {
+  const error = body.error;
+  if (!error || typeof error !== "object") return null;
+
+  const status = (error as Record<string, unknown>).status;
+  return typeof status === "number" &&
+      Number.isInteger(status) &&
+      status >= 100 &&
+      status <= 599
+    ? status
+    : null;
+};
+
 const pollExtractJob = async (
   pollingUrl: string,
   credentials: AdobeCredentials,
@@ -479,6 +492,7 @@ const pollExtractJob = async (
         "Adobe PDF Extract job failed.",
         502,
         "job_poll",
+        readAdobeErrorStatus(body),
       );
     }
     await sleep(pollIntervalMs);

@@ -302,6 +302,150 @@ Deno.test("extractPdfWithAdobe does not label semantic job failures as HTTP fail
   }
 });
 
+Deno.test("extractPdfWithAdobe sanitizes Adobe semantic poll failures while preserving allowlisted upstream status", async () => {
+  const sensitiveCode = "job_failed_validation";
+  const sensitiveMessage = "provider detail must not leak";
+  const fetchImpl = async (input: RequestInfo | URL): Promise<Response> => {
+    const url = String(input);
+    if (url.endsWith("/token")) {
+      return Response.json({ access_token: "token-1" });
+    }
+    if (url.endsWith("/assets")) {
+      return Response.json({
+        uploadUri: ADOBE_US_STORAGE_URL,
+        assetID: "asset-1",
+      });
+    }
+    if (url === ADOBE_US_STORAGE_URL) {
+      return new Response(null, { status: 200 });
+    }
+    if (url.endsWith("/operation/extractpdf")) {
+      return new Response(null, {
+        status: 201,
+        headers: {
+          location:
+            "https://pdf-services.adobe.io/operation/extractpdf/job-1/status",
+        },
+      });
+    }
+    if (url.endsWith("/job-1/status")) {
+      return Response.json({
+        status: "failed",
+        error: {
+          status: 422,
+          code: sensitiveCode,
+          message: sensitiveMessage,
+        },
+      });
+    }
+    return new Response("unexpected", { status: 500 });
+  };
+
+  try {
+    await extractPdfWithAdobe(new Uint8Array([1, 2, 3]), {
+      env: envFrom({
+        PDF_SERVICES_CLIENT_ID: "client-id",
+        PDF_SERVICES_CLIENT_SECRET: "client-secret",
+      }),
+      fetchImpl,
+      sleep: () => Promise.resolve(),
+      maxPollAttempts: 1,
+    });
+    throw new Error("Expected Adobe extraction to fail.");
+  } catch (error) {
+    expect(error).toBeInstanceOf(AdobePdfExtractError);
+    const adobeError = error as AdobePdfExtractError;
+    expect(adobeError.stage).toBe("job_poll");
+    expect(adobeError.upstreamStatus).toBe(422);
+    expect(adobeError.message).not.toContain(sensitiveCode);
+    expect(adobeError.message).not.toContain(sensitiveMessage);
+    expect(JSON.stringify(adobeError.toPublicDiagnostics())).toContain("422");
+    expect(JSON.stringify(adobeError.toPublicDiagnostics())).not.toContain(
+      sensitiveCode,
+    );
+    expect(JSON.stringify(adobeError.toPublicDiagnostics())).not.toContain(
+      sensitiveMessage,
+    );
+  }
+});
+
+Deno.test("extractPdfWithAdobe preserves inclusive semantic status bounds and rejects malformed values", async () => {
+  const cases: Array<{
+    name: string;
+    error: unknown;
+    expectedStatus: number | null;
+  }> = [
+    { name: "minimum", error: { status: 100 }, expectedStatus: 100 },
+    { name: "maximum", error: { status: 599 }, expectedStatus: 599 },
+    {
+      name: "absent status",
+      error: { code: "job_failed_validation" },
+      expectedStatus: null,
+    },
+    { name: "string", error: { status: "422" }, expectedStatus: null },
+    { name: "decimal", error: { status: 422.5 }, expectedStatus: null },
+    { name: "low", error: { status: 99 }, expectedStatus: null },
+    { name: "high", error: { status: 600 }, expectedStatus: null },
+    { name: "null error", error: null, expectedStatus: null },
+    { name: "primitive error", error: "failed", expectedStatus: null },
+    { name: "missing error", error: undefined, expectedStatus: null },
+  ];
+
+  for (const testCase of cases) {
+    const fetchImpl = async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+      if (url.endsWith("/token")) {
+        return Response.json({ access_token: "token-1" });
+      }
+      if (url.endsWith("/assets")) {
+        return Response.json({
+          uploadUri: ADOBE_US_STORAGE_URL,
+          assetID: "asset-1",
+        });
+      }
+      if (url === ADOBE_US_STORAGE_URL) {
+        return new Response(null, { status: 200 });
+      }
+      if (url.endsWith("/operation/extractpdf")) {
+        return new Response(null, {
+          status: 201,
+          headers: {
+            location:
+              "https://pdf-services.adobe.io/operation/extractpdf/job-1/status",
+          },
+        });
+      }
+      if (url.endsWith("/job-1/status")) {
+        return Response.json({
+          status: "failed",
+          ...(testCase.error === undefined ? {} : { error: testCase.error }),
+        });
+      }
+      return new Response("unexpected", { status: 500 });
+    };
+
+    try {
+      await extractPdfWithAdobe(new Uint8Array([1, 2, 3]), {
+        env: envFrom({
+          PDF_SERVICES_CLIENT_ID: "client-id",
+          PDF_SERVICES_CLIENT_SECRET: "client-secret",
+        }),
+        fetchImpl,
+        sleep: () => Promise.resolve(),
+        maxPollAttempts: 1,
+      });
+      throw new Error(
+        `Expected Adobe extraction to fail for ${testCase.name}.`,
+      );
+    } catch (error) {
+      expect(error).toBeInstanceOf(AdobePdfExtractError);
+      const adobeError = error as AdobePdfExtractError;
+      expect(adobeError.stage).toBe("job_poll");
+      expect(adobeError.upstreamStatus).toBe(testCase.expectedStatus);
+    }
+  }
+});
+
 Deno.test("normalizeAdobeExtractZip sanitizes invalid ZIP failures", async () => {
   try {
     await normalizeAdobeExtractZip(new Uint8Array([1, 2, 3]));

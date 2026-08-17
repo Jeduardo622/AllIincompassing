@@ -732,12 +732,8 @@ describe('fetchIehpExtractionFailureEvidence', () => {
       new Response(
         JSON.stringify([
           {
-            event_payload: {
-              adobe_stage: 'token',
-              adobe_upstream_status: 401,
-              reason_code: 'must-not-be-emitted',
-              raw_provider_body: 'must-not-be-emitted',
-            },
+            adobe_stage: 'token',
+            adobe_upstream_status: 401,
           },
         ]),
         { status: 200, headers: { 'content-type': 'application/json' } },
@@ -768,8 +764,9 @@ describe('fetchIehpExtractionFailureEvidence', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(
-      'https://example.supabase.co/rest/v1/assessment_review_events?select=event_payload&assessment_document_id=eq.document-123&organization_id=eq.org-123&action=eq.extraction_failed&order=created_at.desc,id.desc&limit=1',
+      'https://example.supabase.co/rest/v1/assessment_review_events?select=adobe_stage:event_payload->>adobe_stage,adobe_upstream_status:event_payload->adobe_upstream_status&assessment_document_id=eq.document-123&organization_id=eq.org-123&action=eq.extraction_failed&order=created_at.desc,id.desc&limit=1',
     );
+    expect(url).not.toContain('select=event_payload&');
     expect(init.headers).toEqual({ apikey: 'anon-key', Authorization: 'Bearer caller-jwt' });
   });
 
@@ -778,10 +775,8 @@ describe('fetchIehpExtractionFailureEvidence', () => {
       new Response(
         JSON.stringify([
           {
-            event_payload: {
-              adobe_stage: 'token secret-value',
-              adobe_upstream_status: 900,
-            },
+            adobe_stage: 'token secret-value',
+            adobe_upstream_status: 900,
           },
         ]),
         { status: 200, headers: { 'content-type': 'application/json' } },
@@ -817,10 +812,8 @@ describe('fetchIehpExtractionFailureEvidence', () => {
         new Response(
           JSON.stringify([
             {
-              event_payload: {
-                adobe_stage: 'job_poll',
-                adobe_upstream_status: 502,
-              },
+              adobe_stage: 'job_poll',
+              adobe_upstream_status: 502,
             },
           ]),
           { status: 200, headers: { 'content-type': 'application/json' } },
@@ -863,10 +856,8 @@ describe('fetchIehpExtractionFailureEvidence', () => {
         new Response(
           JSON.stringify([
             {
-              event_payload: {
-                adobe_stage: 'result_download',
-                adobe_upstream_status: 502,
-              },
+              adobe_stage: 'result_download',
+              adobe_upstream_status: 502,
             },
           ]),
           { status: 200, headers: { 'content-type': 'application/json' } },

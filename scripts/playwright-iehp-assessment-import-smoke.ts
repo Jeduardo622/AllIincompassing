@@ -766,7 +766,7 @@ export const fetchIehpExtractionFailureEvidence = async (args: {
   supabaseUrl: string;
 }): Promise<IehpExtractionFailureEvidence> => {
   const response = await fetchWithRetry(
-    `${args.supabaseUrl}/rest/v1/assessment_review_events?select=event_payload&assessment_document_id=eq.${encodeURIComponent(
+    `${args.supabaseUrl}/rest/v1/assessment_review_events?select=adobe_stage:event_payload->>adobe_stage,adobe_upstream_status:event_payload->adobe_upstream_status&assessment_document_id=eq.${encodeURIComponent(
       args.assessmentDocumentId,
     )}&organization_id=eq.${encodeURIComponent(args.organizationId)}&action=eq.extraction_failed&order=created_at.desc,id.desc&limit=1`,
     {
@@ -784,14 +784,14 @@ export const fetchIehpExtractionFailureEvidence = async (args: {
 
   const payload = (await response.json()) as unknown;
   const row = Array.isArray(payload) ? payload[0] : null;
-  const eventPayload =
-    row && typeof row === 'object' && 'event_payload' in row
-      ? (row.event_payload as { adobe_stage?: unknown; adobe_upstream_status?: unknown })
+  const projectedDiagnostics =
+    row && typeof row === 'object'
+      ? (row as { adobe_stage?: unknown; adobe_upstream_status?: unknown })
       : null;
 
   return {
-    adobe_stage: sanitizeAdobeStage(eventPayload?.adobe_stage),
-    adobe_upstream_status: sanitizeAdobeUpstreamStatus(eventPayload?.adobe_upstream_status),
+    adobe_stage: sanitizeAdobeStage(projectedDiagnostics?.adobe_stage),
+    adobe_upstream_status: sanitizeAdobeUpstreamStatus(projectedDiagnostics?.adobe_upstream_status),
   };
 };
 

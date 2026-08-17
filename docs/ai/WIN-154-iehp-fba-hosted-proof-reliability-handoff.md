@@ -254,3 +254,12 @@ Non-goals remain credential rotation, secret access, parser behavior changes, sc
 - unrelated changes: `.codex-tmp/` is pre-existing untracked evidence and is explicitly excluded from staging; generated test-report drift was restored.
 - protected-path drift: none beyond the declared `.github/workflows/ci.yml` and `scripts/ci/**` critical surfaces.
 - hosted status: no merge, migration apply, function deployment, capability grant, payroll activation, secret mutation, or customer/PHI access occurred.
+
+### Hosted Profile Authority Correction
+
+- Exact-head run `32067700918` at `282fb22ccc6213c2aeb3c3ae231c0803ca1aa7f4` reached the new provisioner before Playwright and failed its direct protected profile upsert with PostgreSQL `42501: organization_id is immutable for this role`; the always-run cleanup passed and left no run-owned actor behind.
+- Live read-only Supabase inspection confirmed `public.provision_ci_rls_fixture_profile(uuid, uuid)` is already deployed as a `SECURITY DEFINER` function with an empty `search_path`, execution restricted to `service_role` and `postgres`, exact synthetic marker/expiry checks, canonical therapist-role/link tenant derivation, and transaction-local profile-guard bypass.
+- RED/GREEN repair: the provisioner now seeds only profile identity/display fields, creates the tenant-bound therapist row plus authoritative role and self-link, then calls the existing service-only RPC to set `role`, `organization_id`, and `is_active`. The synthetic actor carries the RPC's two-hour marker while retaining exact run ownership metadata for cleanup.
+- Focused result: `268/268` across therapist provisioning, browser readiness, CI reliability/deploy safety, and the existing RPC migration contracts.
+- Local gates: policy, lint, typecheck, tenant validation, build, and tier-0 routes (`244/244`) passed. The 8 GB aggregate completed `552` runnable files and `4,994` runnable tests without an assertion failure, then exited on the known Vitest worker RPC timeout calling `onTaskUpdate`; it remains blocked rather than reported as passed.
+- Scope remains unchanged: no migration, RPC definition, grant, RLS, schema, product auth, secret, hosted apply, deployment, merge, or fixture-denial weakening.

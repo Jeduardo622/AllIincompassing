@@ -14,6 +14,11 @@ type SmokeTherapistOwnershipMetadata = {
   smoke_job: string;
 };
 
+type SmokeTherapistFixtureMetadata = SmokeTherapistOwnershipMetadata & {
+  ci_rls_fixture: 'true';
+  ci_rls_expires_at: string;
+};
+
 export interface SmokeTherapistProfileInvariant {
   id?: string | null;
   role?: string | null;
@@ -65,6 +70,23 @@ export const buildSmokeTherapistOwnershipMetadata = (
   smoke_run_id: env.GITHUB_RUN_ID?.trim() || 'local',
   smoke_run_attempt: env.GITHUB_RUN_ATTEMPT?.trim() || '1',
   smoke_job: env.GITHUB_JOB?.trim() || 'local',
+});
+
+export const buildSmokeTherapistFixtureMetadata = (
+  email: string,
+  env: NodeJS.ProcessEnv = process.env,
+  now: Date = new Date(),
+): SmokeTherapistFixtureMetadata => ({
+  ...buildSmokeTherapistOwnershipMetadata(email, env),
+  ci_rls_fixture: 'true',
+  ci_rls_expires_at: new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+});
+
+export const buildSmokeTherapistProfileSeed = (userId: string, email: string) => ({
+  id: userId,
+  email,
+  first_name: 'Playwright',
+  last_name: 'Therapist',
 });
 
 export const assertSmokeTherapistOwnership = (
@@ -274,7 +296,7 @@ const provision = async (): Promise<void> => {
     getEnv('CI_SMOKE_THERAPIST_SCOPE_EMAIL'),
   );
   const password = `C1-${randomBytes(18).toString('base64url')}!Aa`;
-  const ownership = buildSmokeTherapistOwnershipMetadata(email);
+  const ownership = buildSmokeTherapistFixtureMetadata(email);
   const metadata = {
     role: 'therapist',
     signup_role: 'therapist',
@@ -301,15 +323,10 @@ const provision = async (): Promise<void> => {
       .maybeSingle();
     if (roleError || !role?.id) throw new Error('Role therapist is not provisioned.');
 
-    const { error: profileError } = await client.from('profiles').upsert({
-      id: user.id,
-      email,
-      role: 'therapist',
-      is_active: true,
-      first_name: 'Playwright',
-      last_name: 'Therapist',
-      organization_id: organizationId,
-    }, { onConflict: 'id' });
+    const { error: profileError } = await client.from('profiles').upsert(
+      buildSmokeTherapistProfileSeed(user.id, email),
+      { onConflict: 'id' },
+    );
     if (profileError) throw profileError;
 
     const { error: therapistError } = await client.from('therapists').insert({
@@ -338,6 +355,17 @@ const provision = async (): Promise<void> => {
       therapist_id: user.id,
     });
     if (linkError) throw linkError;
+
+    const { data: provisionedOrganizationId, error: profileProvisionError } = await client
+      .rpc('provision_ci_rls_fixture_profile', {
+        p_user_id: user.id,
+        p_organization_id: organizationId,
+      });
+    if (profileProvisionError || provisionedOrganizationId !== organizationId) {
+      throw new Error(
+        `Synthetic smoke therapist profile authority provisioning failed: ${serializeError(profileProvisionError)}`,
+      );
+    }
 
     await verifyProvisionedRows(client, user.id, email, organizationId);
     await verifySmokeTherapistAuthenticatedReadiness(createAuthenticatedProbeClient(), {

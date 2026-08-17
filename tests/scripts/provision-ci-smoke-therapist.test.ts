@@ -11,27 +11,42 @@ import {
   assertSmokeTherapistOwnership,
   assertSmokeTherapistProfileInvariant,
   buildDefaultSmokeTherapistEmail,
+  buildSmokeTherapistFixtureMetadata,
   buildSmokeTherapistOwnershipMetadata,
+  buildSmokeTherapistProfileSeed,
   getMissingSmokeTherapistSecrets,
   shouldSkipSecretlessPullRequest,
   verifySmokeTherapistAuthenticatedReadiness,
 } from '../../scripts/provision-ci-smoke-therapist';
 
 describe('provision-ci-smoke-therapist safeguards', () => {
-  it('creates the tenant-bound profile before therapist and role mappings', () => {
+  it('uses canonical mappings before the service-only profile authority RPC', () => {
     const source = readFileSync(
       path.resolve(process.cwd(), 'scripts/provision-ci-smoke-therapist.ts'),
       'utf8',
     );
-    const profileUpsert = source.indexOf("client.from('profiles').upsert({");
+    const profileSeed = source.search(
+      /client\.from\('profiles'\)\.upsert\(\s*buildSmokeTherapistProfileSeed\(/,
+    );
     const therapistInsert = source.indexOf("client.from('therapists').insert({");
     const roleMapping = source.indexOf("client.from('user_roles').upsert({");
     const therapistLink = source.indexOf("client.from('user_therapist_links').insert({");
+    const profileProvision = source.indexOf(".rpc('provision_ci_rls_fixture_profile'");
 
-    expect(profileUpsert).toBeGreaterThan(-1);
-    expect(therapistInsert).toBeGreaterThan(profileUpsert);
+    expect(profileSeed).toBeGreaterThan(-1);
+    expect(therapistInsert).toBeGreaterThan(profileSeed);
     expect(roleMapping).toBeGreaterThan(therapistInsert);
     expect(therapistLink).toBeGreaterThan(roleMapping);
+    expect(profileProvision).toBeGreaterThan(therapistLink);
+  });
+
+  it('keeps protected profile authority out of the seed upsert', () => {
+    expect(buildSmokeTherapistProfileSeed('user-1', 'actor@example.com')).toEqual({
+      id: 'user-1',
+      email: 'actor@example.com',
+      first_name: 'Playwright',
+      last_name: 'Therapist',
+    });
   });
 
   it('accepts only dedicated run-owned therapist smoke emails', () => {
@@ -58,6 +73,22 @@ describe('provision-ci-smoke-therapist safeguards', () => {
       smoke_run_attempt: '2',
       smoke_job: 'auth_browser_smoke',
     });
+    expect(buildSmokeTherapistFixtureMetadata(email, env, new Date('2026-08-17T20:00:00.000Z'))).toEqual({
+      smoke_actor: 'ci_therapist',
+      smoke_email: email,
+      smoke_run_id: '123',
+      smoke_run_attempt: '2',
+      smoke_job: 'auth_browser_smoke',
+      ci_rls_fixture: 'true',
+      ci_rls_expires_at: '2026-08-17T22:00:00.000Z',
+    });
+
+    const source = readFileSync(
+      path.resolve(process.cwd(), 'scripts/provision-ci-smoke-therapist.ts'),
+      'utf8',
+    );
+    expect(source).toContain('const ownership = buildSmokeTherapistFixtureMetadata(email);');
+    expect(source).toContain('app_metadata: ownership,');
   });
 
   it('requires admin, publishable, and read-only scope inputs', () => {

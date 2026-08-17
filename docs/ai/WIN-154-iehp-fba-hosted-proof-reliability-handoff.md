@@ -135,3 +135,35 @@ Non-goals remain credential rotation, secret access, parser behavior changes, sc
 - The protected mini-matrix workflow requires an open same-repository PR targeting `main`, so merged PR `#941` cannot be used as its immutable Netlify preview target.
 - This docs-only follow-up exists solely to provide that fresh open target. It changes no parser, application, workflow, Supabase, auth, secret, runtime, or deployment behavior.
 - Keep the follow-up PR open until the repository owner dispatches `.github/workflows/iehp-pdf-mini-matrix-proof.yml` against its exact head and Codex validates the curated redacted artifact contract at `8/8/8/1`.
+
+## PR #966 Adobe Failure Evidence Recovery
+
+- Date: August 16, 2026.
+- Blocking PR: `#966` at SHA `528417c2c3b181559eef5384ed78fb2835c4d017`.
+- Blocking run: `31991229911`, attempt 2.
+- Live result: all required jobs except `iehp-assessment-import-smoke` passed; the IEHP job failed after the default DOCX case succeeded and the synthetic Skills and Behaviors PDF reached `extraction_failed`; `ci-gate` failed only because of that job.
+- Repeated hosted evidence: production `extract-assessment-fields` returned two HTTP 502 responses for each failed PDF attempt, consistent with the existing single retry, but request logs did not expose the already-sanitized Adobe stage and upstream status.
+
+### Fresh Route And Scope
+
+- Classification: `high-risk human-reviewed`.
+- Lane: `critical`.
+- Branch: `codex/win-154-adobe-failure-evidence`.
+- Linear: `WIN-154`.
+- Allowed files: `scripts/playwright-iehp-assessment-import-smoke.ts`, its focused test, and this handoff.
+- The smoke may read only the latest same-organization `assessment_review_events` row for the exact assessment document and `extraction_failed` action before cleanup.
+- Public failure output is restricted to allowlisted `adobe_stage` and integer `adobe_upstream_status`; raw event payloads, provider bodies, tokens, URLs, document text, and PHI remain excluded.
+- Non-goals: no production server, Edge Function, workflow, migration, RLS, grant, secret, retry-policy, parser, or cleanup changes; no weakening of the IEHP or aggregate CI gates.
+- Stop conditions: any need for broader tenant access, a new privileged API, secret rotation, raw provider content, or production-path changes before exact stage evidence is available.
+
+### Verification State
+
+- Red test: the focused smoke suite passed 60 existing tests and failed only the two new diagnostic assertions because the helper was not yet implemented.
+- Required local checks: focused smoke tests, `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run build`, `npm run verify:local`, and `git diff --check`.
+- Required hosted checks: exact-head CI plus the secret-backed IEHP smoke against the immutable preview.
+- Green focused result: `npx vitest run tests/scripts/playwright-iehp-assessment-import-smoke.test.ts --reporter=dot --pool=forks --maxWorkers=1 --minWorkers=1` passed 66/66, including the 200-with-empty-event retry before cleanup.
+- Passed standalone gates: `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, `npm run build`, and `git diff --check`.
+- Aggregate result: two isolated 8 GB `npm run verify:local` attempts completed all 550 runnable test files and all 4,974 runnable tests with no assertion failures, then Vitest reported the same unhandled worker RPC timeout calling `onTaskUpdate`; both attempts exited 1, so aggregate verification is blocked rather than passed. The policy checks, lint, typecheck, tenant validation, and build were also run separately and passed.
+- Specialist result: code, test, security, and Supabase reviews approved the bounded implementation after raw extraction-error output was removed, deterministic latest-event ordering and transient query retry were added, and malformed diagnostic values were covered.
+- Current result: `pass-with-blocked-checks`; focused and standalone local gates pass, while the aggregate harness timeout and exact-head hosted checks remain explicit blockers. No merge or hosted deployment is authorized by this handoff.
+- Residual risk: the evidence query depends on the caller-visible tenant-scoped audit row being committed before cleanup. The bounded retries reduce event-write lag risk; an unavailable row remains fail-safe and emits no provider content, but it cannot identify the Adobe boundary until exact-head CI runs.

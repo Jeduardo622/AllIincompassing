@@ -79,6 +79,11 @@ type AssessmentExtractionProvenanceRow = {
   source_span?: unknown;
 };
 
+type IehpExtractionFailureEvidence = {
+  adobe_stage: string | null;
+  adobe_upstream_status: number | null;
+};
+
 type IehpAssessorPhoneAssertion = {
   fieldKey: 'IEHP_FBA_ASSESSOR_PHONE';
   rowCount: number;
@@ -163,6 +168,7 @@ const DEFAULT_BASE_URL = 'https://app.allincompassing.ai';
 const DEFAULT_ASSESSMENT_BUCKET_ID = 'client-documents';
 const EXTRACTION_TIMEOUT_MS = 360_000;
 const IEHP_REFERRAL_DATE_FIELD_KEY = 'IEHP_FBA_REFERRAL_DATE';
+const IEHP_EXTRACTION_FAILURE_EVENT_RETRY_DELAYS_MS = [400, 800] as const;
 
 type SupabaseClientFactory = typeof createClient;
 type SmokeAuthResult = { accessToken: string };
@@ -173,6 +179,16 @@ type CredentialCandidate = {
 };
 
 const IEHP_ASSESSOR_PHONE_FIELD_KEY = 'IEHP_FBA_ASSESSOR_PHONE';
+const IEHP_ADOBE_STAGE_ALLOWLIST = new Set([
+  'configuration',
+  'token',
+  'asset_creation',
+  'asset_upload',
+  'job_submission',
+  'job_poll',
+  'result_download',
+  'result_parse',
+]);
 
 const getRequiredEnv = (name: string): string => {
   const value = process.env[name]?.trim();
@@ -736,6 +752,62 @@ export const readSyntheticGeneratedDocxText = async (
   }
 };
 
+const sanitizeAdobeStage = (value: unknown): string | null =>
+  typeof value === 'string' && IEHP_ADOBE_STAGE_ALLOWLIST.has(value) ? value : null;
+
+const sanitizeAdobeUpstreamStatus = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 100 && value <= 599 ? value : null;
+
+export const fetchIehpExtractionFailureEvidence = async (args: {
+  accessToken: string;
+  assessmentDocumentId: string;
+  organizationId: string;
+  supabaseAnonKey: string;
+  supabaseUrl: string;
+}): Promise<IehpExtractionFailureEvidence> => {
+  const response = await fetchWithRetry(
+    `${args.supabaseUrl}/rest/v1/assessment_review_events?select=event_payload&assessment_document_id=eq.${encodeURIComponent(
+      args.assessmentDocumentId,
+    )}&organization_id=eq.${encodeURIComponent(args.organizationId)}&action=eq.extraction_failed&order=created_at.desc,id.desc&limit=1`,
+    {
+      headers: {
+        apikey: args.supabaseAnonKey,
+        Authorization: `Bearer ${args.accessToken}`,
+      },
+    },
+    'IEHP extraction failure evidence query',
+  );
+
+  if (!response.ok) {
+    throw new Error(`IEHP extraction failure evidence query failed with status ${response.status}.`);
+  }
+
+  const payload = (await response.json()) as unknown;
+  const row = Array.isArray(payload) ? payload[0] : null;
+  const eventPayload =
+    row && typeof row === 'object' && 'event_payload' in row
+      ? (row.event_payload as { adobe_stage?: unknown; adobe_upstream_status?: unknown })
+      : null;
+
+  return {
+    adobe_stage: sanitizeAdobeStage(eventPayload?.adobe_stage),
+    adobe_upstream_status: sanitizeAdobeUpstreamStatus(eventPayload?.adobe_upstream_status),
+  };
+};
+
+export const formatIehpExtractionFailureEvidence = (evidence: IehpExtractionFailureEvidence): string =>
+  `adobe_stage=${evidence.adobe_stage ?? 'not_reported'} adobe_upstream_status=${evidence.adobe_upstream_status ?? 'not_reported'}`;
+
+export const buildIehpExtractionFailureMessage = (
+  status: AssessmentDocumentRecord['status'],
+  evidence: IehpExtractionFailureEvidence | null,
+): string =>
+  `IEHP import smoke ended with ${status} ${
+    evidence
+      ? formatIehpExtractionFailureEvidence(evidence)
+      : 'adobe_stage=unavailable adobe_upstream_status=unavailable'
+  }`;
+
 const patchAssessmentChecklist = async (args: {
   baseUrl: string;
   accessToken: string;
@@ -780,6 +852,26 @@ export const fetchIehpAssessorPhoneProvenance = async (args: {
 
   const payload = (await response.json()) as unknown;
   return Array.isArray(payload) ? payload as AssessmentExtractionProvenanceRow[] : [];
+};
+
+export const fetchIehpExtractionFailureEvidenceWithRetry = async (args: {
+  accessToken: string;
+  assessmentDocumentId: string;
+  organizationId: string;
+  supabaseAnonKey: string;
+  supabaseUrl: string;
+}): Promise<IehpExtractionFailureEvidence> => {
+  for (let attempt = 0; attempt <= IEHP_EXTRACTION_FAILURE_EVENT_RETRY_DELAYS_MS.length; attempt += 1) {
+    const evidence = await fetchIehpExtractionFailureEvidence(args);
+    if (evidence.adobe_stage !== null || evidence.adobe_upstream_status !== null) {
+      return evidence;
+    }
+    if (attempt < IEHP_EXTRACTION_FAILURE_EVENT_RETRY_DELAYS_MS.length) {
+      await pause(IEHP_EXTRACTION_FAILURE_EVENT_RETRY_DELAYS_MS[attempt]);
+    }
+  }
+
+  return { adobe_stage: null, adobe_upstream_status: null };
 };
 
 const fetchIehpAssessmentProvenance = async (args: {
@@ -1149,11 +1241,19 @@ async function run() {
           throw new Error('IEHP import smoke unexpectedly created draft records and moved to drafted status.');
         }
         if (createdAssessment.status !== 'extracted') {
-          throw new Error(
-            `IEHP import smoke ended with ${createdAssessment.status}${
-              createdAssessment.extraction_error ? `: ${createdAssessment.extraction_error}` : ''
-            }`,
-          );
+          let extractionFailureEvidence: IehpExtractionFailureEvidence | null = null;
+          try {
+            extractionFailureEvidence = await fetchIehpExtractionFailureEvidenceWithRetry({
+              accessToken,
+              assessmentDocumentId: createdAssessment.id,
+              organizationId,
+              supabaseAnonKey,
+              supabaseUrl,
+            });
+          } catch {
+            extractionFailureEvidence = null;
+          }
+          throw new Error(buildIehpExtractionFailureMessage(createdAssessment.status, extractionFailureEvidence));
         }
 
         const { programCount, goalCount } = await fetchAssessmentDraftCounts(baseUrl, accessToken, createdAssessment.id);
@@ -1364,11 +1464,19 @@ async function run() {
             throw new Error('IEHP import smoke unexpectedly created draft records and moved to drafted status.');
           }
           if (createdAssessment.status !== 'extracted') {
-            throw new Error(
-              `IEHP import smoke ended with ${createdAssessment.status}${
-                createdAssessment.extraction_error ? `: ${createdAssessment.extraction_error}` : ''
-              }`,
-            );
+            let extractionFailureEvidence: IehpExtractionFailureEvidence | null = null;
+            try {
+              extractionFailureEvidence = await fetchIehpExtractionFailureEvidenceWithRetry({
+                accessToken,
+                assessmentDocumentId: createdAssessment.id,
+                organizationId,
+                supabaseAnonKey,
+                supabaseUrl,
+              });
+            } catch {
+              extractionFailureEvidence = null;
+            }
+            throw new Error(buildIehpExtractionFailureMessage(createdAssessment.status, extractionFailureEvidence));
           }
 
           const { programCount, goalCount } = await fetchAssessmentDraftCounts(baseUrl, accessToken, createdAssessment.id);

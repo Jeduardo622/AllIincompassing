@@ -329,6 +329,11 @@ const provision = async (): Promise<void> => {
     );
     if (profileError) throw profileError;
 
+    const { error: staleRoleError } = await client.from('user_roles').delete().eq('user_id', user.id);
+    if (staleRoleError) {
+      throw new Error(`Synthetic smoke therapist stale role cleanup failed: ${serializeError(staleRoleError)}`);
+    }
+
     const { error: therapistError } = await client.from('therapists').insert({
       id: user.id,
       organization_id: organizationId,
@@ -347,6 +352,7 @@ const provision = async (): Promise<void> => {
       user_id: user.id,
       role_id: role.id,
       is_active: true,
+      expires_at: ownership.ci_rls_expires_at,
     }, { onConflict: 'user_id,role_id' });
     if (roleMapError) throw roleMapError;
 

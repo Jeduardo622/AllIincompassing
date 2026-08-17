@@ -28,16 +28,19 @@ describe('provision-ci-smoke-therapist safeguards', () => {
     const profileSeed = source.search(
       /client\.from\('profiles'\)\.upsert\(\s*buildSmokeTherapistProfileSeed\(/,
     );
+    const staleRoleCleanup = source.indexOf("client.from('user_roles').delete().eq('user_id', user.id)");
     const therapistInsert = source.indexOf("client.from('therapists').insert({");
     const roleMapping = source.indexOf("client.from('user_roles').upsert({");
     const therapistLink = source.indexOf("client.from('user_therapist_links').insert({");
     const profileProvision = source.indexOf(".rpc('provision_ci_rls_fixture_profile'");
 
     expect(profileSeed).toBeGreaterThan(-1);
-    expect(therapistInsert).toBeGreaterThan(profileSeed);
+    expect(staleRoleCleanup).toBeGreaterThan(profileSeed);
+    expect(therapistInsert).toBeGreaterThan(staleRoleCleanup);
     expect(roleMapping).toBeGreaterThan(therapistInsert);
     expect(therapistLink).toBeGreaterThan(roleMapping);
     expect(profileProvision).toBeGreaterThan(therapistLink);
+    expect(source).toContain('expires_at: ownership.ci_rls_expires_at,');
   });
 
   it('keeps protected profile authority out of the seed upsert', () => {

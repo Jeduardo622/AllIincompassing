@@ -88,7 +88,7 @@
 
 - Add a fixed Adobe failure-stage vocabulary and optional numeric upstream HTTP status.
 - Normalize transport, response-body, result-download, and ZIP-parse exceptions into the same sanitized Adobe error boundary.
-- Keep semantic Adobe job failures distinct from HTTP failures by leaving `upstream_status` null when the HTTP response itself succeeded.
+- At this stage, semantic Adobe job failures left `upstream_status` null when the HTTP response itself succeeded because Adobe's structured semantic status had not yet been evaluated. The `PR #968 Semantic Poll Status Recovery` section below explicitly supersedes that historical behavior with an integer-only `body.error.status` contract.
 - Return only `stage` and `upstream_status` alongside the existing generic Edge Function error/code.
 - Persist only allowlisted `adobe_stage` and `adobe_upstream_status` fields in the existing tenant-scoped extraction-failure review event so the hosted proof can identify the failing provider boundary.
 - Discard unknown stage names and invalid HTTP status ranges at the server boundary while preserving the generic extraction failure.
@@ -135,3 +135,76 @@ Non-goals remain credential rotation, secret access, parser behavior changes, sc
 - The protected mini-matrix workflow requires an open same-repository PR targeting `main`, so merged PR `#941` cannot be used as its immutable Netlify preview target.
 - This docs-only follow-up exists solely to provide that fresh open target. It changes no parser, application, workflow, Supabase, auth, secret, runtime, or deployment behavior.
 - Keep the follow-up PR open until the repository owner dispatches `.github/workflows/iehp-pdf-mini-matrix-proof.yml` against its exact head and Codex validates the curated redacted artifact contract at `8/8/8/1`.
+
+## PR #966 Adobe Failure Evidence Recovery
+
+- Date: August 16, 2026.
+- Blocking PR: `#966` at SHA `528417c2c3b181559eef5384ed78fb2835c4d017`.
+- Blocking run: `31991229911`, attempt 2.
+- Live result: all required jobs except `iehp-assessment-import-smoke` passed; the IEHP job failed after the default DOCX case succeeded and the synthetic Skills and Behaviors PDF reached `extraction_failed`; `ci-gate` failed only because of that job.
+- Repeated hosted evidence: production `extract-assessment-fields` returned two HTTP 502 responses for each failed PDF attempt, consistent with the existing single retry, but request logs did not expose the already-sanitized Adobe stage and upstream status.
+
+### Fresh Route And Scope
+
+- Classification: `high-risk human-reviewed`.
+- Lane: `critical`.
+- Branch: `codex/win-154-adobe-failure-evidence`.
+- Linear: `WIN-154`.
+- Allowed files: `scripts/playwright-iehp-assessment-import-smoke.ts`, its focused test, and this handoff.
+- The smoke may read only the latest same-organization `assessment_review_events` row for the exact assessment document and `extraction_failed` action before cleanup.
+- Public failure output is restricted to allowlisted `adobe_stage` and integer `adobe_upstream_status`; raw event payloads, provider bodies, tokens, URLs, document text, and PHI remain excluded.
+- Non-goals: no production server, Edge Function, workflow, migration, RLS, grant, secret, retry-policy, parser, or cleanup changes; no weakening of the IEHP or aggregate CI gates.
+- Stop conditions: any need for broader tenant access, a new privileged API, secret rotation, raw provider content, or production-path changes before exact stage evidence is available.
+
+### Verification State
+
+- Red test: the focused smoke suite passed 60 existing tests and failed only the two new diagnostic assertions because the helper was not yet implemented.
+- Required local checks: focused smoke tests, `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run build`, `npm run verify:local`, and `git diff --check`.
+- Required hosted checks: exact-head CI plus the secret-backed IEHP smoke against the immutable preview.
+- Green focused result: `npx vitest run tests/scripts/playwright-iehp-assessment-import-smoke.test.ts --reporter=dot --pool=forks --maxWorkers=1 --minWorkers=1` passed 66/66, including the 200-with-empty-event retry before cleanup.
+- Passed standalone gates: `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, `npm run build`, and `git diff --check`.
+- Aggregate result: two isolated 8 GB `npm run verify:local` attempts completed all 550 runnable test files and all 4,974 runnable tests with no assertion failures, then Vitest reported the same unhandled worker RPC timeout calling `onTaskUpdate`; both attempts exited 1, so aggregate verification is blocked rather than passed. The policy checks, lint, typecheck, tenant validation, and build were also run separately and passed.
+- Specialist result: code, test, security, and Supabase reviews approved the bounded implementation after raw extraction-error output was removed, deterministic latest-event ordering and transient query retry were added, and malformed diagnostic values were covered.
+- Current result: `pass-with-blocked-checks`; focused and standalone local gates pass, while the aggregate harness timeout and exact-head hosted checks remain explicit blockers. No merge or hosted deployment is authorized by this handoff.
+- Residual risk: the evidence query depends on the caller-visible tenant-scoped audit row being committed before cleanup. The bounded retries reduce event-write lag risk; an unavailable row remains fail-safe and emits no provider content, but it cannot identify the Adobe boundary until exact-head CI runs.
+
+## PR #968 Semantic Poll Status Recovery
+
+- Exact-head diagnostic run: `31998175206` at SHA `d28174a97ef3bea231ab8b5e34ef7a8d8d0f87d5`.
+- Live result: every substantive job passed except `iehp-assessment-import-smoke`; the synthetic Skills and Behaviors PDF failed with `adobe_stage=job_poll adobe_upstream_status=not_reported`, and `ci-gate` failed only because of that job.
+- Interpretation: token, asset creation, upload, submission, poll transport, and result download were not the failing boundary. Adobe returned a successful poll response whose job status was semantic `failed`.
+- Adobe SDK contract: the official Node SDK models semantic job failures as a structured error with `code`, `message`, and numeric `status`, and throws its service error from those fields. The prior HTTP-only interpretation of `upstream_status` is superseded for this bounded follow-up.
+
+### Fresh Route And Scope
+
+- Classification: `high-risk human-reviewed`.
+- Lane: `critical`.
+- Allowed production file: `supabase/functions/extract-assessment-fields/adobe-pdf-extract.ts`.
+- Allowed test file: `supabase/functions/extract-assessment-fields/adobe-pdf-extract.test.ts`.
+- The semantic `failed` branch may propagate only `body.error.status` when it is an integer from 100 through 599, using the existing `upstream_status` channel.
+- Adobe error code, message, raw response body, token, signed URL, document text, screenshot, and PHI remain discarded.
+- Non-goals: no server, smoke, schema, RLS, grant, workflow, retry, parser, cleanup, credential, secret, or deployment change.
+- Stop conditions: any need for a new diagnostic field, raw provider content, authority widening, retry behavior, or additional protected surface.
+
+### Verification State
+
+- Red result: the new semantic failure test expected sanitized upstream status `422` and received `null` before implementation.
+- Green Edge Function result: the repository CI command for the complete `extract-assessment-fields` Deno matrix passed 78/78 with `--no-lock --node-modules-dir=none`; `deno check` passed for the entrypoint and `deno fmt --check` passed for the touched helper and test.
+- Boundary coverage: valid statuses `100`, `422`, and `599` propagate; absent, null, primitive, string, decimal, below-range, above-range, and missing `error.status` values remain `null`. Provider code and message are absent from the internal generic message and public diagnostics.
+- Passed repo gates: `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, `npm run build`, and `git diff --check`.
+- Aggregate result: `npm run test:ci` completed all 550 runnable files and 4,975 runnable tests with no assertion failures, then Vitest emitted the same worker RPC timeout calling `onTaskUpdate` seen in two prior isolated `verify:local` attempts; the command exited 1. `npm run verify:local` is blocked by that reproducible first-stage harness failure rather than reported as passed.
+- Result: `pass-with-blocked-checks`; exact-head CI in GitHub's clean worker environment and critical-lane human review remain required.
+- Hosted blocker: production cannot expose the structured semantic status until the critical-lane PR is owner-reviewed, merged, and the reviewed `extract-assessment-fields` function is separately deployed. No deployment is authorized by this handoff.
+- Required post-deploy proof: confirm the deployed function version matches the owner-reviewed merge, rerun the hosted synthetic Skills and Behaviors PDF smoke, and verify the same tenant-scoped review event contains only `adobe_stage=job_poll` plus an allowlisted numeric `adobe_upstream_status`, with no Adobe code, message, or raw provider payload.
+
+### Offline QA Follow-up
+
+- Date: August 17, 2026.
+- Docker verification: the pinned `denoland/deno:2.8.3` container passed the complete extractor matrix 78/78. The local Supabase Edge Runtime loaded `extract-assessment-fields`, preserved the function-level `auth.getUser()` check, and returned the expected `400 Invalid request body` for a synthetic authenticated schema-validation request. The synthetic user was deleted and the worktree remained clean before this follow-up.
+- Clinical QA preflight: correctly failed closed without reading `.env` files because no redacted browser credentials, route/client target, source expectations, or generated-output capture input were configured. Browser clinical parity therefore remains blocked rather than passed.
+- QA agent findings: code, test, debugging, Supabase, and security reviewers found no parser, auth, tenant, RLS, SSRF, or semantic-status defect. One security reviewer requested a narrower diagnostics read because the smoke selected the full `event_payload` before client-side sanitization.
+- Red-green remediation: the focused smoke tests failed when they required a flat allowlisted projection while production still returned nested `event_payload`. The query now projects only `adobe_stage:event_payload->>adobe_stage` and `adobe_upstream_status:event_payload->adobe_upstream_status`; the response parser consumes only those projected fields and retains the existing allowlist/range sanitizers.
+- Projection proof: the exact projected query returned HTTP 200 against local PostgREST, and the focused smoke suite passed 66/66 after the correction. The Adobe helper suite passed 22/22, the server extraction-failure persistence slice passed 3/3, `npm run lint` passed, `npm run typecheck` passed, and `git diff --check` passed.
+- Aggregate follow-up: the default 4 GB `npm run test:ci` attempt exhausted the Node heap. The exact CI-memory retry (`NODE_OPTIONS=--max-old-space-size=8192`) completed 550 files and 4,975 tests without an assertion failure, then exited 1 on the known Vitest worker RPC timeout calling `onTaskUpdate`. Its complete coverage artifact passed `npm run ci:verify-coverage` at 92.96% line coverage against the required 86.00%; the aggregate command remains blocked rather than reported as passed.
+- Security re-review: approved with no findings. Caller JWT use and the existing assessment-document, organization, action, deterministic ordering, and bounded retry filters remain unchanged; service-role access was not introduced.
+- Residual hosted risk: the real Adobe terminal response shape, hosted review-event commit visibility, deployed RLS/grant drift, and exact-head function behavior still require the reviewed hosted smoke. Local QA cannot substitute for those checks.

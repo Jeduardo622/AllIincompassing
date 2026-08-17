@@ -1205,3 +1205,40 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - The header and focused assertion now reference repository migration `20260816201115_payroll_export_fk_indexes.sql`; the handoff separately records that the same logical migration is hosted as `20260816215743 / payroll_export_fk_indexes`.
 - Verification after correction: blocker-resolution focused contract passed `7/7`; runtime-parity and deploy-safety contracts passed `234/234`; `npm run ci:check-focused`, `npm run validate:tenant`, and `git diff --check` passed. Independent code re-review found no remaining correctness or protected-path drift finding.
 - Merge/apply status: pending new exact-head required CI and human critical-lane review; no hosted apply, deployment, activation, capability grant, customer/PHI access, or merge occurred during the correction.
+
+## Consolidated WIN-219 And WIN-154 Critical PR
+
+- Date: August 17, 2026.
+- User-authorized consolidation: PR #966 is the canonical PR for the exact union of the prior WIN-219 payroll remediation and PR #968 WIN-154 Adobe failure-evidence slice. PR #968 may be closed only after the combined remote head proves both original heads are ancestors and the 13-file union is intact.
+- Classification: `high-risk human-reviewed`.
+- Lane: `critical`.
+- Triggering paths: `supabase/migrations/**`, `supabase/functions/**`, `.github/workflows/**`, and `scripts/ci/**`.
+- Integration: merge commit `947f61ccd110711bd958e804c9ade0894621a624` has parents `528417c2c3b181559eef5384ed78fb2835c4d017` (PR #966) and `b75d99aef78188bedb80de5063a6d4a87c1eb2a1` (PR #968). Both original heads are ancestors, `git merge-tree` reported no conflict, and `origin/main...947f61cc` contains exactly the 13-file union with no additional tracked paths.
+- Tenant boundary: payroll reads retain the existing employee-self, exact effective manager assignment, and explicit capability branches; the IEHP evidence read retains caller JWT, organization, assessment-document, action, ordering, and bounded-retry filters. Cross-tenant access remains forbidden.
+- Authority boundary: no grant, capability, feature activation, service-role access, secret source, parser behavior, retry behavior, migration apply, function deployment, or production mutation was added by consolidation.
+- Non-goals: no merge to `main`, hosted migration apply, Edge Function deployment, payroll activation, required-check bypass, or unrelated CI repair.
+
+### Combined Verification Card
+
+- Focused Vitest union: pass, `307/307` across blocker-resolution migration, runtime parity, deploy safety, and IEHP smoke contracts.
+- Pinned Deno `2.8.3` extractor matrix: pass, `78/78`.
+- `npm run ci:check-focused`: pass with documented local credential-dependent skips.
+- `npm run lint`: pass.
+- `npm run typecheck`: pass.
+- `npm run validate:tenant`: pass.
+- `npm run build`: pass.
+- `npm run ci:verify-coverage`: pass, `92.96%` line coverage against `86.00%` required.
+- `git diff --check origin/main...HEAD`: pass.
+- `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci`: all `551` runnable files and `4,983` runnable tests passed without an assertion failure, then Vitest emitted the known worker RPC timeout calling `onTaskUpdate`; command exited 1 and remains blocked rather than reported as passed.
+- Security review: approve; no RLS, auth, grant, tenant, secret, diagnostic-minimization, or CI/deploy-authority finding.
+- Integration review: both original heads and the exact 13-file union are preserved. The earlier payroll-only `single-purpose` and `unrelated changes: none` verdict above is historical and superseded by this explicit combined-scope record.
+- Result: `pass-with-blocked-checks`; fresh exact-head CI and human critical-lane review remain mandatory.
+
+### Combined PR Hygiene
+
+- Canonical PR: #966.
+- Linked issues: WIN-219 and WIN-154 remain separate systems-of-record scopes.
+- Combined purpose: deliberately consolidates the two currently open protected remediation slices at the user's request; it is not represented as a payroll-only PR.
+- Superseded PR: #968 may close only after #966's remote head contains both parent SHAs and the exact union diff.
+- Hosted status: migration not applied; Edge Function not deployed; payroll not activated.
+- Residual risk: the combined PR couples payroll and IEHP rollback/review units, and the hosted IEHP smoke cannot prove the new sanitized Adobe status until the reviewed function version is deployed through an authorized protected path.

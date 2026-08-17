@@ -208,3 +208,12 @@ Non-goals remain credential rotation, secret access, parser behavior changes, sc
 - Aggregate follow-up: the default 4 GB `npm run test:ci` attempt exhausted the Node heap. The exact CI-memory retry (`NODE_OPTIONS=--max-old-space-size=8192`) completed 550 files and 4,975 tests without an assertion failure, then exited 1 on the known Vitest worker RPC timeout calling `onTaskUpdate`. Its complete coverage artifact passed `npm run ci:verify-coverage` at 92.96% line coverage against the required 86.00%; the aggregate command remains blocked rather than reported as passed.
 - Security re-review: approved with no findings. Caller JWT use and the existing assessment-document, organization, action, deterministic ordering, and bounded retry filters remain unchanged; service-role access was not introduced.
 - Residual hosted risk: the real Adobe terminal response shape, hosted review-event commit visibility, deployed RLS/grant drift, and exact-head function behavior still require the reviewed hosted smoke. Local QA cannot substitute for those checks.
+
+### Canonical PR Consolidation
+
+- Date: August 17, 2026.
+- PR #966 is now the user-authorized canonical review vehicle for both WIN-219 and this WIN-154 slice. Merge commit `947f61ccd110711bd958e804c9ade0894621a624` preserves PR #968 head `b75d99aef78188bedb80de5063a6d4a87c1eb2a1` as an exact parent and introduces no additional WIN-154 production change.
+- The combined route is `high-risk human-reviewed`, lane `critical`, because the union touches migration, Edge Function, CI workflow, and CI-policy surfaces.
+- The earlier WIN-154-only verification remains valid for its files. Combined-head verification additionally passed the 307-test focused union, Deno 78/78, policy, lint, typecheck, tenant validation, build, diff check, and 92.96% coverage threshold. The 8 GB aggregate completed 551 files and 4,983 tests without an assertion failure before the known Vitest `onTaskUpdate` RPC timeout exited 1.
+- PR #968 is superseded only after the combined PR #966 remote head proves both original heads and the exact 13-file union. Closing #968 does not authorize merge, migration apply, function deployment, payroll activation, or any required-check bypass.
+- The hosted Adobe failure-evidence blocker is unchanged: owner-reviewed deployment and a fresh hosted Skills and Behaviors smoke remain required before the diagnostics can be treated as production-proven.

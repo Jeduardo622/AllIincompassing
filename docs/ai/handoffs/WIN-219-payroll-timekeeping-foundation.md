@@ -1149,7 +1149,7 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 
 - RED: before the migration existed, the focused contract failed on the missing migration, missing seven exact FK-leading indexes, missing policy rewrite, and missing parity entry.
 - GREEN: [`20260817012347_payroll_blocker_resolutions_advisor_remediation.sql`](../../../supabase/migrations/20260817012347_payroll_blocker_resolutions_advisor_remediation.sql) adds exactly seven non-unique plain btree indexes and rewrites only `assignment_row.manager_user_id = auth.uid()` to `assignment_row.manager_user_id = (select auth.uid())` inside the existing `payroll_blocker_resolutions_authenticated_select` policy.
-- The migration keeps the repo governance header, depends on `20260816215743_payroll_export_fk_indexes.sql`, stays transactional with `begin` / `commit`, uses `ALTER POLICY` rather than drop/create, and does not add an `organization_id`-only duplicate index.
+- The migration keeps the repo governance header, depends on repository migration `20260816201115_payroll_export_fk_indexes.sql` (hosted as `20260816215743 / payroll_export_fk_indexes`), stays transactional with `begin` / `commit`, uses `ALTER POLICY` rather than drop/create, and does not add an `organization_id`-only duplicate index.
 - The focused contract in [`tests/payroll-blocker-resolutions-advisor-remediation-migration.test.ts`](../../../tests/payroll-blocker-resolutions-advisor-remediation-migration.test.ts) pins the exact seven index sequences, the one policy-expression change, unchanged policy metadata, forced RLS, read-only ACLs, and absence of any data/function/trigger/capability/activation drift.
 - Runtime parity now requires `20260817012347|payroll_blocker_resolutions_advisor_remediation` in the workflow, both CI policy scripts, and both CI contract suites, including a fail-closed omission regression in `tests/ci/check-session-deploy-safety.test.ts`.
 
@@ -1197,3 +1197,11 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - reviewer: code, security, performance, test, and Supabase reviews completed
 - required follow-up: require exact-head CI and human critical-lane review; do not merge or apply hosted
 - handoff summary: adds only the seven missing FK-leading indexes for `public.payroll_blocker_resolutions` and rewrites only the exact manager `auth.uid()` policy branch to the approved initplan-safe form. Focused and tenant checks pass, while inherited aggregate test instability outside the touched files remains explicitly blocked for exact-head CI and human review.
+
+### Pre-Merge Dependency Metadata Correction
+
+- Date: 2026-08-16
+- Exact-head review found that the blocker-resolution migration header and focused assertion referenced the hosted export-migration ledger version as though it were a repository filename.
+- The header and focused assertion now reference repository migration `20260816201115_payroll_export_fk_indexes.sql`; the handoff separately records that the same logical migration is hosted as `20260816215743 / payroll_export_fk_indexes`.
+- Verification after correction: blocker-resolution focused contract passed `7/7`; runtime-parity and deploy-safety contracts passed `234/234`; `npm run ci:check-focused`, `npm run validate:tenant`, and `git diff --check` passed. Independent code re-review found no remaining correctness or protected-path drift finding.
+- Merge/apply status: pending new exact-head required CI and human critical-lane review; no hosted apply, deployment, activation, capability grant, customer/PHI access, or merge occurred during the correction.

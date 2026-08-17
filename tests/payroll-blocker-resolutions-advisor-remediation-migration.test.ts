@@ -38,7 +38,7 @@ describe("payroll blocker resolutions advisor remediation migration", () => {
       /@migration-intent:\s*payroll_blocker_resolutions_advisor_remediation/i,
     );
     expect(migrationSql).toMatch(
-      /@migration-dependencies:\s*20260816215743_payroll_export_fk_indexes\.sql/i,
+      /@migration-dependencies:\s*20260816201115_payroll_export_fk_indexes\.sql/i,
     );
     expect(migrationSql).toMatch(
       /@migration-rollback:\s*drop index if exists public\.payroll_blocker_resolutions_actor_user_id_idx;\s*drop index if exists public\.payroll_blocker_resolutions_employment_profile_org_idx;\s*drop index if exists public\.payroll_blocker_resolutions_pay_period_org_idx;\s*drop index if exists public\.payroll_blocker_resolutions_previous_resolution_org_idx;\s*drop index if exists public\.payroll_blocker_resolutions_session_attendance_req_org_idx;\s*drop index if exists public\.payroll_blocker_resolutions_time_correction_req_org_idx;\s*drop index if exists public\.payroll_blocker_resolutions_timekeeping_exception_org_idx;\s*alter policy payroll_blocker_resolutions_authenticated_select on public\.payroll_blocker_resolutions using/i,

@@ -1124,3 +1124,76 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - Residual risk: the ten indexes add expected storage and write amplification after export traffic begins. Representative usage cannot be measured while the tables remain empty.
 - Hosted apply status: `applied and verified`; no other hosted mutation, deployment, capability grant, payroll activation, or customer/PHI access occurred.
 - Next action: merge this evidence-only PR, perform merge-proven branch/worktree cleanup, and route any remaining advisor family as a new bounded slice.
+
+## Payroll Blocker Resolutions Advisor Remediation
+
+- Date: 2026-08-17
+- Branch: `codex/win-219-payroll-blocker-resolution-advisor-remediation`
+- Classification: `high-risk human-reviewed`
+- Lane: `critical`
+- Scope: one forward-only migration for the remaining `public.payroll_blocker_resolutions` unindexed-FK advisor surface plus the one scoped `auth.uid()` initplan rewrite; one focused contract; explicit WIN-219 runtime-parity mirrors; and this handoff addendum.
+- Protected paths: `supabase/migrations/**`, `scripts/ci/**`, and `.github/workflows/**`.
+- Non-goals: no hosted apply, no deployment, no payroll activation, no capability grants, no route/UI changes, no `.env*` access, no customer or PHI access, and no remediation outside `public.payroll_blocker_resolutions`.
+
+### Hosted Read-Only Baseline
+
+- On Monday, August 17, 2026, Supabase project `wnnjeqheqxxyrgsjmygy` was `ACTIVE_HEALTHY` on PostgreSQL `17.6.1.029` (`server_version = 17.6`, `server_version_num = 170006`).
+- Hosted migration `20260816215743 / payroll_export_fk_indexes` was present; the new blocker-resolution remediation migration was absent before implementation.
+- `public.payroll_blocker_resolutions` remained empty (`exact_row_count = 0`, `heap_bytes = 0`, `total_bytes = 40960`), with enabled and forced RLS and ACL `{postgres=arwdDxtm/postgres,authenticated=r/postgres}`.
+- The live table had only four indexes: `payroll_blocker_resolutions_current_state_idx`, `payroll_blocker_resolutions_id_organization_id_key`, `payroll_blocker_resolutions_org_employment_period_idx`, and `payroll_blocker_resolutions_pkey`.
+- Hosted FK coverage proved only `organization_id_fkey` already had leading-index coverage. The remaining seven FK sequences lacked a covering leading index: `(actor_user_id)`, `(employment_profile_id, organization_id)`, `(pay_period_id, organization_id)`, `(previous_resolution_id, organization_id)`, `(session_attendance_correction_request_id, organization_id)`, `(time_correction_request_id, organization_id)`, and `(timekeeping_exception_id, organization_id)`.
+- The authenticated `SELECT` policy `payroll_blocker_resolutions_authenticated_select` still used direct `assignment_row.manager_user_id = auth.uid()` inside the exact-manager branch while preserving the employee self-read helper, effective-date assignment checks, and capability branches for `time.review_assigned`, `time.approve_assigned`, `payroll.lock_period`, `payroll.reopen_period`, and `payroll.resolve_exceptions`.
+- Payroll remained fail-closed: feature flag `payroll_timekeeping_v1` default-enabled `false` with zero overrides, and capability grants remained zero.
+
+### Implementation And TDD
+
+- RED: before the migration existed, the focused contract failed on the missing migration, missing seven exact FK-leading indexes, missing policy rewrite, and missing parity entry.
+- GREEN: [`20260817012347_payroll_blocker_resolutions_advisor_remediation.sql`](../../../supabase/migrations/20260817012347_payroll_blocker_resolutions_advisor_remediation.sql) adds exactly seven non-unique plain btree indexes and rewrites only `assignment_row.manager_user_id = auth.uid()` to `assignment_row.manager_user_id = (select auth.uid())` inside the existing `payroll_blocker_resolutions_authenticated_select` policy.
+- The migration keeps the repo governance header, depends on `20260816215743_payroll_export_fk_indexes.sql`, stays transactional with `begin` / `commit`, uses `ALTER POLICY` rather than drop/create, and does not add an `organization_id`-only duplicate index.
+- The focused contract in [`tests/payroll-blocker-resolutions-advisor-remediation-migration.test.ts`](../../../tests/payroll-blocker-resolutions-advisor-remediation-migration.test.ts) pins the exact seven index sequences, the one policy-expression change, unchanged policy metadata, forced RLS, read-only ACLs, and absence of any data/function/trigger/capability/activation drift.
+- Runtime parity now requires `20260817012347|payroll_blocker_resolutions_advisor_remediation` in the workflow, both CI policy scripts, and both CI contract suites, including a fail-closed omission regression in `tests/ci/check-session-deploy-safety.test.ts`.
+
+### Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: database/RLS/tenant isolation and CI/workflow policy
+- required checks: focused blocker-resolution and parity contracts; adjacent payroll migration and tenant/RLS suites; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; `git diff --check`.
+- executed checks:
+  - `npm ci`: pass
+  - RED focused contract before implementation: expected fail
+  - `npm test -- --run tests/payroll-blocker-resolutions-advisor-remediation-migration.test.ts`: pass, `7/7`
+  - `npm test -- --run tests/ci/check-runtime-migration-parity.test.ts tests/ci/check-session-deploy-safety.test.ts`: pass, `234` assertions
+  - targeted payroll bundle including `tests/payroll-timekeeping-foundation-migration.test.ts`, `tests/payroll-approval-workflow-migration.test.ts`, `tests/payroll-approval-workflow-rpc.test.ts`, `tests/payroll-security-repair-migration.test.ts`, `tests/payroll-manager-assignment-index-migration.test.ts`, `tests/payroll-manager-assignment-advisor-remediation-migration.test.ts`, `tests/payroll-employee-time-events-fk-indexes-migration.test.ts`, `tests/payroll-employee-rate-versions-fk-indexes-migration.test.ts`, `tests/payroll-pay-cycle-fk-indexes-migration.test.ts`, `tests/payroll-export-fk-indexes-migration.test.ts`, `tests/payroll-blocker-resolutions-advisor-remediation-migration.test.ts`, and `tests/integration/payroll-timekeeping-tenant-rls.contract.test.ts`: pass, `89 passed / 26 skipped`
+  - `npm run ci:check-focused`: pass
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run validate:tenant`: pass
+  - `npm run build`: pass
+  - `git diff --check`: pass; line-ending warnings only
+- blocked checks:
+  - `npm run test:ci`: blocked outside the touched slice on Monday, August 17, 2026. The run reached the new blocker-resolution contract and kept it green, but later hit an unrelated timeout in `src/components/__tests__/TherapistOnboarding.test.tsx`, an unrelated failure in `src/components/__tests__/ProgramsGoalsTab.test.tsx` (`lets a midtier edit an existing goal target through the goal-targets PATCH route`), and finally exhausted Node's default heap with `FATAL ERROR: Ineffective mark-compacts near heap limit` plus `ERR_IPC_CHANNEL_CLOSED`.
+  - `npm run verify:local`: blocked by the same inherited aggregate failures inside its embedded `npm run test:ci`; earlier wrapper stages (`ci:check-focused`, `lint`, `typecheck`) passed before it reached the same unrelated failures.
+  - exact-head aggregate adjudication: pending GitHub PR CI
+- result: `pass-with-blocked-checks`
+- independent review: specification, architecture, security, performance, test, and Supabase reviews completed. One Supabase review response partially anchored to the earlier `employee_manager_assignments` remediation instead of this blocker-resolution table; hosted preflight plus the exact local diff resolved that disagreement in favor of the blocker-resolution scope proven here.
+- hosted apply status: `not authorized and not applied` for `20260817012347_payroll_blocker_resolutions_advisor_remediation.sql`.
+- residual risk: the seven new btrees add normal write amplification once blocker-resolution traffic exists, and aggregate local test infrastructure remains unstable outside the touched slice. Exact-head CI and human critical-lane review remain mandatory before any merge or hosted apply.
+- next action: push the WIN-219-linked PR, wait boundedly for exact-head checks, and stop for human review without merging or applying hosted.
+
+### PR Hygiene Verdict
+
+- pr-ready: yes
+- lane: `critical`
+- branch-ready: yes; isolated `codex/win-219-payroll-blocker-resolution-advisor-remediation`
+- linear-ready: yes; WIN-219 contains the hosted baseline, scoped branch, and next action
+- single-purpose: yes; seven exact FK-leading indexes, one policy-expression rewrite, required runtime-parity mirrors, one focused contract, and this handoff only
+- unrelated changes: none; `.codex-remote-attachments/` and `.codex-tmp/` remain untracked and excluded
+- generated artifact drift: none
+- protected-path drift: none beyond the routed migration and required parity workflow/policy mirrors
+- change summary: present
+- verification summary: present, with inherited aggregate failures disclosed rather than converted to passes
+- pr handoff: ready pending push and PR creation
+- reviewer: code, security, performance, test, and Supabase reviews completed
+- required follow-up: require exact-head CI and human critical-lane review; do not merge or apply hosted
+- handoff summary: adds only the seven missing FK-leading indexes for `public.payroll_blocker_resolutions` and rewrites only the exact manager `auth.uid()` policy branch to the approved initplan-safe form. Focused and tenant checks pass, while inherited aggregate test instability outside the touched files remains explicitly blocked for exact-head CI and human review.

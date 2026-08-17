@@ -540,6 +540,14 @@ ${deployPayrollAdministrationBeforeDeploy}
 ${authNeeds.map((need) => `      - ${need}`).join("\n")}
     if: ${authIf}
     steps:
+      - name: Provision synthetic therapist smoke actor
+        if: steps.browser_scope.outputs.auth_smoke_required == 'true'
+        env:
+          SUPABASE_URL: \${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: \${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_PUBLISHABLE_KEY: \${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          CI_SMOKE_THERAPIST_SCOPE_EMAIL: \${{ secrets.PW_SCHEDULE_EMAIL }}
+        run: npx tsx scripts/provision-ci-smoke-therapist.ts
       - name: Auth browser smoke gate
         run: npm run playwright:auth
       - name: Session browser smoke gate
@@ -547,8 +555,6 @@ ${authNeeds.map((need) => `      - ${need}`).join("\n")}
           PW_BASE_URL: \${{ github.event_name == 'pull_request' && format('https://deploy-preview-{0}--velvety-cendol-dae4d6.netlify.app', github.event.pull_request.number) || secrets.PW_BASE_URL }}
           PW_ADMIN_EMAIL: \${{ secrets.PW_ADMIN_EMAIL }}
           PW_ADMIN_PASSWORD: \${{ secrets.PW_ADMIN_PASSWORD }}
-          PW_THERAPIST_EMAIL: \${{ secrets.PW_THERAPIST_EMAIL }}
-          PW_THERAPIST_PASSWORD: \${{ secrets.PW_THERAPIST_PASSWORD }}
           PW_SCHEDULE_EMAIL: \${{ secrets.PW_SCHEDULE_EMAIL }}
           PW_SCHEDULE_PASSWORD: \${{ secrets.PW_SCHEDULE_PASSWORD }}
           PW_FOREIGN_CLIENT_ID: \${{ secrets.PW_FOREIGN_CLIENT_ID }}
@@ -584,6 +590,14 @@ ${authNeeds.map((need) => `      - ${need}`).join("\n")}
             exit 1
           fi
           npm run ci:playwright
+      - name: Cleanup synthetic therapist smoke actor
+        if: always() && steps.browser_scope.outputs.auth_smoke_required == 'true'
+        env:
+          SUPABASE_URL: \${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: \${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_PUBLISHABLE_KEY: \${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          CI_SMOKE_THERAPIST_SCOPE_EMAIL: \${{ secrets.PW_SCHEDULE_EMAIL }}
+        run: npx tsx scripts/provision-ci-smoke-therapist.ts --cleanup
 ${authExtra}
 
   playwright_env_readiness:
@@ -2507,7 +2521,35 @@ ${PAYROLL_ADMINISTRATION_SECRET_SYNC}`,
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
-      "auth_browser_smoke must run npm run ci:playwright with the complete required auth/session secret contract",
+      "auth_browser_smoke must run npm run ci:playwright with the complete required auth/session environment contract",
+    );
+  });
+
+  test("rejects synthetic therapist provisioning after the auth browser gate", () => {
+    const fixtureRoot = makeFixture();
+    const workflowPath = path.join(fixtureRoot, ".github", "workflows", "ci.yml");
+    const current = readFileSync(workflowPath, "utf8");
+    const provisionStep = `      - name: Provision synthetic therapist smoke actor
+        if: steps.browser_scope.outputs.auth_smoke_required == 'true'
+        env:
+          SUPABASE_URL: \${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: \${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_PUBLISHABLE_KEY: \${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          CI_SMOKE_THERAPIST_SCOPE_EMAIL: \${{ secrets.PW_SCHEDULE_EMAIL }}
+        run: npx tsx scripts/provision-ci-smoke-therapist.ts`;
+    const authStep = `      - name: Auth browser smoke gate
+        run: npm run playwright:auth`;
+    writeFileSync(
+      workflowPath,
+      current.replace(`${provisionStep}\n${authStep}`, `${authStep}\n${provisionStep}`),
+      "utf8",
+    );
+
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "auth_browser_smoke must provision an exact run-owned therapist before auth and session Playwright",
     );
   });
 

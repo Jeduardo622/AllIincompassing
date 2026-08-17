@@ -1242,3 +1242,40 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - Superseded PR: #968 may close only after #966's remote head contains both parent SHAs and the exact union diff.
 - Hosted status: migration not applied; Edge Function not deployed; payroll not activated.
 - Residual risk: the combined PR couples payroll and IEHP rollback/review units, and the hosted IEHP smoke cannot prove the new sanitized Adobe status until the reviewed function version is deployed through an authorized protected path.
+
+## PR #966 Run-Owned Therapist Smoke Repair
+
+- Date: August 17, 2026.
+- Trigger: exact-head CI run `32050409110` passed the earlier required browser children but repeatedly failed `playwright:therapist-authorization` because the shared `PW_THERAPIST_*` login returned `Invalid email or password`.
+- Classification: `high-risk human-reviewed`.
+- Lane: `critical`.
+- Linked issues: `WIN-154` and `WIN-219`; a dedicated Linear issue could not be created because the workspace issue limit was reached.
+- Scope: add one run-owned therapist provisioner, wire it before both auth and session Playwright gates, export its credentials through `GITHUB_ENV`, always clean the exact owned Auth/profile/role/therapist/link graph, and update only the directly coupled readiness and CI-policy contracts.
+- Non-goals: no product auth, route, migration, RLS, grant, RPC, Edge Function, payroll, foreign fixture, secret rotation, deployment, hosted migration apply, or merge change.
+- Stop conditions: any need for broader tenant authority, product auth changes, schema changes, or weakening the real therapist foreign-client/foreign-therapist denial assertions.
+
+### Verification Card
+
+- required agents: specification, architecture, implementation, code review, test, security, DevOps, and Supabase review completed; reviewers approved after the profile-before-row and provision-before-auth policy regressions were added.
+- focused RED/GREEN: the missing profile creation and missing provision-before-auth policy assertions each failed before implementation; the final focused suite passed `258/258`.
+- `npm run ci:check-focused`: pass.
+- `npm run lint`: pass.
+- `npm run typecheck`: pass.
+- `npm run validate:tenant`: pass.
+- `npm run build`: pass.
+- `npm run test:routes:tier0`: pass, `244/244`.
+- standalone `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci`: pass before the final policy-only negative assertion, `552` files and `4,992` tests.
+- final `NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local`: all `552` runnable files and all `4,993` runnable tests passed with no assertion failure, then Vitest emitted the known worker RPC timeout calling `onTaskUpdate`; the wrapper exited 1 before its later stages and remains blocked rather than reported as passed.
+- `npm run ci:verify-coverage`: pass from the final aggregate artifact, `92.96%` line coverage against `86.00%` required.
+- `git diff --check`: pass; line-ending warnings only.
+- blocked check: local `npm run ci:playwright` requires protected hosted credentials and the immutable Netlify preview. Exact-head PR CI must prove creation, authenticated therapist reads, unchanged foreign guards, and zero-residue cleanup.
+- result: `pass-with-blocked-checks` pending exact-head hosted `auth-browser-smoke` and `ci-gate`.
+- residual risk: the shared foreign target IDs and the read-only scope identity remain hosted fixtures; this repair removes only the stale shared therapist password dependency. Human critical-lane review remains mandatory.
+
+### PR Hygiene
+
+- pr-ready: yes after the exact file allowlist is staged and pushed to existing PR `#966`.
+- single-purpose repair: yes; it changes only the required therapist-smoke fixture lifecycle and its direct workflow/policy/test/handoff contracts.
+- unrelated changes: `.codex-tmp/` is pre-existing untracked evidence and is explicitly excluded from staging; generated test-report drift was restored.
+- protected-path drift: none beyond the declared `.github/workflows/ci.yml` and `scripts/ci/**` critical surfaces.
+- hosted status: no merge, migration apply, function deployment, capability grant, payroll activation, secret mutation, or customer/PHI access occurred.

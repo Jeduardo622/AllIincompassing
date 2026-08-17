@@ -1468,6 +1468,44 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
     const requiredPlaywrightStep = authSmoke.steps.find(
       (step) => step.name === "Session browser smoke gate",
     );
+    const therapistProvisionIndex = authSmoke.steps.findIndex(
+      (step) => step.name === "Provision synthetic therapist smoke actor",
+    );
+    const authPlaywrightIndex = authSmoke.steps.findIndex(
+      (step) => step.name === "Auth browser smoke gate",
+    );
+    const requiredPlaywrightIndex = authSmoke.steps.findIndex(
+      (step) => step.name === "Session browser smoke gate",
+    );
+    const therapistCleanupIndex = authSmoke.steps.findIndex(
+      (step) => step.name === "Cleanup synthetic therapist smoke actor",
+    );
+    const therapistProvisionStep = authSmoke.steps[therapistProvisionIndex];
+    const therapistCleanupStep = authSmoke.steps[therapistCleanupIndex];
+    const expectedTherapistFixtureEnv = {
+      SUPABASE_URL: "${{ secrets.SUPABASE_URL }}",
+      SUPABASE_SERVICE_ROLE_KEY: "${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}",
+      SUPABASE_PUBLISHABLE_KEY: "${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}",
+      CI_SMOKE_THERAPIST_SCOPE_EMAIL: "${{ secrets.PW_SCHEDULE_EMAIL }}",
+    };
+    if (
+      therapistProvisionIndex < 0
+      || therapistProvisionIndex >= authPlaywrightIndex
+      || therapistProvisionIndex >= requiredPlaywrightIndex
+      || therapistProvisionStep.if !== "steps.browser_scope.outputs.auth_smoke_required == 'true'"
+      || !sameRecord(therapistProvisionStep.env ?? {}, expectedTherapistFixtureEnv)
+      || !stepHasExactCommand(therapistProvisionStep, "npx tsx scripts/provision-ci-smoke-therapist.ts")
+    ) {
+      violations.push("auth_browser_smoke must provision an exact run-owned therapist before auth and session Playwright");
+    }
+    if (
+      therapistCleanupIndex <= Math.max(authPlaywrightIndex, requiredPlaywrightIndex)
+      || therapistCleanupStep.if !== "always() && steps.browser_scope.outputs.auth_smoke_required == 'true'"
+      || !sameRecord(therapistCleanupStep.env ?? {}, expectedTherapistFixtureEnv)
+      || !stepHasExactCommand(therapistCleanupStep, "npx tsx scripts/provision-ci-smoke-therapist.ts --cleanup")
+    ) {
+      violations.push("auth_browser_smoke must always clean the exact run-owned therapist after Playwright");
+    }
     if (
       !requiredPlaywrightStep ||
       !stepHasExactCommand(requiredPlaywrightStep, "npm run ci:playwright") ||
@@ -1475,8 +1513,6 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
         PW_BASE_URL: "${{ github.event_name == 'pull_request' && format('https://deploy-preview-{0}--velvety-cendol-dae4d6.netlify.app', github.event.pull_request.number) || secrets.PW_BASE_URL }}",
         PW_ADMIN_EMAIL: "${{ secrets.PW_ADMIN_EMAIL }}",
         PW_ADMIN_PASSWORD: "${{ secrets.PW_ADMIN_PASSWORD }}",
-        PW_THERAPIST_EMAIL: "${{ secrets.PW_THERAPIST_EMAIL }}",
-        PW_THERAPIST_PASSWORD: "${{ secrets.PW_THERAPIST_PASSWORD }}",
         PW_SCHEDULE_EMAIL: "${{ secrets.PW_SCHEDULE_EMAIL }}",
         PW_SCHEDULE_PASSWORD: "${{ secrets.PW_SCHEDULE_PASSWORD }}",
         PW_FOREIGN_CLIENT_ID: "${{ secrets.PW_FOREIGN_CLIENT_ID }}",
@@ -1489,7 +1525,7 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
         SUPABASE_SERVICE_ROLE_KEY: "${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}",
       }) === false
     ) {
-      violations.push("auth_browser_smoke must run npm run ci:playwright with the complete required auth/session secret contract");
+      violations.push("auth_browser_smoke must run npm run ci:playwright with the complete required auth/session environment contract");
     }
     if (authSmoke.steps.some((step) => stepHasExactCommand(step, DEPLOY_COMMAND))) {
       violations.push("auth_browser_smoke must not deploy session edge functions");

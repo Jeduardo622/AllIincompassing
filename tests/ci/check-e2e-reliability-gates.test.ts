@@ -322,6 +322,33 @@ describe("check-e2e-reliability-gates", () => {
     expect(cleanupStep).toContain("if: always()");
   });
 
+  test("auth browser smoke uses a run-owned therapist persona with unconditional cleanup", () => {
+    const workflow = normalizeLf(readFileSync(path.join(repoRoot, ".github/workflows/ci.yml"), "utf8"));
+    const provisionStart = workflow.indexOf("- name: Provision synthetic therapist smoke actor");
+    const provisionEnd = workflow.indexOf("- name: Provision synthetic BCBA smoke actor", provisionStart);
+    const provisionStep = provisionStart >= 0 && provisionEnd > provisionStart
+      ? workflow.slice(provisionStart, provisionEnd)
+      : "";
+    const cleanupStart = workflow.indexOf("- name: Cleanup synthetic therapist smoke actor");
+    const cleanupEnd = workflow.indexOf("- name: Cleanup auth smoke admin", cleanupStart);
+    const cleanupStep = cleanupStart >= 0 && cleanupEnd > cleanupStart
+      ? workflow.slice(cleanupStart, cleanupEnd)
+      : "";
+    const sessionGateStart = workflow.indexOf("- name: Session browser smoke gate");
+    const sessionGateEnd = workflow.indexOf("- name: BCBA session acceptance proof", sessionGateStart);
+    const sessionGate = sessionGateStart >= 0 && sessionGateEnd > sessionGateStart
+      ? workflow.slice(sessionGateStart, sessionGateEnd)
+      : "";
+
+    expect(provisionStep).toContain("SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}");
+    expect(provisionStep).toContain("CI_SMOKE_THERAPIST_SCOPE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}");
+    expect(provisionStep).toContain("run: npx tsx scripts/provision-ci-smoke-therapist.ts");
+    expect(sessionGate).not.toContain("PW_THERAPIST_EMAIL: ${{ secrets.PW_THERAPIST_EMAIL }}");
+    expect(sessionGate).not.toContain("PW_THERAPIST_PASSWORD: ${{ secrets.PW_THERAPIST_PASSWORD }}");
+    expect(cleanupStep).toContain("if: always()");
+    expect(cleanupStep).toContain("run: npx tsx scripts/provision-ci-smoke-therapist.ts --cleanup");
+  });
+
   test("accepts ci:playwright runner invocation semantics", () => {
     const fixtureRoot = createFixture(`tsx scripts/playwright-ci-runner.ts ${runnerChildren.join(" ")}`);
 

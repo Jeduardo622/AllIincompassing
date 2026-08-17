@@ -931,6 +931,15 @@ jobs:
           CI_SMOKE_ADMIN_SCOPE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}
         run: npx tsx scripts/provision-ci-smoke-admin.ts
 
+      - name: Provision synthetic therapist smoke actor
+        if: steps.browser_scope.outputs.auth_smoke_required == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          CI_SMOKE_THERAPIST_SCOPE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}
+        run: npx tsx scripts/provision-ci-smoke-therapist.ts
+
       - name: Provision synthetic BCBA smoke actor
         if: steps.browser_scope.outputs.auth_smoke_required == 'true' && github.event_name != 'pull_request'
         env:
@@ -949,8 +958,6 @@ jobs:
           PW_BASE_URL: ${{ github.event_name == 'pull_request' && format('https://deploy-preview-{0}--velvety-cendol-dae4d6.netlify.app', github.event.pull_request.number) || secrets.PW_BASE_URL }}
           PW_ADMIN_EMAIL: ${{ secrets.PW_ADMIN_EMAIL }}
           PW_ADMIN_PASSWORD: ${{ secrets.PW_ADMIN_PASSWORD }}
-          PW_THERAPIST_EMAIL: ${{ secrets.PW_THERAPIST_EMAIL }}
-          PW_THERAPIST_PASSWORD: ${{ secrets.PW_THERAPIST_PASSWORD }}
           PW_SCHEDULE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}
           PW_SCHEDULE_PASSWORD: ${{ secrets.PW_SCHEDULE_PASSWORD }}
           PW_FOREIGN_CLIENT_ID: ${{ secrets.PW_FOREIGN_CLIENT_ID }}
@@ -994,8 +1001,6 @@ jobs:
           PW_BASE_URL: ${{ github.event_name == 'pull_request' && format('https://deploy-preview-{0}--velvety-cendol-dae4d6.netlify.app', github.event.pull_request.number) || secrets.PW_BASE_URL }}
           PW_ADMIN_EMAIL: ${{ secrets.PW_ADMIN_EMAIL }}
           PW_ADMIN_PASSWORD: ${{ secrets.PW_ADMIN_PASSWORD }}
-          PW_THERAPIST_EMAIL: ${{ secrets.PW_THERAPIST_EMAIL }}
-          PW_THERAPIST_PASSWORD: ${{ secrets.PW_THERAPIST_PASSWORD }}
           PW_SCHEDULE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}
           PW_SCHEDULE_PASSWORD: ${{ secrets.PW_SCHEDULE_PASSWORD }}
           PW_FOREIGN_CLIENT_ID: ${{ secrets.PW_FOREIGN_CLIENT_ID }}
@@ -1061,6 +1066,15 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npx tsx scripts/provision-ci-smoke-bcba.ts --cleanup
 
+      - name: Cleanup synthetic therapist smoke actor
+        if: always() && steps.browser_scope.outputs.auth_smoke_required == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          CI_SMOKE_THERAPIST_SCOPE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}
+        run: npx tsx scripts/provision-ci-smoke-therapist.ts --cleanup
+
       - name: Cleanup auth smoke admin
         if: always() && steps.browser_scope.outputs.auth_smoke_required == 'true'
         env:
@@ -1123,10 +1137,9 @@ jobs:
           PW_BASE_URL: ${{ github.event_name == 'pull_request' && format('https://deploy-preview-{0}--velvety-cendol-dae4d6.netlify.app', github.event.pull_request.number) || secrets.PW_BASE_URL }}
           PW_ADMIN_EMAIL: ${{ secrets.PW_ADMIN_EMAIL }}
           PW_ADMIN_PASSWORD: ${{ secrets.PW_ADMIN_PASSWORD }}
-          PW_THERAPIST_EMAIL: ${{ secrets.PW_THERAPIST_EMAIL }}
-          PW_THERAPIST_PASSWORD: ${{ secrets.PW_THERAPIST_PASSWORD }}
           PW_SCHEDULE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}
           PW_SCHEDULE_PASSWORD: ${{ secrets.PW_SCHEDULE_PASSWORD }}
+          CI_SMOKE_THERAPIST_SCOPE_EMAIL: ${{ secrets.PW_SCHEDULE_EMAIL }}
           PW_FOREIGN_CLIENT_ID: ${{ secrets.PW_FOREIGN_CLIENT_ID }}
           PW_FOREIGN_THERAPIST_ID: ${{ secrets.PW_FOREIGN_THERAPIST_ID }}
           PW_ASSESSMENT_CLIENT_ID: ${{ secrets.PW_ASSESSMENT_CLIENT_ID }}
@@ -1143,6 +1156,7 @@ jobs:
           PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR: ${{ secrets.PW_CLINICAL_QA_GENERATED_OUTPUT_SELECTOR }}
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}

@@ -52,6 +52,15 @@ DECLARE
   v_user_id UUID;
   metadata JSONB;
 BEGIN
+  -- Deterministic org/program/goal so sessions satisfy NOT NULL program_id/goal_id (see 20260204193000_programs_goals_bank.sql).
+  INSERT INTO public.organizations (id, name, slug)
+  VALUES (
+    '00000000-0000-0000-0000-000000000001'::uuid,
+    'Seed Preview Org',
+    'seed-preview-org'
+  )
+  ON CONFLICT (id) DO NOTHING;
+
   FOR user_record IN
     SELECT *
     FROM (
@@ -68,7 +77,9 @@ BEGIN
       'full_name', user_record.first_name || ' ' || user_record.last_name,
       'phone', user_record.phone,
       'role', user_record.role_name,
-      'default_role', user_record.role_name
+      'default_role', user_record.role_name,
+      'organization_id', '00000000-0000-0000-0000-000000000001',
+      'organizationId', '00000000-0000-0000-0000-000000000001'
     );
 
     SELECT id INTO v_user_id
@@ -433,15 +444,6 @@ BEGIN
         notes = EXCLUDED.notes;
     END IF;
   END LOOP;
-
-  -- Deterministic org/program/goal so sessions satisfy NOT NULL program_id/goal_id (see 20260204193000_programs_goals_bank.sql).
-  INSERT INTO public.organizations (id, name, slug)
-  VALUES (
-    '00000000-0000-0000-0000-000000000001'::uuid,
-    'Seed Preview Org',
-    'seed-preview-org'
-  )
-  ON CONFLICT (id) DO NOTHING;
 
   UPDATE public.therapists
   SET organization_id = '00000000-0000-0000-0000-000000000001'::uuid

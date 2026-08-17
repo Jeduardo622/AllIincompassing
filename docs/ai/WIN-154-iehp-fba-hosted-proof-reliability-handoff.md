@@ -88,7 +88,7 @@
 
 - Add a fixed Adobe failure-stage vocabulary and optional numeric upstream HTTP status.
 - Normalize transport, response-body, result-download, and ZIP-parse exceptions into the same sanitized Adobe error boundary.
-- Keep semantic Adobe job failures distinct from HTTP failures by leaving `upstream_status` null when the HTTP response itself succeeded.
+- At this stage, semantic Adobe job failures left `upstream_status` null when the HTTP response itself succeeded because Adobe's structured semantic status had not yet been evaluated. The `PR #968 Semantic Poll Status Recovery` section below explicitly supersedes that historical behavior with an integer-only `body.error.status` contract.
 - Return only `stage` and `upstream_status` alongside the existing generic Edge Function error/code.
 - Persist only allowlisted `adobe_stage` and `adobe_upstream_status` fields in the existing tenant-scoped extraction-failure review event so the hosted proof can identify the failing provider boundary.
 - Discard unknown stage names and invalid HTTP status ranges at the server boundary while preserving the generic extraction failure.
@@ -167,3 +167,32 @@ Non-goals remain credential rotation, secret access, parser behavior changes, sc
 - Specialist result: code, test, security, and Supabase reviews approved the bounded implementation after raw extraction-error output was removed, deterministic latest-event ordering and transient query retry were added, and malformed diagnostic values were covered.
 - Current result: `pass-with-blocked-checks`; focused and standalone local gates pass, while the aggregate harness timeout and exact-head hosted checks remain explicit blockers. No merge or hosted deployment is authorized by this handoff.
 - Residual risk: the evidence query depends on the caller-visible tenant-scoped audit row being committed before cleanup. The bounded retries reduce event-write lag risk; an unavailable row remains fail-safe and emits no provider content, but it cannot identify the Adobe boundary until exact-head CI runs.
+
+## PR #968 Semantic Poll Status Recovery
+
+- Exact-head diagnostic run: `31998175206` at SHA `d28174a97ef3bea231ab8b5e34ef7a8d8d0f87d5`.
+- Live result: every substantive job passed except `iehp-assessment-import-smoke`; the synthetic Skills and Behaviors PDF failed with `adobe_stage=job_poll adobe_upstream_status=not_reported`, and `ci-gate` failed only because of that job.
+- Interpretation: token, asset creation, upload, submission, poll transport, and result download were not the failing boundary. Adobe returned a successful poll response whose job status was semantic `failed`.
+- Adobe SDK contract: the official Node SDK models semantic job failures as a structured error with `code`, `message`, and numeric `status`, and throws its service error from those fields. The prior HTTP-only interpretation of `upstream_status` is superseded for this bounded follow-up.
+
+### Fresh Route And Scope
+
+- Classification: `high-risk human-reviewed`.
+- Lane: `critical`.
+- Allowed production file: `supabase/functions/extract-assessment-fields/adobe-pdf-extract.ts`.
+- Allowed test file: `supabase/functions/extract-assessment-fields/adobe-pdf-extract.test.ts`.
+- The semantic `failed` branch may propagate only `body.error.status` when it is an integer from 100 through 599, using the existing `upstream_status` channel.
+- Adobe error code, message, raw response body, token, signed URL, document text, screenshot, and PHI remain discarded.
+- Non-goals: no server, smoke, schema, RLS, grant, workflow, retry, parser, cleanup, credential, secret, or deployment change.
+- Stop conditions: any need for a new diagnostic field, raw provider content, authority widening, retry behavior, or additional protected surface.
+
+### Verification State
+
+- Red result: the new semantic failure test expected sanitized upstream status `422` and received `null` before implementation.
+- Green Edge Function result: the repository CI command for the complete `extract-assessment-fields` Deno matrix passed 78/78 with `--no-lock --node-modules-dir=none`; `deno check` passed for the entrypoint and `deno fmt --check` passed for the touched helper and test.
+- Boundary coverage: valid statuses `100`, `422`, and `599` propagate; absent, null, primitive, string, decimal, below-range, above-range, and missing `error.status` values remain `null`. Provider code and message are absent from the internal generic message and public diagnostics.
+- Passed repo gates: `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, `npm run build`, and `git diff --check`.
+- Aggregate result: `npm run test:ci` completed all 550 runnable files and 4,975 runnable tests with no assertion failures, then Vitest emitted the same worker RPC timeout calling `onTaskUpdate` seen in two prior isolated `verify:local` attempts; the command exited 1. `npm run verify:local` is blocked by that reproducible first-stage harness failure rather than reported as passed.
+- Result: `pass-with-blocked-checks`; exact-head CI in GitHub's clean worker environment and critical-lane human review remain required.
+- Hosted blocker: production cannot expose the structured semantic status until the critical-lane PR is owner-reviewed, merged, and the reviewed `extract-assessment-fields` function is separately deployed. No deployment is authorized by this handoff.
+- Required post-deploy proof: confirm the deployed function version matches the owner-reviewed merge, rerun the hosted synthetic Skills and Behaviors PDF smoke, and verify the same tenant-scoped review event contains only `adobe_stage=job_poll` plus an allowlisted numeric `adobe_upstream_status`, with no Adobe code, message, or raw provider payload.

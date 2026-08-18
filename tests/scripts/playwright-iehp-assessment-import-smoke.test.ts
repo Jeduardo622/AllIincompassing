@@ -14,9 +14,13 @@ import {
 import {
   assertIehpAssessorPhoneChecklist,
   assertIehpGeneratedDocxStorageTarget,
+  buildIehpExtractionFailureMessage,
   cleanupGeneratedDocxParityArtifacts,
   executeIehpSmokeCaseWithCleanup,
   fetchIehpAssessorPhoneProvenance,
+  fetchIehpExtractionFailureEvidence,
+  fetchIehpExtractionFailureEvidenceWithRetry,
+  formatIehpExtractionFailureEvidence,
   normalizeAssessmentChecklistResponse,
   parseAssessmentPlanPdfPreflight,
   readSyntheticGeneratedDocxText,
@@ -708,6 +712,181 @@ describe('fetchIehpAssessorPhoneProvenance', () => {
   });
 });
 
+describe('fetchIehpExtractionFailureEvidence', () => {
+  it('builds the public failure message from status and allowlisted Adobe diagnostics only', () => {
+    expect(
+      buildIehpExtractionFailureMessage('extraction_failed', {
+        adobe_stage: 'job_poll',
+        adobe_upstream_status: 502,
+      }),
+    ).toBe(
+      'IEHP import smoke ended with extraction_failed adobe_stage=job_poll adobe_upstream_status=502',
+    );
+    expect(buildIehpExtractionFailureMessage('extraction_failed', null)).toBe(
+      'IEHP import smoke ended with extraction_failed adobe_stage=unavailable adobe_upstream_status=unavailable',
+    );
+  });
+
+  it('reads only the latest authenticated tenant-scoped extraction failure diagnostics', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            adobe_stage: 'token',
+            adobe_upstream_status: 401,
+          },
+        ]),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    let result;
+    try {
+      result = await fetchIehpExtractionFailureEvidence({
+        accessToken: 'caller-jwt',
+        assessmentDocumentId: 'document-123',
+        organizationId: 'org-123',
+        supabaseAnonKey: 'anon-key',
+        supabaseUrl: 'https://example.supabase.co',
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(result).toEqual({ adobe_stage: 'token', adobe_upstream_status: 401 });
+    expect(formatIehpExtractionFailureEvidence(result)).toBe(
+      'adobe_stage=token adobe_upstream_status=401',
+    );
+    expect(JSON.stringify(result)).not.toContain('reason_code');
+    expect(JSON.stringify(result)).not.toContain('raw_provider_body');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      'https://example.supabase.co/rest/v1/assessment_review_events?select=adobe_stage:event_payload->>adobe_stage,adobe_upstream_status:event_payload->adobe_upstream_status&assessment_document_id=eq.document-123&organization_id=eq.org-123&action=eq.extraction_failed&order=created_at.desc,id.desc&limit=1',
+    );
+    expect(url).not.toContain('select=event_payload&');
+    expect(init.headers).toEqual({ apikey: 'anon-key', Authorization: 'Bearer caller-jwt' });
+  });
+
+  it('drops unexpected stage and status values instead of forwarding provider-controlled content', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            adobe_stage: 'token secret-value',
+            adobe_upstream_status: 900,
+          },
+        ]),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    let result;
+    try {
+      result = await fetchIehpExtractionFailureEvidence({
+        accessToken: 'caller-jwt',
+        assessmentDocumentId: 'document-123',
+        organizationId: 'org-123',
+        supabaseAnonKey: 'anon-key',
+        supabaseUrl: 'https://example.supabase.co',
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(result).toEqual({ adobe_stage: null, adobe_upstream_status: null });
+    expect(formatIehpExtractionFailureEvidence(result)).toBe(
+      'adobe_stage=not_reported adobe_upstream_status=not_reported',
+    );
+  });
+
+  it('retries a transient evidence query failure before returning sanitized diagnostics', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 502 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            {
+              adobe_stage: 'job_poll',
+              adobe_upstream_status: 502,
+            },
+          ]),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      const resultPromise = fetchIehpExtractionFailureEvidence({
+        accessToken: 'caller-jwt',
+        assessmentDocumentId: 'document-123',
+        organizationId: 'org-123',
+        supabaseAnonKey: 'anon-key',
+        supabaseUrl: 'https://example.supabase.co',
+      });
+      await vi.advanceTimersByTimeAsync(1_500);
+      await expect(resultPromise).resolves.toEqual({
+        adobe_stage: 'job_poll',
+        adobe_upstream_status: 502,
+      });
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries an empty committed-event read before returning sanitized diagnostics', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            {
+              adobe_stage: 'result_download',
+              adobe_upstream_status: 502,
+            },
+          ]),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      const resultPromise = fetchIehpExtractionFailureEvidenceWithRetry({
+        accessToken: 'caller-jwt',
+        assessmentDocumentId: 'document-123',
+        organizationId: 'org-123',
+        supabaseAnonKey: 'anon-key',
+        supabaseUrl: 'https://example.supabase.co',
+      });
+      await vi.advanceTimersByTimeAsync(400);
+      await expect(resultPromise).resolves.toEqual({
+        adobe_stage: 'result_download',
+        adobe_upstream_status: 502,
+      });
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('assertIehpAssessorPhoneChecklist', () => {
   it('returns redacted evidence when the extracted checklist phone matches the expected primary therapist snapshot phone', () => {
     expect(
@@ -1029,6 +1208,26 @@ describe('normalizeAssessmentChecklistResponse', () => {
 });
 
 describe('playwright-iehp-assessment-import-smoke structure', () => {
+  it('captures sanitized extraction failure evidence before the existing cleanup boundary', () => {
+    const script = readFileSync(
+      path.join(process.cwd(), 'scripts/playwright-iehp-assessment-import-smoke.ts'),
+      'utf8',
+    );
+    const caseRunnerIndex = script.indexOf('return executeIehpSmokeCaseWithCleanup({');
+    const evidenceFetchIndex = script.indexOf(
+      'extractionFailureEvidence = await fetchIehpExtractionFailureEvidenceWithRetry({',
+      caseRunnerIndex,
+    );
+    const failureThrowIndex = script.indexOf('throw new Error(', evidenceFetchIndex);
+    const cleanupIndex = script.indexOf('cleanupCase: async () => {', failureThrowIndex);
+
+    expect(caseRunnerIndex).toBeGreaterThanOrEqual(0);
+    expect(evidenceFetchIndex).toBeGreaterThan(caseRunnerIndex);
+    expect(failureThrowIndex).toBeGreaterThan(evidenceFetchIndex);
+    expect(cleanupIndex).toBeGreaterThan(failureThrowIndex);
+    expect(script).not.toContain('createdAssessment.extraction_error');
+  });
+
   it('does not mutate helper-local cleanup failure state from the missing-assessment branch', () => {
     const script = readFileSync(
       path.join(process.cwd(), 'scripts/playwright-iehp-assessment-import-smoke.ts'),

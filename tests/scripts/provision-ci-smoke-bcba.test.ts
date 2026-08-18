@@ -1,17 +1,60 @@
+/**
+ * @vitest-environment node
+ */
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
+  assertSmokeBcbaCleanupOwnership,
+  assertSmokeBcbaOwnership,
+  assertSmokeBcbaRoleInvariant,
   assertSmokeBcbaAuthorizationInvariant,
   assertDedicatedSmokeBcbaEmail,
   assertSmokeBcbaProfileInvariant,
   buildDefaultSmokeBcbaEmail,
+  buildSmokeBcbaAppMetadata,
+  buildSmokeBcbaProfileSeed,
+  buildSmokeBcbaRoleAssignment,
   getMissingBcbaProvisionSecrets,
   shouldSkipSecretlessPullRequest,
   resolveSmokeBcbaClientId,
+  serializeSmokeBcbaError,
   verifySmokeBcbaAuthenticatedReadiness,
 } from "../../scripts/provision-ci-smoke-bcba";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 describe("provision-ci-smoke-bcba guards", () => {
+  it("uses verified canonical mappings before the service-only profile authority RPC", () => {
+    const source = readFileSync(
+      path.resolve(process.cwd(), "scripts/provision-ci-smoke-bcba.ts"),
+      "utf8",
+    );
+    const actorLookup = source.indexOf("let user = await findUser(client, email)");
+    const rollbackBoundary = source.indexOf("try {", actorLookup);
+    const reusedActorCleanup = source.indexOf("await cleanupMappings(client, user.id)", actorLookup);
+    const freshActorCreate = source.indexOf("client.auth.admin.createUser(", reusedActorCleanup);
+    const ownershipReadback = source.indexOf("client.auth.admin.getUserById(userId)");
+    const profileSeed = source.indexOf("buildSmokeBcbaProfileSeed(userId, email)");
+    const staleRoleCleanup = source.indexOf('.from("user_roles").delete().eq("user_id", userId)');
+    const roleMapping = source.indexOf("buildSmokeBcbaRoleAssignment(");
+    const roleReadback = source.indexOf('.from("user_roles")\n      .select("role_id,is_active,expires_at")');
+    const therapistLink = source.indexOf('.from("user_therapist_links").insert(');
+    const profileProvision = source.indexOf('.rpc("provision_ci_smoke_bcba_profile"');
+
+    expect(rollbackBoundary).toBeGreaterThan(actorLookup);
+    expect(reusedActorCleanup).toBeGreaterThan(rollbackBoundary);
+    expect(freshActorCreate).toBeGreaterThan(reusedActorCleanup);
+    expect(ownershipReadback).toBeGreaterThan(-1);
+    expect(profileSeed).toBeGreaterThan(ownershipReadback);
+    expect(staleRoleCleanup).toBeGreaterThan(profileSeed);
+    expect(roleMapping).toBeGreaterThan(staleRoleCleanup);
+    expect(roleReadback).toBeGreaterThan(roleMapping);
+    expect(therapistLink).toBeGreaterThan(roleReadback);
+    expect(profileProvision).toBeGreaterThan(therapistLink);
+    expect(source).toContain('ownershipReadbackError ? serializeSmokeBcbaError(ownershipReadbackError) : "missing user"');
+    expect(source).toContain('organization mismatch (${String(provisionedOrganizationId)})');
+  });
+
   it("only accepts dedicated disposable BCBA emails", () => {
     expect(() => assertDedicatedSmokeBcbaEmail("playwright.ci.bcba.123.1@example.com")).not.toThrow();
     expect(() => assertDedicatedSmokeBcbaEmail("bcba@example.com")).toThrow(/Refusing/);
@@ -50,6 +93,110 @@ describe("provision-ci-smoke-bcba guards", () => {
     ]) {
       expect(() => assertSmokeBcbaProfileInvariant(profile, expected)).toThrow(/did not persist/);
     }
+  });
+
+  it("seeds the profile without bypassing protected role or organization authority", () => {
+    expect(buildSmokeBcbaProfileSeed("user-1", "playwright.ci.bcba.1.1@example.com")).toEqual({
+      id: "user-1",
+      email: "playwright.ci.bcba.1.1@example.com",
+      first_name: "Playwright",
+      last_name: "BCBA",
+    });
+  });
+
+  it("builds an expiring authoritative BCBA role assignment", () => {
+    expect(buildSmokeBcbaRoleAssignment("user-1", "role-1", "2026-08-18T01:00:00.000Z")).toEqual({
+      user_id: "user-1",
+      role_id: "role-1",
+      is_active: true,
+      expires_at: "2026-08-18T01:00:00.000Z",
+    });
+  });
+
+  it("requires exact run ownership and an unexpired marker", () => {
+    const email = "playwright.ci.bcba.123.2@example.com";
+    const env = {
+      GITHUB_RUN_ID: "123",
+      GITHUB_RUN_ATTEMPT: "2",
+      GITHUB_JOB: "auth-browser-smoke",
+    } as NodeJS.ProcessEnv;
+    const now = new Date("2026-08-17T23:00:00.000Z");
+    const appMetadata = buildSmokeBcbaAppMetadata(email, env, now);
+
+    expect(appMetadata).toEqual({
+      smoke_actor: "bcba",
+      smoke_email: email,
+      smoke_run_id: "123",
+      smoke_run_attempt: "2",
+      smoke_job: "auth-browser-smoke",
+      smoke_expires_at: "2026-08-18T05:00:00.000Z",
+    });
+    expect(() => assertSmokeBcbaOwnership({ email, app_metadata: appMetadata }, email, appMetadata, now)).not.toThrow();
+    expect(() => assertSmokeBcbaOwnership({
+      email,
+      app_metadata: { ...appMetadata, smoke_expires_at: "2026-08-18T04:00:00.000Z" },
+    }, email, appMetadata, now)).not.toThrow();
+    expect(() => assertSmokeBcbaOwnership({
+      email,
+      app_metadata: { ...appMetadata, smoke_actor: "admin" },
+    }, email, appMetadata, now)).toThrow(/ownership/);
+    expect(() => assertSmokeBcbaOwnership({
+      email,
+      app_metadata: { ...appMetadata, smoke_expires_at: "2026-08-17T22:59:59.000Z" },
+    }, email, appMetadata, now)).toThrow(/ownership/);
+  });
+
+  it("allows marker-scoped cleanup from a later run without broadening actor ownership", () => {
+    const email = "playwright.ci.bcba.123.2@example.com";
+    const earlierRunMetadata = buildSmokeBcbaAppMetadata(email, {
+      GITHUB_RUN_ID: "123",
+      GITHUB_RUN_ATTEMPT: "2",
+      GITHUB_JOB: "auth-browser-smoke",
+    }, new Date("2026-08-17T20:00:00.000Z"));
+
+    expect(() => assertSmokeBcbaCleanupOwnership({
+      email,
+      app_metadata: earlierRunMetadata,
+    }, email)).not.toThrow();
+    expect(() => assertSmokeBcbaCleanupOwnership({
+      email,
+      app_metadata: {
+        smoke_actor: "bcba",
+        smoke_expires_at: "2026-08-17T19:59:59.000Z",
+      },
+    }, email)).not.toThrow();
+    expect(() => assertSmokeBcbaCleanupOwnership({
+      email,
+      app_metadata: { ...earlierRunMetadata, smoke_actor: "admin" },
+    }, email)).toThrow(/cleanup ownership/);
+    expect(() => assertSmokeBcbaCleanupOwnership({
+      email,
+      app_metadata: { ...earlierRunMetadata, smoke_email: "playwright.ci.bcba.other@example.com" },
+    }, email)).toThrow(/cleanup ownership/);
+  });
+
+  it("requires the exact active unexpired BCBA role singleton", () => {
+    const expected = { roleId: "role-1", expiresAt: "2026-08-18T01:00:00.000Z" };
+    expect(() => assertSmokeBcbaRoleInvariant([{
+      role_id: "role-1",
+      is_active: true,
+      expires_at: expected.expiresAt,
+    }], expected, new Date("2026-08-17T23:00:00.000Z"))).not.toThrow();
+    expect(() => assertSmokeBcbaRoleInvariant([], expected)).toThrow(/role singleton/);
+    expect(() => assertSmokeBcbaRoleInvariant([
+      { role_id: "role-1", is_active: true, expires_at: expected.expiresAt },
+      { role_id: "role-2", is_active: true, expires_at: expected.expiresAt },
+    ], expected)).toThrow(/role singleton/);
+  });
+
+  it("preserves structured Supabase failures in CI output", () => {
+    const serialized = serializeSmokeBcbaError({
+      code: "42501",
+      message: "organization_id is immutable for this role",
+      details: "profile authority guard",
+    });
+    expect(serialized).toBe("42501: organization_id is immutable for this role");
+    expect(serialized).not.toContain("profile authority guard");
   });
 
   it("requires the synthetic authorization to remain approved and tenant-bound", () => {

@@ -1124,3 +1124,211 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - Residual risk: the ten indexes add expected storage and write amplification after export traffic begins. Representative usage cannot be measured while the tables remain empty.
 - Hosted apply status: `applied and verified`; no other hosted mutation, deployment, capability grant, payroll activation, or customer/PHI access occurred.
 - Next action: merge this evidence-only PR, perform merge-proven branch/worktree cleanup, and route any remaining advisor family as a new bounded slice.
+
+## Payroll Blocker Resolutions Advisor Remediation
+
+- Date: 2026-08-17
+- Branch: `codex/win-219-payroll-blocker-resolution-advisor-remediation`
+- Classification: `high-risk human-reviewed`
+- Lane: `critical`
+- Scope: one forward-only migration for the remaining `public.payroll_blocker_resolutions` unindexed-FK advisor surface plus the one scoped `auth.uid()` initplan rewrite; one focused contract; explicit WIN-219 runtime-parity mirrors; and this handoff addendum.
+- Protected paths: `supabase/migrations/**`, `scripts/ci/**`, and `.github/workflows/**`.
+- Non-goals: no hosted apply, no deployment, no payroll activation, no capability grants, no route/UI changes, no `.env*` access, no customer or PHI access, and no remediation outside `public.payroll_blocker_resolutions`.
+
+### Hosted Read-Only Baseline
+
+- On Monday, August 17, 2026, Supabase project `wnnjeqheqxxyrgsjmygy` was `ACTIVE_HEALTHY` on PostgreSQL `17.6.1.029` (`server_version = 17.6`, `server_version_num = 170006`).
+- Hosted migration `20260816215743 / payroll_export_fk_indexes` was present; the new blocker-resolution remediation migration was absent before implementation.
+- `public.payroll_blocker_resolutions` remained empty (`exact_row_count = 0`, `heap_bytes = 0`, `total_bytes = 40960`), with enabled and forced RLS and ACL `{postgres=arwdDxtm/postgres,authenticated=r/postgres}`.
+- The live table had only four indexes: `payroll_blocker_resolutions_current_state_idx`, `payroll_blocker_resolutions_id_organization_id_key`, `payroll_blocker_resolutions_org_employment_period_idx`, and `payroll_blocker_resolutions_pkey`.
+- Hosted FK coverage proved only `organization_id_fkey` already had leading-index coverage. The remaining seven FK sequences lacked a covering leading index: `(actor_user_id)`, `(employment_profile_id, organization_id)`, `(pay_period_id, organization_id)`, `(previous_resolution_id, organization_id)`, `(session_attendance_correction_request_id, organization_id)`, `(time_correction_request_id, organization_id)`, and `(timekeeping_exception_id, organization_id)`.
+- The authenticated `SELECT` policy `payroll_blocker_resolutions_authenticated_select` still used direct `assignment_row.manager_user_id = auth.uid()` inside the exact-manager branch while preserving the employee self-read helper, effective-date assignment checks, and capability branches for `time.review_assigned`, `time.approve_assigned`, `payroll.lock_period`, `payroll.reopen_period`, and `payroll.resolve_exceptions`.
+- Payroll remained fail-closed: feature flag `payroll_timekeeping_v1` default-enabled `false` with zero overrides, and capability grants remained zero.
+
+### Implementation And TDD
+
+- RED: before the migration existed, the focused contract failed on the missing migration, missing seven exact FK-leading indexes, missing policy rewrite, and missing parity entry.
+- GREEN: [`20260817012347_payroll_blocker_resolutions_advisor_remediation.sql`](../../../supabase/migrations/20260817012347_payroll_blocker_resolutions_advisor_remediation.sql) adds exactly seven non-unique plain btree indexes and rewrites only `assignment_row.manager_user_id = auth.uid()` to `assignment_row.manager_user_id = (select auth.uid())` inside the existing `payroll_blocker_resolutions_authenticated_select` policy.
+- The migration keeps the repo governance header, depends on repository migration `20260816201115_payroll_export_fk_indexes.sql` (hosted as `20260816215743 / payroll_export_fk_indexes`), stays transactional with `begin` / `commit`, uses `ALTER POLICY` rather than drop/create, and does not add an `organization_id`-only duplicate index.
+- The focused contract in [`tests/payroll-blocker-resolutions-advisor-remediation-migration.test.ts`](../../../tests/payroll-blocker-resolutions-advisor-remediation-migration.test.ts) pins the exact seven index sequences, the one policy-expression change, unchanged policy metadata, forced RLS, read-only ACLs, and absence of any data/function/trigger/capability/activation drift.
+- Runtime parity now requires `20260817012347|payroll_blocker_resolutions_advisor_remediation` in the workflow, both CI policy scripts, and both CI contract suites, including a fail-closed omission regression in `tests/ci/check-session-deploy-safety.test.ts`.
+
+### Verification Card
+
+- classification: `high-risk human-reviewed`
+- lane: `critical`
+- change type: database/RLS/tenant isolation and CI/workflow policy
+- required checks: focused blocker-resolution and parity contracts; adjacent payroll migration and tenant/RLS suites; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; `git diff --check`.
+- executed checks:
+  - `npm ci`: pass
+  - RED focused contract before implementation: expected fail
+  - `npm test -- --run tests/payroll-blocker-resolutions-advisor-remediation-migration.test.ts`: pass, `7/7`
+  - `npm test -- --run tests/ci/check-runtime-migration-parity.test.ts tests/ci/check-session-deploy-safety.test.ts`: pass, `234` assertions
+  - targeted payroll bundle including `tests/payroll-timekeeping-foundation-migration.test.ts`, `tests/payroll-approval-workflow-migration.test.ts`, `tests/payroll-approval-workflow-rpc.test.ts`, `tests/payroll-security-repair-migration.test.ts`, `tests/payroll-manager-assignment-index-migration.test.ts`, `tests/payroll-manager-assignment-advisor-remediation-migration.test.ts`, `tests/payroll-employee-time-events-fk-indexes-migration.test.ts`, `tests/payroll-employee-rate-versions-fk-indexes-migration.test.ts`, `tests/payroll-pay-cycle-fk-indexes-migration.test.ts`, `tests/payroll-export-fk-indexes-migration.test.ts`, `tests/payroll-blocker-resolutions-advisor-remediation-migration.test.ts`, and `tests/integration/payroll-timekeeping-tenant-rls.contract.test.ts`: pass, `89 passed / 26 skipped`
+  - `npm run ci:check-focused`: pass
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run validate:tenant`: pass
+  - `npm run build`: pass
+  - `git diff --check`: pass; line-ending warnings only
+- blocked checks:
+  - `npm run test:ci`: blocked outside the touched slice on Monday, August 17, 2026. The run reached the new blocker-resolution contract and kept it green, but later hit an unrelated timeout in `src/components/__tests__/TherapistOnboarding.test.tsx`, an unrelated failure in `src/components/__tests__/ProgramsGoalsTab.test.tsx` (`lets a midtier edit an existing goal target through the goal-targets PATCH route`), and finally exhausted Node's default heap with `FATAL ERROR: Ineffective mark-compacts near heap limit` plus `ERR_IPC_CHANNEL_CLOSED`.
+  - `npm run verify:local`: blocked by the same inherited aggregate failures inside its embedded `npm run test:ci`; earlier wrapper stages (`ci:check-focused`, `lint`, `typecheck`) passed before it reached the same unrelated failures.
+  - exact-head aggregate adjudication: pending GitHub PR CI
+- result: `pass-with-blocked-checks`
+- independent review: specification, architecture, security, performance, test, and Supabase reviews completed. One Supabase review response partially anchored to the earlier `employee_manager_assignments` remediation instead of this blocker-resolution table; hosted preflight plus the exact local diff resolved that disagreement in favor of the blocker-resolution scope proven here.
+- hosted apply status: `not authorized and not applied` for `20260817012347_payroll_blocker_resolutions_advisor_remediation.sql`.
+- residual risk: the seven new btrees add normal write amplification once blocker-resolution traffic exists, and aggregate local test infrastructure remains unstable outside the touched slice. Exact-head CI and human critical-lane review remain mandatory before any merge or hosted apply.
+- next action: push the WIN-219-linked PR, wait boundedly for exact-head checks, and stop for human review without merging or applying hosted.
+
+### PR Hygiene Verdict
+
+- pr-ready: yes
+- lane: `critical`
+- branch-ready: yes; isolated `codex/win-219-payroll-blocker-resolution-advisor-remediation`
+- linear-ready: yes; WIN-219 contains the hosted baseline, scoped branch, and next action
+- single-purpose: yes; seven exact FK-leading indexes, one policy-expression rewrite, required runtime-parity mirrors, one focused contract, and this handoff only
+- unrelated changes: none; `.codex-remote-attachments/` and `.codex-tmp/` remain untracked and excluded
+- generated artifact drift: none
+- protected-path drift: none beyond the routed migration and required parity workflow/policy mirrors
+- change summary: present
+- verification summary: present, with inherited aggregate failures disclosed rather than converted to passes
+- pr handoff: ready pending push and PR creation
+- reviewer: code, security, performance, test, and Supabase reviews completed
+- required follow-up: require exact-head CI and human critical-lane review; do not merge or apply hosted
+- handoff summary: adds only the seven missing FK-leading indexes for `public.payroll_blocker_resolutions` and rewrites only the exact manager `auth.uid()` policy branch to the approved initplan-safe form. Focused and tenant checks pass, while inherited aggregate test instability outside the touched files remains explicitly blocked for exact-head CI and human review.
+
+### Pre-Merge Dependency Metadata Correction
+
+- Date: 2026-08-16
+- Exact-head review found that the blocker-resolution migration header and focused assertion referenced the hosted export-migration ledger version as though it were a repository filename.
+- The header and focused assertion now reference repository migration `20260816201115_payroll_export_fk_indexes.sql`; the handoff separately records that the same logical migration is hosted as `20260816215743 / payroll_export_fk_indexes`.
+- Verification after correction: blocker-resolution focused contract passed `7/7`; runtime-parity and deploy-safety contracts passed `234/234`; `npm run ci:check-focused`, `npm run validate:tenant`, and `git diff --check` passed. Independent code re-review found no remaining correctness or protected-path drift finding.
+- Merge/apply status: pending new exact-head required CI and human critical-lane review; no hosted apply, deployment, activation, capability grant, customer/PHI access, or merge occurred during the correction.
+
+## Consolidated WIN-219 And WIN-154 Critical PR
+
+- Date: August 17, 2026.
+- User-authorized consolidation: PR #966 is the canonical PR for the exact union of the prior WIN-219 payroll remediation and PR #968 WIN-154 Adobe failure-evidence slice. PR #968 may be closed only after the combined remote head proves both original heads are ancestors and the 13-file union is intact.
+- Classification: `high-risk human-reviewed`.
+- Lane: `critical`.
+- Triggering paths: `supabase/migrations/**`, `supabase/functions/**`, `.github/workflows/**`, and `scripts/ci/**`.
+- Integration: merge commit `947f61ccd110711bd958e804c9ade0894621a624` has parents `528417c2c3b181559eef5384ed78fb2835c4d017` (PR #966) and `b75d99aef78188bedb80de5063a6d4a87c1eb2a1` (PR #968). Both original heads are ancestors, `git merge-tree` reported no conflict, and `origin/main...947f61cc` contains exactly the 13-file union with no additional tracked paths.
+- Tenant boundary: payroll reads retain the existing employee-self, exact effective manager assignment, and explicit capability branches; the IEHP evidence read retains caller JWT, organization, assessment-document, action, ordering, and bounded-retry filters. Cross-tenant access remains forbidden.
+- Authority boundary: no grant, capability, feature activation, service-role access, secret source, parser behavior, retry behavior, migration apply, function deployment, or production mutation was added by consolidation.
+- Non-goals: no merge to `main`, hosted migration apply, Edge Function deployment, payroll activation, required-check bypass, or unrelated CI repair.
+
+### Combined Verification Card
+
+- Focused Vitest union: pass, `307/307` across blocker-resolution migration, runtime parity, deploy safety, and IEHP smoke contracts.
+- Pinned Deno `2.8.3` extractor matrix: pass, `78/78`.
+- `npm run ci:check-focused`: pass with documented local credential-dependent skips.
+- `npm run lint`: pass.
+- `npm run typecheck`: pass.
+- `npm run validate:tenant`: pass.
+- `npm run build`: pass.
+- `npm run ci:verify-coverage`: pass, `92.96%` line coverage against `86.00%` required.
+- `git diff --check origin/main...HEAD`: pass.
+- `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci`: all `551` runnable files and `4,983` runnable tests passed without an assertion failure, then Vitest emitted the known worker RPC timeout calling `onTaskUpdate`; command exited 1 and remains blocked rather than reported as passed.
+- Security review: approve; no RLS, auth, grant, tenant, secret, diagnostic-minimization, or CI/deploy-authority finding.
+- Integration review: both original heads and the exact 13-file union are preserved. The earlier payroll-only `single-purpose` and `unrelated changes: none` verdict above is historical and superseded by this explicit combined-scope record.
+- Result: `pass-with-blocked-checks`; fresh exact-head CI and human critical-lane review remain mandatory.
+
+### Combined PR Hygiene
+
+- Canonical PR: #966.
+- Linked issues: WIN-219 and WIN-154 remain separate systems-of-record scopes.
+- Combined purpose: deliberately consolidates the two currently open protected remediation slices at the user's request; it is not represented as a payroll-only PR.
+- Superseded PR: #968 may close only after #966's remote head contains both parent SHAs and the exact union diff.
+- Hosted status: migration not applied; Edge Function not deployed; payroll not activated.
+- Residual risk: the combined PR couples payroll and IEHP rollback/review units, and the hosted IEHP smoke cannot prove the new sanitized Adobe status until the reviewed function version is deployed through an authorized protected path.
+
+## PR #966 Run-Owned Therapist Smoke Repair
+
+- Date: August 17, 2026.
+- Trigger: exact-head CI run `32050409110` passed the earlier required browser children but repeatedly failed `playwright:therapist-authorization` because the shared `PW_THERAPIST_*` login returned `Invalid email or password`.
+- Classification: `high-risk human-reviewed`.
+- Lane: `critical`.
+- Linked issues: `WIN-154` and `WIN-219`; a dedicated Linear issue could not be created because the workspace issue limit was reached.
+- Scope: add one run-owned therapist provisioner, wire it before both auth and session Playwright gates, export its credentials through `GITHUB_ENV`, always clean the exact owned Auth/profile/role/therapist/link graph, and update only the directly coupled readiness and CI-policy contracts.
+- Non-goals: no product auth, route, migration, RLS, grant, RPC, Edge Function, payroll, foreign fixture, secret rotation, deployment, hosted migration apply, or merge change.
+- Stop conditions: any need for broader tenant authority, product auth changes, schema changes, or weakening the real therapist foreign-client/foreign-therapist denial assertions.
+
+### Verification Card
+
+- required agents: specification, architecture, implementation, code review, test, security, DevOps, and Supabase review completed; reviewers approved after the profile-before-row and provision-before-auth policy regressions were added.
+- focused RED/GREEN: the missing profile creation and missing provision-before-auth policy assertions each failed before implementation; the final focused suite passed `258/258`.
+- `npm run ci:check-focused`: pass.
+- `npm run lint`: pass.
+- `npm run typecheck`: pass.
+- `npm run validate:tenant`: pass.
+- `npm run build`: pass.
+- `npm run test:routes:tier0`: pass, `244/244`.
+- standalone `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci`: pass before the final policy-only negative assertion, `552` files and `4,992` tests.
+- final `NODE_OPTIONS=--max-old-space-size=8192 npm run verify:local`: all `552` runnable files and all `4,993` runnable tests passed with no assertion failure, then Vitest emitted the known worker RPC timeout calling `onTaskUpdate`; the wrapper exited 1 before its later stages and remains blocked rather than reported as passed.
+- `npm run ci:verify-coverage`: pass from the final aggregate artifact, `92.96%` line coverage against `86.00%` required.
+- `git diff --check`: pass; line-ending warnings only.
+- blocked check: local `npm run ci:playwright` requires protected hosted credentials and the immutable Netlify preview. Exact-head PR CI must prove creation, authenticated therapist reads, unchanged foreign guards, and zero-residue cleanup.
+- result: `pass-with-blocked-checks` pending exact-head hosted `auth-browser-smoke` and `ci-gate`.
+- residual risk: the shared foreign target IDs and the read-only scope identity remain hosted fixtures; this repair removes only the stale shared therapist password dependency. Human critical-lane review remains mandatory.
+
+### PR Hygiene
+
+- pr-ready: yes after the exact file allowlist is staged and pushed to existing PR `#966`.
+- single-purpose repair: yes; it changes only the required therapist-smoke fixture lifecycle and its direct workflow/policy/test/handoff contracts.
+- unrelated changes: `.codex-tmp/` is pre-existing untracked evidence and is explicitly excluded from staging; generated test-report drift was restored.
+- protected-path drift: none beyond the declared `.github/workflows/ci.yml` and `scripts/ci/**` critical surfaces.
+- hosted status: no merge, migration apply, function deployment, capability grant, payroll activation, secret mutation, or customer/PHI access occurred.
+
+### Hosted Profile Authority Correction
+
+- Exact-head run `32067700918` at `282fb22ccc6213c2aeb3c3ae231c0803ca1aa7f4` reached the new provisioner before Playwright and failed its direct protected profile upsert with PostgreSQL `42501: organization_id is immutable for this role`; the always-run cleanup passed and left no run-owned actor behind.
+- Live read-only project inspection confirmed the existing service-role-only `public.provision_ci_rls_fixture_profile(uuid, uuid)` contract matches the checked-in guarded therapist fixture path.
+- The corrected order seeds only non-authority profile fields, creates the canonical therapist, role, and self-link rows, then delegates protected `role`, `organization_id`, and `is_active` alignment to that existing RPC. The run-owned actor receives the RPC's bounded two-hour marker in addition to its exact cleanup ownership metadata.
+- Focused RED/GREEN verification passed `268/268`. No migration, function definition, grant, RLS, schema, product auth, secret, hosted apply, deployment, merge, payroll activation, or foreign-fixture assertion changed.
+- Local gates passed policy, lint, typecheck, tenant validation, build, and tier-0 routes (`244/244`). The 8 GB aggregate completed all `552` runnable files and `4,994` runnable tests without an assertion failure, then exited on the known Vitest worker RPC timeout calling `onTaskUpdate`; it remains blocked rather than reported as passed.
+- Exact-head run `32070558815` at `6c51dedefb601b39a47990d86f65bdb5c5fedce7` cleared the immutability failure but exposed two trigger-created active roles; the existing RPC correctly rejected the actor before Playwright. Therapist/admin cleanup, IEHP smoke, and tier-0 passed.
+- The final bounded reconciliation deletes only role mappings for the newly created run-owned actor, then inserts one authoritative therapist role expiring with the same two-hour fixture marker before invoking the unchanged exact-one-role RPC.
+
+## PR #966 Post-Merge Dispatch And BCBA Smoke Repair
+
+- Date: August 17, 2026.
+- Merge proof: PR `#966` merged as `9d7eb15113bee72c9d37907316059e5de3ce30cd`, which was also the exact `origin/main` head used for post-merge validation.
+- Authorized hosted dispatch: Supabase migration `20260817012347_payroll_blocker_resolutions_advisor_remediation.sql` was applied to project `wnnjeqheqxxyrgsjmygy` as hosted ledger entry `20260817232756 / payroll_blocker_resolutions_advisor_remediation`. All seven indexes are valid and ready; the scoped policy uses `(select auth.uid())`; RLS, ACL, zero payroll capability grants, disabled feature default, and zero enabled organizations remain unchanged.
+- Authorized Edge Function dispatch: `extract-assessment-fields` deployed `ACTIVE` as version `127`, retained `verify_jwt=true`, and contains the merged sanitized Adobe nested-status extraction.
+- Main rerun evidence: both runtime-migration-parity jobs passed after the hosted apply. Main CI run `32078343244` then failed only because push-only `auth-browser-smoke` failed during synthetic BCBA provisioning; admin and run-owned therapist provisioning and all cleanup steps passed.
+- Root cause: live production Postgres logs at `2026-08-17T23:34:12.062Z` reported `organization_id is immutable for this role`. The BCBA script directly wrote protected `profiles.role`, `profiles.organization_id`, and `profiles.is_active` before invoking the existing authority RPC.
+- Classification: `high-risk human-reviewed`.
+- Lane: `critical`.
+- Linear: existing issue `WIN-219` is reused because the workspace issue limit prevented a dedicated repair issue.
+- Scope: repair `scripts/provision-ci-smoke-bcba.ts`, its focused guard tests, the exact browser-selector classification for synthetic therapist/BCBA provisioner changes, its focused selector test, and this handoff. The profile seed now writes identity fields only; fresh Auth metadata is read back; one expiring BCBA role singleton and the therapist link are proven before the unchanged service-role-only RPC; partial actors roll back; later-run and legacy actor cleanup remains marker-scoped; structured failures log only bounded code and message fields.
+- Non-goals: no workflow, migration, RPC, RLS, grant, product-auth, route, payroll activation, capability, secret, hosted data, or fixture-selection change.
+
+### Verification Card
+
+- classification: `high-risk human-reviewed`.
+- lane: `critical`.
+- change type: auth-sensitive CI provisioning and tenant-scoped service-role fixture lifecycle.
+- focused RED: the new non-authority profile seed and expiring role helpers failed before implementation because they did not exist.
+- focused GREEN: `60/60` across the browser selector, BCBA provisioner, service-only migration contract, and CI reliability wiring.
+- `npm run ci:check-focused`: pass; local credential-dependent checks were explicitly skipped by the policy runner.
+- `npm run lint`: pass.
+- `npm run typecheck`: pass.
+- `npm run validate:tenant`: pass.
+- `npm run build`: pass.
+- `npm run test:routes:tier0`: pass, `244/244` across eight specs.
+- `npm run test:ci`: broad tests, including the touched BCBA suite, ran without a functional assertion failure before Node reached the inherited approximately 4 GB heap limit and emitted `ERR_IPC_CHANNEL_CLOSED`; result remains blocked, not passed.
+- `npm run ci:playwright`: blocked locally because `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_PUBLISHABLE_KEY` are absent. A trusted workflow dispatch on the exact branch with every payroll activation input false is the decisive hosted proof.
+- Initial trusted dispatch `32083794973` passed unit, build, tier-0, and aggregate CI with every payroll deployment job skipped, but its auth job reported success by scope skip. That exposed a separate selector gap: neither synthetic therapist nor BCBA provisioner changes required the existing auth-smoke job. The bounded selector fix adds only those two exact script paths to the existing auth/session classification; the first dispatch is not treated as hosted BCBA proof.
+- Reviews: specification, architecture, implementation, code, test, security, and Supabase reviews completed. Final code and security re-reviews reported no findings; Supabase review confirmed the live RPC remains `SECURITY DEFINER`, empty-search-path, service-role-only, and tenant-derived from the same role/link inputs.
+- result: `pass-with-blocked-checks` pending exact-head hosted BCBA provision, downstream browser checks, and zero-residue cleanup.
+- residual risk: the original failure occurs only in secret-backed non-pull-request execution. Human critical-lane review remains mandatory before merge.
+
+### PR Hygiene
+
+- branch: `codex/postmerge-bcba-smoke-repair`, created from exact merged main `9d7eb15113bee72c9d37907316059e5de3ce30cd` in an isolated worktree.
+- single-purpose: yes; one BCBA fixture authority/cleanup repair, the exact selector needed to exercise it in trusted CI, their focused tests, and required handoff evidence.
+- unrelated changes: none in the isolated worktree.
+- generated artifact drift: none.
+- protected-path drift: the declared service-role CI fixture behavior and `scripts/ci/select-browser-checks.mjs` only; no workflow job, secret, deployment, or activation logic changed.
+- required follow-up: commit and push the exact five-file allowlist, update the WIN-219-linked PR for human review, dispatch non-activating trusted CI on that branch, and require the hosted BCBA actor lifecycle and cleanup to pass before owner merge.

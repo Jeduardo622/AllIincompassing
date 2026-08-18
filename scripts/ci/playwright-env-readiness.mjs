@@ -184,11 +184,11 @@ const groups = [
     note: "CI can provision PW_SUPERADMIN_* later; this report only classifies whether a pair is already present.",
   }),
   group({
-    id: "therapist_persona",
-    label: "Durable therapist persona",
+    id: "synthetic_therapist_provisioning",
+    label: "Run-owned therapist provisioning",
     required: true,
-    variables: ["PW_THERAPIST_EMAIL", "PW_THERAPIST_PASSWORD"],
-    note: "Must be a durable hosted test persona; this report confirms secret presence, not login validity.",
+    variables: ["CI_SMOKE_THERAPIST_SCOPE_EMAIL", "SUPABASE_PUBLISHABLE_KEY"],
+    note: "The scope identity is read-only; CI provisions and authenticates a dedicated therapist before browser tests.",
   }),
   anyPairGroup({
     id: "schedule_persona_or_admin_fallback",

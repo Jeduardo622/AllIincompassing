@@ -380,7 +380,7 @@ ${runtimeParityRestriction ? `    if: ${runtimeParityRestriction}
       - env:
           MIGRATION_PARITY_BASE_SHA: \${{ needs.change_scope.outputs.base_sha }}
           MIGRATION_PARITY_HEAD_SHA: \${{ needs.change_scope.outputs.head_sha }}
-          MIGRATION_PARITY_REQUIRED_MIGRATIONS: "20260811214856|payroll_timekeeping_capture_read_model,20260812060529|payroll_timesheet_snapshots,20260812103000|payroll_session_lifecycle_context,20260812113000|payroll_session_lifecycle_context_disabled_state,20260812122436|payroll_approval_workflow,20260812141324|payroll_review_read_models,20260812153628|payroll_administration,20260812185531|payroll_approval_workflow_repair,20260812212854|payroll_timesheet_period_contract_repair,20260812230837|payroll_export_ledger,20260813013000|payroll_approval_codex_review_fixes,20260813103000|payroll_security_repair,20260814172117|payroll_manager_assignment_advisor_remediation,20260814183500|payroll_session_context_disabled_precedence,20260814191200|payroll_session_context_enabled_authority_repair,20260814205000|profile_insert_sync_bypass,20260814213754|session_audit_created_by_typo_repair,20260815002241|payroll_mutation_receipts_initplan,20260815191838|payroll_mutation_receipts_actor_user_id_index,20260816014726|payroll_employee_time_events_fk_indexes,20260816033808|payroll_employee_rate_versions_fk_indexes,20260816063149|payroll_pay_cycle_fk_indexes,20260816153226|payroll_admin_helper_authenticated_execute,20260816201115|payroll_export_fk_indexes"
+          MIGRATION_PARITY_REQUIRED_MIGRATIONS: "20260811214856|payroll_timekeeping_capture_read_model,20260812060529|payroll_timesheet_snapshots,20260812103000|payroll_session_lifecycle_context,20260812113000|payroll_session_lifecycle_context_disabled_state,20260812122436|payroll_approval_workflow,20260812141324|payroll_review_read_models,20260812153628|payroll_administration,20260812185531|payroll_approval_workflow_repair,20260812212854|payroll_timesheet_period_contract_repair,20260812230837|payroll_export_ledger,20260813013000|payroll_approval_codex_review_fixes,20260813103000|payroll_security_repair,20260814172117|payroll_manager_assignment_advisor_remediation,20260814183500|payroll_session_context_disabled_precedence,20260814191200|payroll_session_context_enabled_authority_repair,20260814205000|profile_insert_sync_bypass,20260814213754|session_audit_created_by_typo_repair,20260815002241|payroll_mutation_receipts_initplan,20260815191838|payroll_mutation_receipts_actor_user_id_index,20260816014726|payroll_employee_time_events_fk_indexes,20260816033808|payroll_employee_rate_versions_fk_indexes,20260816063149|payroll_pay_cycle_fk_indexes,20260816153226|payroll_admin_helper_authenticated_execute,20260816201115|payroll_export_fk_indexes,20260817012347|payroll_blocker_resolutions_advisor_remediation"
           ACTIVATE_PAYROLL_TIMESHEETS: \${{ inputs.activate_payroll_timesheets || false }}
           ACTIVATE_PAYROLL_EXPORT: \${{ inputs.activate_payroll_export || false }}
           ACTIVATE_PAYROLL_APPROVALS: \${{ inputs.activate_payroll_approvals || false }}
@@ -540,6 +540,14 @@ ${deployPayrollAdministrationBeforeDeploy}
 ${authNeeds.map((need) => `      - ${need}`).join("\n")}
     if: ${authIf}
     steps:
+      - name: Provision synthetic therapist smoke actor
+        if: steps.browser_scope.outputs.auth_smoke_required == 'true'
+        env:
+          SUPABASE_URL: \${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: \${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_PUBLISHABLE_KEY: \${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          CI_SMOKE_THERAPIST_SCOPE_EMAIL: \${{ secrets.PW_SCHEDULE_EMAIL }}
+        run: npx tsx scripts/provision-ci-smoke-therapist.ts
       - name: Auth browser smoke gate
         run: npm run playwright:auth
       - name: Session browser smoke gate
@@ -547,8 +555,6 @@ ${authNeeds.map((need) => `      - ${need}`).join("\n")}
           PW_BASE_URL: \${{ github.event_name == 'pull_request' && format('https://deploy-preview-{0}--velvety-cendol-dae4d6.netlify.app', github.event.pull_request.number) || secrets.PW_BASE_URL }}
           PW_ADMIN_EMAIL: \${{ secrets.PW_ADMIN_EMAIL }}
           PW_ADMIN_PASSWORD: \${{ secrets.PW_ADMIN_PASSWORD }}
-          PW_THERAPIST_EMAIL: \${{ secrets.PW_THERAPIST_EMAIL }}
-          PW_THERAPIST_PASSWORD: \${{ secrets.PW_THERAPIST_PASSWORD }}
           PW_SCHEDULE_EMAIL: \${{ secrets.PW_SCHEDULE_EMAIL }}
           PW_SCHEDULE_PASSWORD: \${{ secrets.PW_SCHEDULE_PASSWORD }}
           PW_FOREIGN_CLIENT_ID: \${{ secrets.PW_FOREIGN_CLIENT_ID }}
@@ -584,6 +590,14 @@ ${authNeeds.map((need) => `      - ${need}`).join("\n")}
             exit 1
           fi
           npm run ci:playwright
+      - name: Cleanup synthetic therapist smoke actor
+        if: always() && steps.browser_scope.outputs.auth_smoke_required == 'true'
+        env:
+          SUPABASE_URL: \${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: \${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_PUBLISHABLE_KEY: \${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          CI_SMOKE_THERAPIST_SCOPE_EMAIL: \${{ secrets.PW_SCHEDULE_EMAIL }}
+        run: npx tsx scripts/provision-ci-smoke-therapist.ts --cleanup
 ${authExtra}
 
   playwright_env_readiness:
@@ -2171,6 +2185,32 @@ describe("check-session-deploy-safety", () => {
     );
   });
 
+  test("rejects runtime_migration_parity when the explicit contract omits payroll_blocker_resolutions_advisor_remediation", () => {
+    const fixtureRoot = makeFixture({
+      ci: {
+        workflowComment:
+          "# payroll blocker resolutions advisor remediation parity regression fixture",
+      },
+    });
+    const workflowPath = path.join(fixtureRoot, ".github", "workflows", "ci.yml");
+    const current = readFileSync(workflowPath, "utf8");
+    writeFileSync(
+      workflowPath,
+      current.replace(
+        ",20260817012347|payroll_blocker_resolutions_advisor_remediation",
+        "",
+      ),
+      "utf8",
+    );
+
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "runtime_migration_parity must run the merge-range checker with change_scope SHAs, the explicit WIN-219 payroll migration contract, activation flags, and SUPABASE_DB_URL",
+    );
+  });
+
   test("rejects payroll-administration deployment without a live main SHA comparison", () => {
     const fixtureRoot = makeFixture({
       ci: {
@@ -2481,7 +2521,35 @@ ${PAYROLL_ADMINISTRATION_SECRET_SYNC}`,
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
-      "auth_browser_smoke must run npm run ci:playwright with the complete required auth/session secret contract",
+      "auth_browser_smoke must run npm run ci:playwright with the complete required auth/session environment contract",
+    );
+  });
+
+  test("rejects synthetic therapist provisioning after the auth browser gate", () => {
+    const fixtureRoot = makeFixture();
+    const workflowPath = path.join(fixtureRoot, ".github", "workflows", "ci.yml");
+    const current = readFileSync(workflowPath, "utf8");
+    const provisionStep = `      - name: Provision synthetic therapist smoke actor
+        if: steps.browser_scope.outputs.auth_smoke_required == 'true'
+        env:
+          SUPABASE_URL: \${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: \${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_PUBLISHABLE_KEY: \${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          CI_SMOKE_THERAPIST_SCOPE_EMAIL: \${{ secrets.PW_SCHEDULE_EMAIL }}
+        run: npx tsx scripts/provision-ci-smoke-therapist.ts`;
+    const authStep = `      - name: Auth browser smoke gate
+        run: npm run playwright:auth`;
+    writeFileSync(
+      workflowPath,
+      current.replace(`${provisionStep}\n${authStep}`, `${authStep}\n${provisionStep}`),
+      "utf8",
+    );
+
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "auth_browser_smoke must provision an exact run-owned therapist before auth and session Playwright",
     );
   });
 

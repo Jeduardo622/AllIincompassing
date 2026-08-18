@@ -22,14 +22,15 @@ The 2026-08-18 owner attestation accepts editable CalOptima draft writes only th
 
 ## Synthetic Evidence
 
-Both fixed operator runs used commit `59cf2310212d57f3ded94a135f71eccc9313d1c0` and image `sha256:ad9b5d58819f90a04ac5af94298a4be06c9af4e254b131ee56ca0d5d41b04362`.
+The first two fixed operator measurement runs used commit `59cf2310212d57f3ded94a135f71eccc9313d1c0` and image `sha256:ad9b5d58819f90a04ac5af94298a4be06c9af4e254b131ee56ca0d5d41b04362`.
 
 | Run | Result | Total | Queue scheduler | Summary SHA-256 | Evidence SHA-256 |
 | --- | --- | ---: | ---: | --- | --- |
 | `20260818T184848Z-a322ad` | 12/12 plus cleanup passed | 673,171 ms | 67,730 ms | `75959e3049a1e8b5dafb880953e3c5b9ab9fcbb03f08cd6bc36286458b00ae0b` | `367164a4d00bf393b2f231a7c930c10ecf0d17779f093863ef7817fc6b024aa1` |
 | `20260818T190015Z-9086e7` | 12/12 plus cleanup passed | 646,584 ms | 64,866 ms | `5ef14713167cab9b6282649eb01f0639be0df513cf673d2b4cf96f1788388b6c` | `c09fdc992a072ce3155bc6b789c53c2abe228a57351372161b0667332bbe4dce` |
+| `20260818T194031Z-48027b` | 12/12 plus cleanup passed | 627,065 ms | 73,880 ms | `5bba27b52936b6a8c87e28ca27992e662d9a6cd94999c5d68eff9a801553627d` | `39aeb4f1c3c05694d489928a63f8447349f0ea26e1048bd6c83c12e378636043` |
 
-Every cleanup dimension passed: database audit, Compose down, Supabase stop, Compose residue, network residue, and archive context. Three additional standalone scheduler smokes passed at 51,709 ms, 58,353 ms, and 61,454 ms. Their response payloads were discarded; only elapsed time and exit status were retained. Final inspection found zero local Supabase containers and volumes.
+The review-closure run used commit `f97a295905ae57373ba16a55b838095819c70af0` and image `sha256:e14b1a709abc86c77dbc230dd1b544e86a8c55bd5dd4fb0698be8d5b8fcb0467`. Every cleanup dimension passed in all three runs: database audit, Compose down, Supabase stop, Compose residue, network residue, and archive context. Three additional standalone scheduler smokes passed at 51,709 ms, 58,353 ms, and 61,454 ms. Their response payloads were discarded; only elapsed time and exit status were retained. Final inspection found zero local Supabase containers and volumes.
 
 ## Recommended Schedule
 
@@ -56,9 +57,12 @@ No operational policy row was inserted. The prune RPC remains `policy_unapproved
 
 ## Verification Card
 
+- classification: high-risk human-reviewed
 - lane: critical
-- focused tests: 67/67 passed for Phase 2 harness and preview seed regressions
-- fixed local operator: two consecutive 12/12 runs plus cleanup passed
+- change type: database seed, protected local operator harness, tests, and process documentation
+- required checks: `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run ci:verify-coverage`, `npm run validate:tenant`, `npm run build`, `npm run test:routes:tier0`, `npm run agent-work:retention-contract`, focused regressions, and the fixed local operator
+- focused tests: 68/68 passed for Phase 2 harness and preview seed regressions
+- fixed local operator: three 12/12 runs plus cleanup passed, including review-closure source commit `f97a2959`
 - standalone cadence: three scheduler smokes passed
 - `npm run ci:check-focused`: passed
 - `npm run lint`: passed
@@ -69,8 +73,9 @@ No operational policy row was inserted. The prune RPC remains `policy_unapproved
 - `npm run ci:verify-coverage`: passed at 92.96% lines
 - `npm run build`: passed
 - `npm run test:routes:tier0`: passed 244/244
+- blocked checks: dynamic privileged-grant, sensitive-table overlap, Supabase auth-parity, and preview-drift branches inside `ci:check-focused` were skipped because their process-local database/auth parity inputs were unavailable; static grant, RLS, migration, tenant, fresh-stack retention, and exact operator checks passed. Hosted telemetry and exact-head CI remain pending the PR.
 - hosted actions: none
 - hosted deletion: withheld
 - runtime activation: withheld
-- result: local readiness evidence complete with inherited test flake risk recorded; candidate canary schedule approval and human-reviewed PR remain
+- result: pass-with-blocked-checks; local readiness evidence is complete with inherited test flake risk recorded, while candidate canary schedule approval, exact-head CI, and human review remain
 - residual risk: local synthetic timings do not substitute for hosted queue/lock telemetry; hosted dispatch remains separately gated

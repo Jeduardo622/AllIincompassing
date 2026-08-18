@@ -716,6 +716,48 @@ const resetSupabaseDatabase = async ({ cwd, env, execute, reasonCode }) => {
       return;
     } catch (error) {
       lastError = error;
+      const output = error instanceof HarnessCommandError
+        ? `${error.result.stdout}\n${error.result.stderr}`
+        : "";
+      const resetCompletedBeforeNetworkDrift =
+        /Restarting containers/i.test(output) &&
+        /ENOTFOUND supabase_db_AllIincompassing/i.test(output) &&
+        /container is not ready: unhealthy/i.test(output);
+      if (resetCompletedBeforeNetworkDrift) {
+        await executeChecked(
+          execute,
+          "docker",
+          [
+            "network",
+            "connect",
+            PHASE2_NETWORK,
+            `supabase_db_${PHASE2_PROJECT_ID}`,
+          ],
+          { cwd, env, timeoutMs: HARD_TIMEOUT_BUDGETS_MS.preflight },
+          `${reasonCode}_network_reconcile_failed`,
+        );
+        await executeChecked(
+          execute,
+          "docker",
+          [
+            "restart",
+            `supabase_auth_${PHASE2_PROJECT_ID}`,
+            `supabase_realtime_${PHASE2_PROJECT_ID}`,
+            `supabase_storage_${PHASE2_PROJECT_ID}`,
+            `supabase_analytics_${PHASE2_PROJECT_ID}`,
+          ],
+          { cwd, env, timeoutMs: HARD_TIMEOUT_BUDGETS_MS.preflight },
+          `${reasonCode}_dependent_restart_failed`,
+        );
+        await executeChecked(
+          execute,
+          "supabase",
+          ["start", "--network-id", PHASE2_NETWORK, "--yes"],
+          { cwd, env, timeoutMs: HARD_TIMEOUT_BUDGETS_MS.supabaseStart },
+          `${reasonCode}_health_recheck_failed`,
+        );
+        return;
+      }
     }
   }
   throw lastError;

@@ -61,6 +61,7 @@ const makeExecutor = ({
   failPreflightResidueProof = false,
   failStatus = false,
   firstResetFails = false,
+  firstResetLosesDedicatedNetwork = false,
   gitStatusOutput = "",
   gitStatusRequiredPathspec,
   interruptController,
@@ -75,6 +76,7 @@ const makeExecutor = ({
   failPreflightResidueProof?: boolean;
   failStatus?: boolean;
   firstResetFails?: boolean;
+  firstResetLosesDedicatedNetwork?: boolean;
   gitStatusOutput?: string;
   gitStatusRequiredPathspec?: string;
   interruptController?: AbortController;
@@ -111,6 +113,13 @@ const makeExecutor = ({
     }
     if (command === "supabase" && args[0] === "db" && args[1] === "reset") {
       resetCount += 1;
+      if (firstResetLosesDedicatedNetwork && resetCount === 1) {
+        return {
+          code: 1,
+          stdout: "Seeding data from supabase/seed.sql...\nRestarting containers...\n",
+          stderr: "getaddrinfo ENOTFOUND supabase_db_AllIincompassing\nsupabase_storage_AllIincompassing container is not ready: unhealthy",
+        };
+      }
       if (firstResetFails && resetCount === 1) {
         return { code: 1, stdout: "", stderr: "transient reset failure" };
       }
@@ -267,6 +276,7 @@ const createHarnessFixture = async (options: {
   failPreflightResidueProof?: boolean;
   failStatus?: boolean;
   firstResetFails?: boolean;
+  firstResetLosesDedicatedNetwork?: boolean;
   gitStatusOutput?: string;
   gitStatusRequiredPathspec?: string;
   interruptController?: AbortController;
@@ -502,6 +512,34 @@ describe("agent work ledger phase2 harness contracts", () => {
     expect(resets.slice(0, 2).every(({ args }) =>
       args.includes("--network-id") && args.includes("agent-work-phase2")
     )).toBe(true);
+  });
+
+  it("reconciles the Windows reset network drift without repeating the completed reset", async () => {
+    const fixture = await createHarnessFixture({
+      firstResetLosesDedicatedNetwork: true,
+    });
+    await fixture.run();
+
+    const resets = fixture.executor.invocations.filter((entry) =>
+      entry.command === "supabase" && entry.args[0] === "db" &&
+      entry.args[1] === "reset"
+    );
+    expect(resets).toHaveLength(
+      PHASE2_CHECKS.filter(({ destructive }) => destructive).length,
+    );
+    expect(fixture.executor.invocations).toContainEqual(expect.objectContaining({
+      command: "docker",
+      args: [
+        "network",
+        "connect",
+        "agent-work-phase2",
+        "supabase_db_AllIincompassing",
+      ],
+    }));
+    expect(fixture.executor.invocations).toContainEqual(expect.objectContaining({
+      command: "supabase",
+      args: ["start", "--network-id", "agent-work-phase2", "--yes"],
+    }));
   });
 
   it("retries Supabase stop after observed residue and proves the retry clears it", async () => {

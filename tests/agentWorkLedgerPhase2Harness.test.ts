@@ -62,6 +62,7 @@ const makeExecutor = ({
   failStatus = false,
   firstResetFails = false,
   firstResetLosesDedicatedNetwork = false,
+  networkReconcileHealthFails = false,
   gitStatusOutput = "",
   gitStatusRequiredPathspec,
   interruptController,
@@ -77,6 +78,7 @@ const makeExecutor = ({
   failStatus?: boolean;
   firstResetFails?: boolean;
   firstResetLosesDedicatedNetwork?: boolean;
+  networkReconcileHealthFails?: boolean;
   gitStatusOutput?: string;
   gitStatusRequiredPathspec?: string;
   interruptController?: AbortController;
@@ -123,6 +125,12 @@ const makeExecutor = ({
       if (firstResetFails && resetCount === 1) {
         return { code: 1, stdout: "", stderr: "transient reset failure" };
       }
+    }
+    if (
+      networkReconcileHealthFails && resetCount > 0 &&
+      command === "supabase" && args[0] === "start"
+    ) {
+      return { code: 1, stdout: "", stderr: "health recheck failed" };
     }
     if (command === "docker-compose" && args.includes("down") && !composeDownSeen) {
       composeDownSeen = true;
@@ -277,6 +285,7 @@ const createHarnessFixture = async (options: {
   failStatus?: boolean;
   firstResetFails?: boolean;
   firstResetLosesDedicatedNetwork?: boolean;
+  networkReconcileHealthFails?: boolean;
   gitStatusOutput?: string;
   gitStatusRequiredPathspec?: string;
   interruptController?: AbortController;
@@ -540,6 +549,28 @@ describe("agent work ledger phase2 harness contracts", () => {
       command: "supabase",
       args: ["start", "--network-id", "agent-work-phase2", "--yes"],
     }));
+  });
+
+  it("fails closed when the reconciled Supabase stack does not become healthy", async () => {
+    const fixture = await createHarnessFixture({
+      firstResetLosesDedicatedNetwork: true,
+      networkReconcileHealthFails: true,
+    });
+
+    await expect(fixture.run()).rejects.toThrow(
+      "reset_schema-seed_failed_health_recheck_failed",
+    );
+    const artifacts = createRunArtifacts({
+      projectRoot: fixture.cwd,
+      runId: "20260803T010203Z-test",
+    });
+    const manifest = JSON.parse(await readFile(artifacts.manifestPath, "utf8"));
+    expect(manifest).toMatchObject({
+      exitStatus: "failed",
+      failure: {
+        reasonCode: "reset_schema-seed_failed_health_recheck_failed",
+      },
+    });
   });
 
   it("retries Supabase stop after observed residue and proves the retry clears it", async () => {

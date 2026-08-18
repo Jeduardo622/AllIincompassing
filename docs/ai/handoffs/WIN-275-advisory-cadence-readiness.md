@@ -33,22 +33,24 @@ Every cleanup dimension passed: database audit, Compose down, Supabase stop, Com
 
 ## Recommended Schedule
 
-Request owner approval for:
+Synthetic evidence supports the following candidate for a separately approved, bounded hosted canary measurement phase:
 
 - shared runner/sweeper schedule: `* * * * *`
 - HTTP timeout: `5000` ms
 - sweeper bound: `25` items per category/pass
 
-The controller currently accepts one schedule for both jobs. A one-minute interval is the smallest supported Cron cadence, keeps initial on-demand dispatch within one minute, and with the runner's 60-second lease bounds ordinary stale-lease recovery to approximately two minutes from acquisition. All three end-to-end synthetic smokes completed the next Cron cycle and teardown within 61.454 seconds.
+The controller currently accepts one schedule for both jobs, so this candidate wakes runner and sweeper simultaneously once per minute. A one-minute interval is the smallest supported Cron cadence, keeps initial on-demand dispatch within one minute, and with the runner's 60-second lease bounds ordinary stale-lease recovery to approximately two minutes from acquisition. All three end-to-end synthetic smokes completed the next Cron cycle and teardown within 61.454 seconds.
 
-Approval does not itself dispatch. A later hosted action must start disabled, capture queue/latency/lease/retry/poison/overlap/database baselines, prove legacy generation returns `503 legacy_generation_disabled`, and stop on any drift. `active` remains forbidden.
+This is not a sustained production cadence recommendation and does not revise the canonical runbook: no hosted cadence is currently approved, and `0 0 1 1 *` remains the non-firing hosted transaction-test fixture. Local timing cannot prove hosted queue, lock, or overlap behavior.
+
+Approval of this candidate does not itself dispatch. A later hosted phase must first perform a disabled-state, read-only preflight for extensions, jobs, Vault-name presence, runtime policy, queue depth, oldest message age, and database lock/write baseline. A distinct owner dispatch may then authorize a short synthetic advisory canary at the candidate cadence to measure runner/sweeper p50/p95 latency, lease recovery, retries, poison archives, Cron overlap, and database activity before deciding any sustained cadence. The canary must restore disabled mode and remove its jobs/Vault entries. `active` remains forbidden.
 
 ## Retention Design
 
 - Ledger history: 365 days from terminal item time; complete export and matching receipt required; active holds block; only Ledger-owned rows may be deleted child-first.
 - Queue archive: 90 days from archive time; live/invisible messages are never candidates; authoritative step must be terminal or absent; active holds block.
 - Execution trace: 30 days from trace creation; work item must be terminal; export receipt and no active hold required; no cascade outside trace rows.
-- Future execution: read-only candidate count first, one organization/category per transaction, at most 25 work items, 5-second statement timeout, sanitized counts/hashes, and immediate rollback on scope or reconciliation drift.
+- Future execution: read-only candidate count first, then one exact work item/category per transaction. Each item requires its own consistent export, matching hash-bound receipt, hold evaluation, deletion result, and rollback boundary. An outer operator may inspect at most 25 candidates per pass, but it must never combine their deletes into one transaction. Use a 5-second statement timeout, sanitized counts/hashes, and immediate rollback on scope or reconciliation drift.
 
 No operational policy row was inserted. The prune RPC remains `policy_unapproved` and returns `deleted_count=0`. Deletion implementation and hosted deletion are separate critical-lane owner gates.
 
@@ -58,8 +60,17 @@ No operational policy row was inserted. The prune RPC remains `policy_unapproved
 - focused tests: 67/67 passed for Phase 2 harness and preview seed regressions
 - fixed local operator: two consecutive 12/12 runs plus cleanup passed
 - standalone cadence: three scheduler smokes passed
+- `npm run ci:check-focused`: passed
+- `npm run lint`: passed
+- `npm run typecheck`: passed
+- `npm run validate:tenant`: passed
+- `npm run agent-work:retention-contract`: passed on a fresh local stack
+- `npm run test:ci`: first run failed from a 4 GB worker OOM after one transient preview fetch failure; the preview file then passed 9/9 alone. The 8 GB rerun passed and advanced through coverage generation and build. The unrelated `provision-ci-smoke-bcba` assertion also failed once in isolation with zero branch diff from `origin/main`, so it remains an inherited order/environment flake rather than a WIN-275 regression.
+- `npm run ci:verify-coverage`: passed at 92.96% lines
+- `npm run build`: passed
+- `npm run test:routes:tier0`: passed 244/244
 - hosted actions: none
 - hosted deletion: withheld
 - runtime activation: withheld
-- result: readiness evidence complete; schedule approval and human-reviewed PR remain
+- result: local readiness evidence complete with inherited test flake risk recorded; candidate canary schedule approval and human-reviewed PR remain
 - residual risk: local synthetic timings do not substitute for hosted queue/lock telemetry; hosted dispatch remains separately gated

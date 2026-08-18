@@ -1289,3 +1289,46 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - Local gates passed policy, lint, typecheck, tenant validation, build, and tier-0 routes (`244/244`). The 8 GB aggregate completed all `552` runnable files and `4,994` runnable tests without an assertion failure, then exited on the known Vitest worker RPC timeout calling `onTaskUpdate`; it remains blocked rather than reported as passed.
 - Exact-head run `32070558815` at `6c51dedefb601b39a47990d86f65bdb5c5fedce7` cleared the immutability failure but exposed two trigger-created active roles; the existing RPC correctly rejected the actor before Playwright. Therapist/admin cleanup, IEHP smoke, and tier-0 passed.
 - The final bounded reconciliation deletes only role mappings for the newly created run-owned actor, then inserts one authoritative therapist role expiring with the same two-hour fixture marker before invoking the unchanged exact-one-role RPC.
+
+## PR #966 Post-Merge Dispatch And BCBA Smoke Repair
+
+- Date: August 17, 2026.
+- Merge proof: PR `#966` merged as `9d7eb15113bee72c9d37907316059e5de3ce30cd`, which was also the exact `origin/main` head used for post-merge validation.
+- Authorized hosted dispatch: Supabase migration `20260817012347_payroll_blocker_resolutions_advisor_remediation.sql` was applied to project `wnnjeqheqxxyrgsjmygy` as hosted ledger entry `20260817232756 / payroll_blocker_resolutions_advisor_remediation`. All seven indexes are valid and ready; the scoped policy uses `(select auth.uid())`; RLS, ACL, zero payroll capability grants, disabled feature default, and zero enabled organizations remain unchanged.
+- Authorized Edge Function dispatch: `extract-assessment-fields` deployed `ACTIVE` as version `127`, retained `verify_jwt=true`, and contains the merged sanitized Adobe nested-status extraction.
+- Main rerun evidence: both runtime-migration-parity jobs passed after the hosted apply. Main CI run `32078343244` then failed only because push-only `auth-browser-smoke` failed during synthetic BCBA provisioning; admin and run-owned therapist provisioning and all cleanup steps passed.
+- Root cause: live production Postgres logs at `2026-08-17T23:34:12.062Z` reported `organization_id is immutable for this role`. The BCBA script directly wrote protected `profiles.role`, `profiles.organization_id`, and `profiles.is_active` before invoking the existing authority RPC.
+- Classification: `high-risk human-reviewed`.
+- Lane: `critical`.
+- Linear: existing issue `WIN-219` is reused because the workspace issue limit prevented a dedicated repair issue.
+- Scope: repair `scripts/provision-ci-smoke-bcba.ts`, its focused guard tests, the exact browser-selector classification for synthetic therapist/BCBA provisioner changes, its focused selector test, and this handoff. The profile seed now writes identity fields only; fresh Auth metadata is read back; one expiring BCBA role singleton and the therapist link are proven before the unchanged service-role-only RPC; partial actors roll back; later-run and legacy actor cleanup remains marker-scoped; structured failures log only bounded code and message fields.
+- Non-goals: no workflow, migration, RPC, RLS, grant, product-auth, route, payroll activation, capability, secret, hosted data, or fixture-selection change.
+
+### Verification Card
+
+- classification: `high-risk human-reviewed`.
+- lane: `critical`.
+- change type: auth-sensitive CI provisioning and tenant-scoped service-role fixture lifecycle.
+- focused RED: the new non-authority profile seed and expiring role helpers failed before implementation because they did not exist.
+- focused GREEN: `60/60` across the browser selector, BCBA provisioner, service-only migration contract, and CI reliability wiring.
+- `npm run ci:check-focused`: pass; local credential-dependent checks were explicitly skipped by the policy runner.
+- `npm run lint`: pass.
+- `npm run typecheck`: pass.
+- `npm run validate:tenant`: pass.
+- `npm run build`: pass.
+- `npm run test:routes:tier0`: pass, `244/244` across eight specs.
+- `npm run test:ci`: broad tests, including the touched BCBA suite, ran without a functional assertion failure before Node reached the inherited approximately 4 GB heap limit and emitted `ERR_IPC_CHANNEL_CLOSED`; result remains blocked, not passed.
+- `npm run ci:playwright`: blocked locally because `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_PUBLISHABLE_KEY` are absent. A trusted workflow dispatch on the exact branch with every payroll activation input false is the decisive hosted proof.
+- Initial trusted dispatch `32083794973` passed unit, build, tier-0, and aggregate CI with every payroll deployment job skipped, but its auth job reported success by scope skip. That exposed a separate selector gap: neither synthetic therapist nor BCBA provisioner changes required the existing auth-smoke job. The bounded selector fix adds only those two exact script paths to the existing auth/session classification; the first dispatch is not treated as hosted BCBA proof.
+- Reviews: specification, architecture, implementation, code, test, security, and Supabase reviews completed. Final code and security re-reviews reported no findings; Supabase review confirmed the live RPC remains `SECURITY DEFINER`, empty-search-path, service-role-only, and tenant-derived from the same role/link inputs.
+- result: `pass-with-blocked-checks` pending exact-head hosted BCBA provision, downstream browser checks, and zero-residue cleanup.
+- residual risk: the original failure occurs only in secret-backed non-pull-request execution. Human critical-lane review remains mandatory before merge.
+
+### PR Hygiene
+
+- branch: `codex/postmerge-bcba-smoke-repair`, created from exact merged main `9d7eb15113bee72c9d37907316059e5de3ce30cd` in an isolated worktree.
+- single-purpose: yes; one BCBA fixture authority/cleanup repair, the exact selector needed to exercise it in trusted CI, their focused tests, and required handoff evidence.
+- unrelated changes: none in the isolated worktree.
+- generated artifact drift: none.
+- protected-path drift: the declared service-role CI fixture behavior and `scripts/ci/select-browser-checks.mjs` only; no workflow job, secret, deployment, or activation logic changed.
+- required follow-up: commit and push the exact five-file allowlist, update the WIN-219-linked PR for human review, dispatch non-activating trusted CI on that branch, and require the hosted BCBA actor lifecycle and cleanup to pass before owner merge.

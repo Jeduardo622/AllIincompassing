@@ -101,6 +101,25 @@ describe('select-browser-checks', () => {
     ]);
   });
 
+  it.each([
+    'scripts/provision-ci-smoke-therapist.ts',
+    'scripts/provision-ci-smoke-bcba.ts',
+  ])('requires hosted auth smoke when synthetic actor provisioning changes: %s', (file) => {
+    const selection = runSelector('--changed-file', file);
+
+    expect(selection.authSmokeRequired).toBe(true);
+    expect(selection.tier0Required).toBe(true);
+    expect(selection.iehpAssessmentImportSmokeRequired).toBe(false);
+    expect(selection.supervisionCorrectionRequired).toBe(false);
+    expect(selection.tier0Specs).toEqual([
+      'cypress/e2e/routes_auth.cy.ts',
+      'cypress/e2e/routes_schedule.cy.ts',
+    ]);
+    expect(selection.reasons).toEqual([
+      `${file}: auth/session browser flow`,
+    ]);
+  });
+
   it('requires IEHP assessment import smoke for API and provisioning surfaces', () => {
     for (const file of [
       'netlify/functions/assessment-documents.ts',

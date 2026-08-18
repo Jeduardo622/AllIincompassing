@@ -68,6 +68,118 @@ export interface SmokeBcbaSessionInvariant {
   organization_id?: string | null;
 }
 
+export interface SmokeBcbaAppMetadata {
+  smoke_actor: "bcba";
+  smoke_email: string;
+  smoke_run_id: string;
+  smoke_run_attempt: string;
+  smoke_job: string;
+  smoke_expires_at: string;
+}
+
+export interface SmokeBcbaRoleInvariant {
+  role_id?: string | null;
+  is_active?: boolean | null;
+  expires_at?: string | null;
+}
+
+export const buildSmokeBcbaAppMetadata = (
+  email: string,
+  env: NodeJS.ProcessEnv = process.env,
+  now: Date = new Date(),
+): SmokeBcbaAppMetadata => ({
+  smoke_actor: "bcba",
+  smoke_email: email,
+  smoke_run_id: env.GITHUB_RUN_ID?.trim() || "local",
+  smoke_run_attempt: env.GITHUB_RUN_ATTEMPT?.trim() || "1",
+  smoke_job: env.GITHUB_JOB?.trim() || "local",
+  smoke_expires_at: new Date(now.getTime() + 6 * 60 * 60 * 1000).toISOString(),
+});
+
+export const assertSmokeBcbaOwnership = (
+  user: { email?: string | null; app_metadata?: Record<string, unknown> | null },
+  expectedEmail: string,
+  expectedMetadata: SmokeBcbaAppMetadata,
+  now: Date = new Date(),
+): void => {
+  const metadata = user.app_metadata;
+  if (
+    user.email?.toLowerCase() !== expectedEmail.toLowerCase()
+    || metadata?.smoke_actor !== expectedMetadata.smoke_actor
+    || metadata?.smoke_email !== expectedMetadata.smoke_email
+    || metadata?.smoke_run_id !== expectedMetadata.smoke_run_id
+    || metadata?.smoke_run_attempt !== expectedMetadata.smoke_run_attempt
+    || metadata?.smoke_job !== expectedMetadata.smoke_job
+    || Date.parse(String(metadata?.smoke_expires_at)) <= now.getTime()
+  ) {
+    throw new Error("Synthetic BCBA ownership metadata is missing, mismatched, or expired.");
+  }
+};
+
+export const serializeSmokeBcbaError = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object") {
+    const candidate = error as { code?: unknown; message?: unknown };
+    const code = typeof candidate.code === "string" ? candidate.code.trim() : "";
+    const message = typeof candidate.message === "string" ? candidate.message.trim() : "";
+    if (code && message) return `${code}: ${message}`;
+    if (message) return message;
+    if (code) return code;
+    return "Unknown structured Supabase error";
+  }
+  return String(error);
+};
+
+export const assertSmokeBcbaCleanupOwnership = (
+  user: { email?: string | null; app_metadata?: Record<string, unknown> | null },
+  expectedEmail: string,
+): void => {
+  const metadata = user.app_metadata;
+  const markerEmail = String(metadata?.smoke_email ?? "").toLowerCase();
+  if (
+    user.email?.toLowerCase() !== expectedEmail.toLowerCase()
+    || metadata?.smoke_actor !== "bcba"
+    || (markerEmail && markerEmail !== expectedEmail.toLowerCase())
+  ) {
+    throw new Error("Synthetic BCBA cleanup ownership metadata is missing or mismatched.");
+  }
+};
+
+export const buildSmokeBcbaProfileSeed = (userId: string, email: string) => ({
+  id: userId,
+  email,
+  first_name: "Playwright",
+  last_name: "BCBA",
+});
+
+export const buildSmokeBcbaRoleAssignment = (
+  userId: string,
+  roleId: string,
+  expiresAt: string,
+) => ({
+  user_id: userId,
+  role_id: roleId,
+  is_active: true,
+  expires_at: expiresAt,
+});
+
+export const assertSmokeBcbaRoleInvariant = (
+  rows: SmokeBcbaRoleInvariant[],
+  expected: { roleId: string; expiresAt: string },
+  now: Date = new Date(),
+): void => {
+  const row = rows[0];
+  if (
+    rows.length !== 1
+    || row?.role_id !== expected.roleId
+    || row.is_active !== true
+    || Date.parse(String(row.expires_at)) !== Date.parse(expected.expiresAt)
+    || Date.parse(String(row.expires_at)) <= now.getTime()
+  ) {
+    throw new Error("Synthetic BCBA active role singleton is missing, mismatched, or expired.");
+  }
+};
+
 export const resolveSmokeBcbaClientId = (
   sessions: SmokeBcbaSessionInvariant[],
   authorizations: SmokeBcbaAuthorizationInvariant[],
@@ -259,6 +371,9 @@ const sweepExpiredActors = async (client: SupabaseClient): Promise<void> => {
   for (const user of await listUsers(client)) {
     const email = user.email?.toLowerCase() ?? "";
     if (!/^playwright\.ci\.bcba\.[a-z0-9_.-]+@example\.com$/i.test(email)) continue;
+    if (user.app_metadata?.smoke_actor !== "bcba") continue;
+    const markerEmail = String(user.app_metadata?.smoke_email ?? "").toLowerCase();
+    if (markerEmail && markerEmail !== email) continue;
     const expiresAt = Date.parse(String(user.app_metadata?.smoke_expires_at ?? ""));
     const createdAt = Date.parse(user.created_at);
     if ((Number.isFinite(expiresAt) && expiresAt > now) || (!Number.isFinite(expiresAt) && createdAt > now - 6 * 60 * 60 * 1000)) continue;
@@ -318,91 +433,142 @@ const provision = async (): Promise<void> => {
 
   const password = `C1-${randomBytes(18).toString("base64url")}!Aa`;
   const metadata = { role: "bcba", signup_role: "bcba", organization_id: organizationId, organizationId };
-  const appMetadata = { smoke_actor: "bcba", smoke_expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString() };
+  const appMetadata = buildSmokeBcbaAppMetadata(email);
   let user = await findUser(client, email);
-  if (user) {
-    const { error } = await client.auth.admin.updateUserById(user.id, { password, email_confirm: true, user_metadata: metadata, app_metadata: appMetadata });
-    if (error) throw error;
-    await cleanupMappings(client, user.id);
-  } else {
+  if (user) assertSmokeBcbaCleanupOwnership(user, email);
+
+  try {
+    if (user) {
+      await cleanupMappings(client, user.id);
+      const { error: existingAuthCleanupError } = await client.auth.admin.deleteUser(user.id);
+      if (existingAuthCleanupError) throw existingAuthCleanupError;
+      user = null;
+    }
+
     const { data, error } = await client.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: metadata, app_metadata: appMetadata });
     if (error) throw error;
     if (!data.user) throw new Error("Supabase did not return the created BCBA smoke user.");
     user = data.user;
-  }
+    const userId = user.id;
 
-  const { error: profileError } = await client.from("profiles").upsert({
-    id: user.id, email, role: "bcba", is_active: true, first_name: "Playwright", last_name: "BCBA",
-    organization_id: organizationId,
-  }, { onConflict: "id" });
-  if (profileError) throw profileError;
-  const { error: roleMapError } = await client.from("user_roles").insert({ user_id: user.id, role_id: role.id, is_active: true });
-  if (roleMapError) throw roleMapError;
-  const { error: linkError } = await client.from("user_therapist_links").insert({ user_id: user.id, therapist_id: therapistId });
-  if (linkError) throw linkError;
+    const { data: ownershipReadback, error: ownershipReadbackError } = await client.auth.admin.getUserById(userId);
+    if (ownershipReadbackError || !ownershipReadback.user) {
+      throw new Error(
+        `Synthetic BCBA ownership readback failed: ${ownershipReadbackError ? serializeSmokeBcbaError(ownershipReadbackError) : "missing user"}`,
+      );
+    }
+    assertSmokeBcbaOwnership(ownershipReadback.user, email, appMetadata);
 
-  const { data: provisionedOrganizationId, error: provisionProfileError } = await client
-    .rpc("provision_ci_smoke_bcba_profile", { p_user_id: user.id });
-  if (provisionProfileError || provisionedOrganizationId !== organizationId) {
-    throw new Error("Synthetic BCBA authoritative profile provisioning failed.");
-  }
+    const { error: profileError } = await client.from("profiles").upsert(
+      buildSmokeBcbaProfileSeed(userId, email),
+      { onConflict: "id" },
+    );
+    if (profileError) throw profileError;
 
-  const startDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const endDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const { data: authorization, error: authorizationError } = await client
-    .from("authorizations")
-    .insert({
-      authorization_number: `CI-BCBA-${user.id}`,
-      client_id: clientId,
-      provider_id: therapistId,
-      diagnosis_code: "F84.0",
-      diagnosis_description: "Synthetic CI lifecycle fixture",
-      start_date: startDate,
-      end_date: endDate,
-      status: "approved",
-      organization_id: organizationId,
-      created_by: user.id,
-    })
-    .select("id,client_id,provider_id,organization_id,status")
-    .single();
-  if (authorizationError || !authorization) {
-    throw authorizationError ?? new Error("Synthetic BCBA authorization provisioning failed.");
-  }
-  assertSmokeBcbaAuthorizationInvariant(authorization, { clientId, therapistId, organizationId });
+    const { error: staleRoleError } = await client.from("user_roles").delete().eq("user_id", userId);
+    if (staleRoleError) {
+      throw new Error(`Synthetic BCBA stale role cleanup failed: ${serializeSmokeBcbaError(staleRoleError)}`);
+    }
+    const { error: roleMapError } = await client.from("user_roles").insert(
+      buildSmokeBcbaRoleAssignment(userId, role.id, appMetadata.smoke_expires_at),
+    );
+    if (roleMapError) throw roleMapError;
 
-  const { error: authorizationServiceError } = await client
-    .from("authorization_services")
-    .insert({
-      authorization_id: authorization.id,
-      service_code: "97153",
-      service_description: "Adaptive behavior treatment by protocol",
-      from_date: startDate,
-      to_date: endDate,
-      requested_units: 160,
-      approved_units: 160,
-      unit_type: "15-minute units",
-      decision_status: "approved",
-      organization_id: organizationId,
-      created_by: user.id,
+    const { data: activeRoleRows, error: activeRoleError } = await client
+      .from("user_roles")
+      .select("role_id,is_active,expires_at")
+      .eq("user_id", userId)
+      .eq("is_active", true);
+    if (activeRoleError) throw activeRoleError;
+    assertSmokeBcbaRoleInvariant(activeRoleRows ?? [], {
+      roleId: role.id,
+      expiresAt: appMetadata.smoke_expires_at,
     });
-  if (authorizationServiceError) throw authorizationServiceError;
 
-  const { data: persistedProfile, error: persistedProfileError } = await client
-    .from("profiles")
-    .select("id,role,is_active,organization_id")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (persistedProfileError) throw persistedProfileError;
-  assertSmokeBcbaProfileInvariant(persistedProfile, { userId: user.id, organizationId });
-  await verifySmokeBcbaAuthenticatedReadiness(createAuthenticatedProbeClient(), {
-    email,
-    password,
-    userId: user.id,
-    organizationId,
-  });
+    const { error: linkError } = await client.from("user_therapist_links").insert({
+      user_id: userId,
+      therapist_id: therapistId,
+    });
+    if (linkError) throw linkError;
 
-  writeCredentials(email, password);
-  console.log(JSON.stringify({ ok: true, action: "provisioned", email, userId: user.id, organizationId, therapistId, clientId, authorizationId: authorization.id }));
+    const { data: provisionedOrganizationId, error: provisionProfileError } = await client
+      .rpc("provision_ci_smoke_bcba_profile", { p_user_id: userId });
+    if (provisionProfileError || provisionedOrganizationId !== organizationId) {
+      throw new Error(
+        `Synthetic BCBA authoritative profile provisioning failed: ${provisionProfileError ? serializeSmokeBcbaError(provisionProfileError) : `organization mismatch (${String(provisionedOrganizationId)})`}`,
+      );
+    }
+
+    const startDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const endDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const { data: authorization, error: authorizationError } = await client
+      .from("authorizations")
+      .insert({
+        authorization_number: `CI-BCBA-${userId}`,
+        client_id: clientId,
+        provider_id: therapistId,
+        diagnosis_code: "F84.0",
+        diagnosis_description: "Synthetic CI lifecycle fixture",
+        start_date: startDate,
+        end_date: endDate,
+        status: "approved",
+        organization_id: organizationId,
+        created_by: userId,
+      })
+      .select("id,client_id,provider_id,organization_id,status")
+      .single();
+    if (authorizationError || !authorization) {
+      throw authorizationError ?? new Error("Synthetic BCBA authorization provisioning failed.");
+    }
+    assertSmokeBcbaAuthorizationInvariant(authorization, { clientId, therapistId, organizationId });
+
+    const { error: authorizationServiceError } = await client
+      .from("authorization_services")
+      .insert({
+        authorization_id: authorization.id,
+        service_code: "97153",
+        service_description: "Adaptive behavior treatment by protocol",
+        from_date: startDate,
+        to_date: endDate,
+        requested_units: 160,
+        approved_units: 160,
+        unit_type: "15-minute units",
+        decision_status: "approved",
+        organization_id: organizationId,
+        created_by: userId,
+      });
+    if (authorizationServiceError) throw authorizationServiceError;
+
+    const { data: persistedProfile, error: persistedProfileError } = await client
+      .from("profiles")
+      .select("id,role,is_active,organization_id")
+      .eq("id", userId)
+      .maybeSingle();
+    if (persistedProfileError) throw persistedProfileError;
+    assertSmokeBcbaProfileInvariant(persistedProfile, { userId, organizationId });
+    await verifySmokeBcbaAuthenticatedReadiness(createAuthenticatedProbeClient(), {
+      email,
+      password,
+      userId,
+      organizationId,
+    });
+
+    writeCredentials(email, password);
+    console.log(JSON.stringify({ ok: true, action: "provisioned", email, userId, organizationId, therapistId, clientId, authorizationId: authorization.id }));
+  } catch (provisionError) {
+    if (user) {
+      try {
+        await cleanupMappings(client, user.id);
+        const { error: authCleanupError } = await client.auth.admin.deleteUser(user.id);
+        if (authCleanupError) throw authCleanupError;
+      } catch (cleanupError) {
+        throw new Error(
+          `${serializeSmokeBcbaError(provisionError)} Synthetic BCBA rollback also failed: ${serializeSmokeBcbaError(cleanupError)}`,
+        );
+      }
+    }
+    throw provisionError;
+  }
 };
 
 const cleanup = async (): Promise<void> => {
@@ -414,6 +580,7 @@ const cleanup = async (): Promise<void> => {
     console.log(JSON.stringify({ ok: true, action: "cleanup_skipped", email, reason: "not_found" }));
     return;
   }
+  assertSmokeBcbaCleanupOwnership(user, email);
   await cleanupMappings(client, user.id);
   const { error } = await client.auth.admin.deleteUser(user.id);
   if (error) throw error;
@@ -463,4 +630,4 @@ const main = async (): Promise<void> => {
 };
 
 const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href && process.env.VITEST !== "true";
-if (isDirectRun) main().catch((error) => { console.error(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) })); process.exit(1); });
+if (isDirectRun) main().catch((error) => { console.error(JSON.stringify({ ok: false, error: serializeSmokeBcbaError(error) })); process.exit(1); });

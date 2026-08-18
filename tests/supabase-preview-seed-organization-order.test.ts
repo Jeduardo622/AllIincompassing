@@ -9,6 +9,13 @@ const LEGACY_FALLBACK_ORGANIZATION_ID = "5238e88b-6198-4862-80a2-dbe15bbeabdd";
 const seedSql = readFileSync(path.resolve("supabase/seed.sql"), "utf8");
 
 describe("Supabase preview seed organization ordering", () => {
+  it("schema-qualifies pgcrypto password hashing for clean local databases", () => {
+    expect(seedSql.match(/extensions\.crypt\(/g)).toHaveLength(2);
+    expect(seedSql.match(/extensions\.gen_salt\('bf'\)/g)).toHaveLength(2);
+    expect(seedSql).not.toMatch(/(?<!extensions\.)crypt\(/);
+    expect(seedSql).not.toMatch(/(?<!extensions\.)gen_salt\(/);
+  });
+
   it("creates the deterministic organization before auth inserts", () => {
     const organizationInsertIndex = seedSql.indexOf("INSERT INTO public.organizations");
     const authInsertIndex = seedSql.indexOf("INSERT INTO auth.users");

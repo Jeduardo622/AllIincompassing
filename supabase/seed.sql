@@ -113,7 +113,7 @@ BEGIN
         'authenticated',
         'authenticated',
         user_record.email,
-        crypt(user_record.raw_password, gen_salt('bf')),
+        extensions.crypt(user_record.raw_password, extensions.gen_salt('bf')),
         NOW(),
         '{"provider":"email","providers":["email"]}'::jsonb,
         metadata,
@@ -129,7 +129,7 @@ BEGIN
     ELSE
       UPDATE auth.users
       SET
-        encrypted_password = crypt(user_record.raw_password, gen_salt('bf')),
+        encrypted_password = extensions.crypt(user_record.raw_password, extensions.gen_salt('bf')),
         raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb) || metadata,
         is_super_admin = user_record.is_super_admin,
         updated_at = NOW(),

@@ -1,0 +1,306 @@
+name: Agent Work Ledger Hosted Advisory Canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Exact approved main SHA
+        required: true
+        type: string
+      pull_request_number:
+        description: Merged reviewed WIN-275 canary pull request
+        required: true
+        type: string
+      approval_acknowledgement:
+        description: Exact owner dispatch acknowledgement
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-work-ledger-hosted-advisory-canary-main
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    name: Hosted advisory canary
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      checks: read
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Validate owner approval, exact main, CI, and review route
+        id: approval
+        env:
+          APPROVAL_ACKNOWLEDGEMENT: ${{ inputs.approval_acknowledgement }}
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_ACTOR_ID: ${{ github.actor_id }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PULL_REQUEST_NUMBER: ${{ inputs.pull_request_number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { createHash } from 'node:crypto';
+          import { appendFileSync } from 'node:fs';
+
+          const commitSha = process.env.COMMIT_SHA ?? '';
+          const pullRequestNumber = process.env.PULL_REQUEST_NUMBER ?? '';
+          const repository = process.env.REPOSITORY ?? '';
+          const independentAcknowledgement = 'I_APPROVE_AGENT_WORK_LEDGER_HOSTED_ADVISORY_CANARY';
+          const soloAcknowledgement = 'I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_AGENT_WORK_LEDGER_HOSTED_ADVISORY_CANARY';
+          const acknowledgement = process.env.APPROVAL_ACKNOWLEDGEMENT ?? '';
+          if (!/^[0-9a-f]{40}$/.test(commitSha)) throw new Error('commit_sha must be a lowercase 40-character SHA.');
+          if (![independentAcknowledgement, soloAcknowledgement].includes(acknowledgement)) throw new Error('Exact protected execution acknowledgement is required.');
+          if (process.env.GITHUB_ACTOR !== process.env.GITHUB_REPOSITORY_OWNER) throw new Error('Only the repository owner may dispatch the canary.');
+          if (process.env.GITHUB_REF !== 'refs/heads/main') throw new Error('Protected canary dispatch must use main.');
+          if (!/^[1-9][0-9]*$/.test(pullRequestNumber)) throw new Error('pull_request_number must be positive.');
+          if (!/^[1-9][0-9]*$/.test(process.env.GITHUB_ACTOR_ID ?? '')) throw new Error('Actor numeric identity is invalid.');
+
+          const headers = { Accept: 'application/vnd.github+json', Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, 'X-GitHub-Api-Version': '2022-11-28' };
+          const fetchJson = async (url, label) => {
+            const response = await fetch(url, { headers });
+            if (!response.ok) throw new Error(`Unable to validate ${label}: HTTP ${response.status}.`);
+            return response.json();
+          };
+          const fetchAll = async (urlForPage, label, select = (value) => value) => {
+            const values = [];
+            for (let page = 1; page <= 20; page += 1) {
+              const items = select(await fetchJson(urlForPage(page), label));
+              if (!Array.isArray(items)) throw new Error(`${label} is not an array.`);
+              values.push(...items);
+              if (items.length < 100) return values;
+            }
+            throw new Error(`${label} pagination exceeded the fail-closed limit.`);
+          };
+          const getContent = async (repositoryPath) => {
+            const encoded = repositoryPath.split('/').map(encodeURIComponent).join('/');
+            const payload = await fetchJson(`https://api.github.com/repos/${repository}/contents/${encoded}?ref=${commitSha}`, repositoryPath);
+            if (Array.isArray(payload) || payload.type !== 'file' || payload.encoding !== 'base64') throw new Error(`${repositoryPath} is not a file.`);
+            return Buffer.from(String(payload.content ?? '').replace(/\s/g, ''), 'base64');
+          };
+
+          const mainRef = await fetchJson(`https://api.github.com/repos/${repository}/git/ref/heads/main`, 'main ref');
+          if (mainRef.ref !== 'refs/heads/main' || mainRef.object?.sha !== commitSha) throw new Error('commit_sha must equal current main.');
+          const pull = await fetchJson(`https://api.github.com/repos/${repository}/pulls/${pullRequestNumber}`, 'pull request');
+          if (pull.state !== 'closed' || pull.merged !== true || pull.base?.ref !== 'main' || pull.head?.repo?.full_name !== repository) throw new Error('Approval pull request boundary is invalid.');
+          if (pull.merge_commit_sha !== commitSha) throw new Error('Current main is not the approval pull request merge commit.');
+          if (!/(^|[^A-Z0-9])WIN-275([^A-Z0-9]|$)/i.test(`${pull.title ?? ''}\n${pull.body ?? ''}`)) throw new Error('Approval pull request must reference WIN-275.');
+
+          const checkRuns = await fetchAll(
+            (page) => `https://api.github.com/repos/${repository}/commits/${pull.head.sha}/check-runs?per_page=100&page=${page}`,
+            'check runs', (payload) => payload.check_runs,
+          );
+          const mainCheckRuns = await fetchAll(
+            (page) => `https://api.github.com/repos/${repository}/commits/${commitSha}/check-runs?per_page=100&page=${page}`,
+            'current main check runs', (payload) => payload.check_runs,
+          );
+          const requiredCiChecks = ['policy', 'lint-typecheck', 'unit-tests', 'build', 'tier0-browser', 'auth-browser-smoke', 'ci-gate'];
+          const missing = requiredCiChecks.filter((name) => !checkRuns.some((check) => check.name === name && check.head_sha === pull.head?.sha && check.app?.slug === 'github-actions' && check.status === 'completed' && check.conclusion === 'success'));
+          if (missing.length) throw new Error(`Exact-head required CI is missing: ${missing.join(', ')}.`);
+          const missingMain = requiredCiChecks.filter((name) => !mainCheckRuns.some((check) => check.name === name && check.head_sha === commitSha && check.app?.slug === 'github-actions' && check.status === 'completed' && check.conclusion === 'success'));
+          if (missingMain.length) throw new Error(`Current-main required CI is missing: ${missingMain.join(', ')}.`);
+
+          const reviews = await fetchAll((page) => `https://api.github.com/repos/${repository}/pulls/${pullRequestNumber}/reviews?per_page=100&page=${page}`, 'reviews');
+          const latestReviews = new Map();
+          for (const review of reviews) {
+            const login = review.user?.login;
+            if (!login) continue;
+            const previous = latestReviews.get(login);
+            const currentOrder = [Date.parse(review.submitted_at ?? '') || 0, Number(review.id) || 0];
+            const previousOrder = previous ? [Date.parse(previous.submitted_at ?? '') || 0, Number(previous.id) || 0] : [-1, -1];
+            if (currentOrder[0] > previousOrder[0] || (currentOrder[0] === previousOrder[0] && currentOrder[1] > previousOrder[1])) latestReviews.set(login, review);
+          }
+          const independentApproved = [...latestReviews.values()].some((review) => review.state === 'APPROVED' && review.commit_id === pull.head?.sha && review.user?.login !== process.env.GITHUB_REPOSITORY_OWNER && review.user?.type === 'User');
+          let reviewRoute = 'independent_human';
+          let attestationSha256 = 'none';
+          if (acknowledgement === independentAcknowledgement) {
+            if (!independentApproved) throw new Error('Current-head independent human approval is required.');
+          } else {
+            const repositoryDetails = await fetchJson(`https://api.github.com/repos/${repository}`, 'repository identity');
+            if (repositoryDetails.owner?.type !== 'User' || repositoryDetails.owner?.login !== process.env.GITHUB_REPOSITORY_OWNER || String(repositoryDetails.owner?.id) !== process.env.GITHUB_ACTOR_ID) throw new Error('Solo-maintainer owner identity mismatch.');
+            const collaborators = await fetchAll((page) => `https://api.github.com/repos/${repository}/collaborators?affiliation=direct&per_page=100&page=${page}`, 'collaborators');
+            const maintainers = collaborators.filter((value) => value.type === 'User' && (value.permissions?.admin || value.permissions?.maintain || value.permissions?.push));
+            if (maintainers.length !== 1 || maintainers[0]?.login !== process.env.GITHUB_REPOSITORY_OWNER || String(maintainers[0]?.id) !== process.env.GITHUB_ACTOR_ID) throw new Error('Solo-maintainer topology is unavailable.');
+            const attestationPath = 'docs/ai/reviews/WIN-275-hosted-advisory-canary-solo-maintainer-attestation.json';
+            const bytes = await getContent(attestationPath);
+            attestationSha256 = createHash('sha256').update(bytes).digest('hex');
+            const attestation = JSON.parse(bytes.toString('utf8'));
+            const specialists = ['code-review-engineer', 'security-engineer', 'test-engineer', 'software-architect', 'supabase-reviewer'];
+            if (attestation.schemaVersion !== 1 || attestation.issue !== 'WIN-275' || attestation.reviewMode !== 'solo-maintainer-owner-attestation' || attestation.repository !== repository) throw new Error('Canary attestation identity is invalid.');
+            if (specialists.some((name) => attestation.specialistReviews?.[name]?.verdict !== 'PASS')) throw new Error('Passing specialist attestations are incomplete.');
+            const surfaces = ['.github/workflows/agent-work-ledger-hosted-advisory-canary.yml', 'scripts/agent-work-ledger-hosted-advisory-canary.mjs', 'tests/agentWorkLedgerHostedAdvisoryCanary.test.ts', 'docs/ai/handoffs/WIN-275-hosted-advisory-canary.md', 'docs/ai/reviews/WIN-275-hosted-advisory-canary-attestation.md', '.github/workflows/agent-work-ledger-hosted-shadow-proof.yml', 'scripts/agent-work-ledger-hosted-shadow-proof.mjs', 'tests/agentWorkLedgerHostedShadowProof.test.ts'];
+            for (const surface of surfaces) {
+              const expected = attestation.protectedSurfaceHashes?.[surface];
+              const actual = createHash('sha256').update(await getContent(surface)).digest('hex');
+              if (!/^[0-9a-f]{64}$/.test(expected ?? '') || actual !== expected) throw new Error(`Protected surface hash drifted: ${surface}.`);
+            }
+            reviewRoute = 'solo_owner_attestation';
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `validated_sha=${commitSha}\nvalidated_pr_head_sha=${pull.head.sha}\nreview_route=${reviewRoute}\nattestation_sha256=${attestationSha256}\n`);
+          NODE
+
+      - name: Checkout validated commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ steps.approval.outputs.validated_sha }}
+          persist-credentials: false
+
+      - name: Verify immutable checkout
+        env:
+          EXPECTED_SHA: ${{ steps.approval.outputs.validated_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51 # v1.6.0
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Initialize evidence directories
+        run: |
+          mkdir -p "$RUNNER_TEMP/agent-work-ledger-hosted-advisory-canary-private"
+          mkdir -p "$RUNNER_TEMP/agent-work-ledger-hosted-advisory-canary-public"
+
+      - name: Revalidate authority immediately before hosted access
+        env:
+          EXPECTED_SHA: ${{ steps.approval.outputs.validated_sha }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_ACTOR_ID: ${{ github.actor_id }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_HEAD_SHA: ${{ steps.approval.outputs.validated_pr_head_sha }}
+          PULL_REQUEST_NUMBER: ${{ inputs.pull_request_number }}
+          REPOSITORY: ${{ github.repository }}
+          REVIEW_ROUTE: ${{ steps.approval.outputs.review_route }}
+        run: |
+          node --input-type=module <<'NODE'
+          const headers = { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+          const fetchJson = async (url, label) => {
+            const response = await fetch(url, { headers });
+            if (!response.ok) throw new Error(`Unable to revalidate ${label}: HTTP ${response.status}.`);
+            return response.json();
+          };
+          const fetchAll = async (urlForPage, label, select = (value) => value) => {
+            const values = [];
+            for (let page = 1; page <= 20; page += 1) {
+              const items = select(await fetchJson(urlForPage(page), label));
+              if (!Array.isArray(items)) throw new Error(`${label} is not an array.`);
+              values.push(...items);
+              if (items.length < 100) return values;
+            }
+            throw new Error(`${label} pagination exceeded the fail-closed limit.`);
+          };
+          const mainRef = await fetchJson(`https://api.github.com/repos/${process.env.REPOSITORY}/git/ref/heads/main`, 'main ref');
+          if (mainRef.object?.sha !== process.env.EXPECTED_SHA) throw new Error('Current main changed before hosted access.');
+
+          const checkRuns = await fetchAll(
+            (page) => `https://api.github.com/repos/${process.env.REPOSITORY}/commits/${process.env.PR_HEAD_SHA}/check-runs?per_page=100&page=${page}`,
+            'check runs', (payload) => payload.check_runs,
+          );
+          const mainCheckRuns = await fetchAll(
+            (page) => `https://api.github.com/repos/${process.env.REPOSITORY}/commits/${process.env.EXPECTED_SHA}/check-runs?per_page=100&page=${page}`,
+            'current main check runs', (payload) => payload.check_runs,
+          );
+          const requiredCiChecks = ['policy', 'lint-typecheck', 'unit-tests', 'build', 'tier0-browser', 'auth-browser-smoke', 'ci-gate'];
+          const missing = requiredCiChecks.filter((name) => !checkRuns.some((check) => check.name === name && check.head_sha === process.env.PR_HEAD_SHA && check.app?.slug === 'github-actions' && check.status === 'completed' && check.conclusion === 'success'));
+          if (missing.length) throw new Error(`Exact-head required CI changed before hosted access: ${missing.join(', ')}.`);
+          const missingMain = requiredCiChecks.filter((name) => !mainCheckRuns.some((check) => check.name === name && check.head_sha === process.env.EXPECTED_SHA && check.app?.slug === 'github-actions' && check.status === 'completed' && check.conclusion === 'success'));
+          if (missingMain.length) throw new Error(`Current-main required CI changed before hosted access: ${missingMain.join(', ')}.`);
+
+          if (process.env.REVIEW_ROUTE === 'independent_human') {
+            const reviews = await fetchAll((page) => `https://api.github.com/repos/${process.env.REPOSITORY}/pulls/${process.env.PULL_REQUEST_NUMBER}/reviews?per_page=100&page=${page}`, 'reviews');
+            const latestReviews = new Map();
+            for (const review of reviews) {
+              const login = review.user?.login;
+              if (!login) continue;
+              const previous = latestReviews.get(login);
+              const currentOrder = [Date.parse(review.submitted_at ?? '') || 0, Number(review.id) || 0];
+              const previousOrder = previous ? [Date.parse(previous.submitted_at ?? '') || 0, Number(previous.id) || 0] : [-1, -1];
+              if (currentOrder[0] > previousOrder[0] || (currentOrder[0] === previousOrder[0] && currentOrder[1] > previousOrder[1])) latestReviews.set(login, review);
+            }
+            const approved = [...latestReviews.values()].some((review) => review.state === 'APPROVED' && review.commit_id === process.env.PR_HEAD_SHA && review.user?.login !== process.env.GITHUB_REPOSITORY_OWNER && review.user?.type === 'User');
+            if (!approved) throw new Error('Independent approval changed before hosted access.');
+          } else if (process.env.REVIEW_ROUTE === 'solo_owner_attestation') {
+            const repositoryDetails = await fetchJson(`https://api.github.com/repos/${process.env.REPOSITORY}`, 'repository identity');
+            if (repositoryDetails.owner?.type !== 'User' || repositoryDetails.owner?.login !== process.env.GITHUB_REPOSITORY_OWNER || String(repositoryDetails.owner?.id) !== process.env.GITHUB_ACTOR_ID || process.env.GITHUB_ACTOR !== process.env.GITHUB_REPOSITORY_OWNER) throw new Error('Solo-maintainer identity changed before hosted access.');
+            const collaborators = await fetchAll((page) => `https://api.github.com/repos/${process.env.REPOSITORY}/collaborators?affiliation=direct&per_page=100&page=${page}`, 'collaborators');
+            const maintainers = collaborators.filter((value) => value.type === 'User' && (value.permissions?.admin || value.permissions?.maintain || value.permissions?.push));
+            if (maintainers.length !== 1 || maintainers[0]?.login !== process.env.GITHUB_REPOSITORY_OWNER || String(maintainers[0]?.id) !== process.env.GITHUB_ACTOR_ID) throw new Error('Solo-maintainer topology changed before hosted access.');
+          } else {
+            throw new Error('Unknown protected review route.');
+          }
+          NODE
+
+      - name: Read-only canary preflight
+        id: preflight
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: node scripts/agent-work-ledger-hosted-advisory-canary.mjs preflight
+
+      - name: Set up exact synthetic fixtures in shadow
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: node scripts/agent-work-ledger-hosted-shadow-proof.mjs preflight/setup
+
+      - name: Prove the exact synthetic shadow baseline
+        env:
+          AGENT_WORK_LEDGER_RUNTIME_MODE: shadow
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: node scripts/agent-work-ledger-hosted-shadow-proof.mjs proof
+
+      - name: Measure finite hosted advisory canary
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: node scripts/agent-work-ledger-hosted-advisory-canary.mjs setup/measure
+
+      - name: Restore disabled runtime mode first
+        if: always() && steps.preflight.outcome != 'skipped'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase secrets set AGENT_WORK_LEDGER_RUNTIME_MODE=disabled --project-ref wnnjeqheqxxyrgsjmygy
+
+      - name: Cleanup and verify zero residue
+        if: always() && steps.preflight.outcome != 'skipped'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: node scripts/agent-work-ledger-hosted-advisory-canary.mjs cleanup/verify
+
+      - name: Final disabled fallback
+        if: always() && steps.preflight.outcome != 'skipped'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase secrets set AGENT_WORK_LEDGER_RUNTIME_MODE=disabled --project-ref wnnjeqheqxxyrgsjmygy
+
+      - name: Upload sanitized public artifact
+        if: always() && steps.approval.outcome == 'success'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: agent-work-ledger-hosted-advisory-canary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/agent-work-ledger-hosted-advisory-canary-public/**
+          if-no-files-found: error
+          retention-days: 3

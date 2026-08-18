@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "issue": "WIN-275",
+  "reviewMode": "solo-maintainer-owner-attestation",
+  "repository": "Jeduardo622/AllIincompassing",
+  "createdAt": "2026-08-18T23:01:08Z",
+  "specialistReviews": {
+    "code-review-engineer": {
+      "agentId": "01a01713-0dd8-7e72-b610-99c84ce35571",
+      "verdict": "PASS"
+    },
+    "security-engineer": {
+      "agentId": "01a01713-0f00-71c0-8957-f848e95a22d8",
+      "verdict": "PASS"
+    },
+    "test-engineer": {
+      "agentId": "01a0170c-2298-76b3-b3b4-a96c44fa44f1",
+      "verdict": "PASS"
+    },
+    "software-architect": {
+      "agentId": "01a0170c-2174-7ab0-87f3-7a3d4d5f5f7c",
+      "verdict": "PASS"
+    },
+    "supabase-reviewer": {
+      "agentId": "01a01717-24c2-7933-b002-e52d70325553",
+      "verdict": "PASS"
+    }
+  },
+  "invariants": {
+    "temporaryAdvisoryOnly": true,
+    "disabledRestoreRequired": true,
+    "sanitizedEvidenceOnly": true,
+    "zeroExternalModelCalls": true,
+    "retentionPolicyUnapproved": true,
+    "zeroResidueRequired": true
+  },
+  "protectedSurfaceHashes": {
+    ".github/workflows/agent-work-ledger-hosted-advisory-canary.yml": "2e524aa65242822ec2c8e79ad2c6103feea74503c711f04c30faddd870b96908",
+    "scripts/agent-work-ledger-hosted-advisory-canary.mjs": "bfcb496613180692f68b2881a58cb79c3e637a964c2ae9188c8f266025dfc726",
+    "tests/agentWorkLedgerHostedAdvisoryCanary.test.ts": "d0f239df9091027d65706e34ea32890fe2da1fb5c9aef8c512bc8707b4d73584",
+    "docs/ai/handoffs/WIN-275-hosted-advisory-canary.md": "f089d569c845be65a7fa3940d7f7cb835f6f7dfba42d25ca8459ad639d5f4aba",
+    "docs/ai/reviews/WIN-275-hosted-advisory-canary-attestation.md": "f436dbe10a568c64d9e91d9a6b9506f3f29a8ae26677c09cbe5574a144c87f9a",
+    ".github/workflows/agent-work-ledger-hosted-shadow-proof.yml": "eef158750da0d0f4456c00fb247149827d882a7d332bb36e57ca236c5b8dd83f",
+    "scripts/agent-work-ledger-hosted-shadow-proof.mjs": "2fd78613be6dba0583019bd93566b3df73ee75d9d1f1036480fdf7f4c1350323",
+    "tests/agentWorkLedgerHostedShadowProof.test.ts": "c92e0fd0f9a6bcf71e61a58d404553d85ced204ca41392f5fa3a63b810ec57ae"
+  }
+}

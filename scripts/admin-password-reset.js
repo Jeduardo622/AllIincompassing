@@ -9,6 +9,8 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 // Load environment variables
 config();
@@ -252,11 +254,11 @@ Examples:
 }
 
 // Run if called directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   main().catch(error => {
     logger.error(`Unexpected error: ${error.message}`);
     process.exit(1);
   });
 }
 
-export { resetUserPassword, resolveSupabaseServiceKey };
+export { resetUserPassword };

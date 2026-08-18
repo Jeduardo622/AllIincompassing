@@ -1301,7 +1301,7 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - Classification: `high-risk human-reviewed`.
 - Lane: `critical`.
 - Linear: existing issue `WIN-219` is reused because the workspace issue limit prevented a dedicated repair issue.
-- Scope: repair only `scripts/provision-ci-smoke-bcba.ts`, its focused guard tests, and this handoff. The profile seed now writes identity fields only; fresh Auth metadata is read back; one expiring BCBA role singleton and the therapist link are proven before the unchanged service-role-only RPC; partial actors roll back; later-run and legacy actor cleanup remains marker-scoped; structured failures log only bounded code and message fields.
+- Scope: repair `scripts/provision-ci-smoke-bcba.ts`, its focused guard tests, the exact browser-selector classification for synthetic therapist/BCBA provisioner changes, its focused selector test, and this handoff. The profile seed now writes identity fields only; fresh Auth metadata is read back; one expiring BCBA role singleton and the therapist link are proven before the unchanged service-role-only RPC; partial actors roll back; later-run and legacy actor cleanup remains marker-scoped; structured failures log only bounded code and message fields.
 - Non-goals: no workflow, migration, RPC, RLS, grant, product-auth, route, payroll activation, capability, secret, hosted data, or fixture-selection change.
 
 ### Verification Card
@@ -1310,7 +1310,7 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - lane: `critical`.
 - change type: auth-sensitive CI provisioning and tenant-scoped service-role fixture lifecycle.
 - focused RED: the new non-authority profile seed and expiring role helpers failed before implementation because they did not exist.
-- focused GREEN: `40/40` across the BCBA provisioner, service-only migration contract, and CI reliability wiring.
+- focused GREEN: `60/60` across the browser selector, BCBA provisioner, service-only migration contract, and CI reliability wiring.
 - `npm run ci:check-focused`: pass; local credential-dependent checks were explicitly skipped by the policy runner.
 - `npm run lint`: pass.
 - `npm run typecheck`: pass.
@@ -1319,6 +1319,7 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 - `npm run test:routes:tier0`: pass, `244/244` across eight specs.
 - `npm run test:ci`: broad tests, including the touched BCBA suite, ran without a functional assertion failure before Node reached the inherited approximately 4 GB heap limit and emitted `ERR_IPC_CHANNEL_CLOSED`; result remains blocked, not passed.
 - `npm run ci:playwright`: blocked locally because `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_PUBLISHABLE_KEY` are absent. A trusted workflow dispatch on the exact branch with every payroll activation input false is the decisive hosted proof.
+- Initial trusted dispatch `32083794973` passed unit, build, tier-0, and aggregate CI with every payroll deployment job skipped, but its auth job reported success by scope skip. That exposed a separate selector gap: neither synthetic therapist nor BCBA provisioner changes required the existing auth-smoke job. The bounded selector fix adds only those two exact script paths to the existing auth/session classification; the first dispatch is not treated as hosted BCBA proof.
 - Reviews: specification, architecture, implementation, code, test, security, and Supabase reviews completed. Final code and security re-reviews reported no findings; Supabase review confirmed the live RPC remains `SECURITY DEFINER`, empty-search-path, service-role-only, and tenant-derived from the same role/link inputs.
 - result: `pass-with-blocked-checks` pending exact-head hosted BCBA provision, downstream browser checks, and zero-residue cleanup.
 - residual risk: the original failure occurs only in secret-backed non-pull-request execution. Human critical-lane review remains mandatory before merge.
@@ -1326,8 +1327,8 @@ Task 3 adds the bounded California ordinary nonexempt derivation layer, immutabl
 ### PR Hygiene
 
 - branch: `codex/postmerge-bcba-smoke-repair`, created from exact merged main `9d7eb15113bee72c9d37907316059e5de3ce30cd` in an isolated worktree.
-- single-purpose: yes; one BCBA fixture authority/cleanup repair plus its focused tests and required handoff evidence.
+- single-purpose: yes; one BCBA fixture authority/cleanup repair, the exact selector needed to exercise it in trusted CI, their focused tests, and required handoff evidence.
 - unrelated changes: none in the isolated worktree.
 - generated artifact drift: none.
-- protected-path drift: none outside the declared service-role CI fixture behavior.
-- required follow-up: commit and push the exact three-file allowlist, open a WIN-219-linked PR for human review, dispatch non-activating trusted CI on that branch, and require the hosted BCBA actor lifecycle and cleanup to pass before owner merge.
+- protected-path drift: the declared service-role CI fixture behavior and `scripts/ci/select-browser-checks.mjs` only; no workflow job, secret, deployment, or activation logic changed.
+- required follow-up: commit and push the exact five-file allowlist, update the WIN-219-linked PR for human review, dispatch non-activating trusted CI on that branch, and require the hosted BCBA actor lifecycle and cleanup to pass before owner merge.

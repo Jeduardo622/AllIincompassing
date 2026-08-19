@@ -15,7 +15,8 @@ export function ClientOnboardingPage() {
       <div className="flex items-center mb-6">
         <button
           onClick={() => navigate('/clients')}
-          className="mr-4 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+          className="mr-4 min-h-11 min-w-11 rounded-full p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800"
+          aria-label="Back to clients"
         >
           <ArrowLeft className="h-5 w-5 text-gray-500 dark:text-gray-400" />
         </button>

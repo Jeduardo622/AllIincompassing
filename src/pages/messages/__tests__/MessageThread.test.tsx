@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
@@ -109,7 +109,30 @@ describe('MessageThread', () => {
 
     await screen.findByText(PHI_POLICY_BANNER);
 
-    expect(markThreadRead).toHaveBeenCalledWith('thread-1', 'user-1');
+    await waitFor(() => {
+      expect(markThreadRead).toHaveBeenCalledWith('thread-1', 'user-1');
+    });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: [MESSAGES_QUERY_KEY] });
+  });
+
+  it('fails closed when the thread record is missing', async () => {
+    vi.mocked(fetchMessageThread).mockResolvedValueOnce(null);
+
+    renderPage();
+
+    expect(await screen.findByRole('heading', { name: /conversation unavailable/i })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(PHI_COMPOSER_PLACEHOLDER)).not.toBeInTheDocument();
+    expect(screen.queryByText(PHI_POLICY_BANNER)).not.toBeInTheDocument();
+    expect(markThreadRead).not.toHaveBeenCalled();
+  });
+
+  it('keeps message content and the composer unavailable while thread access is loading', () => {
+    vi.mocked(fetchMessageThread).mockImplementationOnce(() => new Promise(() => undefined));
+
+    renderPage();
+
+    expect(screen.getByRole('status')).toHaveTextContent(/loading conversation/i);
+    expect(screen.queryByPlaceholderText(PHI_COMPOSER_PLACEHOLDER)).not.toBeInTheDocument();
+    expect(screen.queryByText(PHI_POLICY_BANNER)).not.toBeInTheDocument();
   });
 });

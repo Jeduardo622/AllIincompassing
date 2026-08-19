@@ -17,12 +17,12 @@ export function Billing() {
       </div>
 
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow mb-6">
-        <div className="border-b dark:border-gray-700">
-          <nav className="flex -mb-px">
+        <div className="overflow-x-auto border-b dark:border-gray-700">
+          <nav className="flex min-w-max -mb-px">
             <button
               onClick={() => setActiveTab('plans')}
               className={`
-                group inline-flex items-center px-6 py-4 border-b-2 font-medium text-sm
+                group inline-flex min-h-11 items-center px-6 py-4 border-b-2 font-medium text-sm
                 ${
                   activeTab === 'plans'
                     ? 'border-blue-500 text-blue-600 dark:text-blue-400'
@@ -43,7 +43,7 @@ export function Billing() {
             <button
               onClick={() => setActiveTab('payment-methods')}
               className={`
-                group inline-flex items-center px-6 py-4 border-b-2 font-medium text-sm
+                group inline-flex min-h-11 items-center px-6 py-4 border-b-2 font-medium text-sm
                 ${
                   activeTab === 'payment-methods'
                     ? 'border-blue-500 text-blue-600 dark:text-blue-400'
@@ -64,7 +64,7 @@ export function Billing() {
             <button
               onClick={() => setActiveTab('invoices')}
               className={`
-                group inline-flex items-center px-6 py-4 border-b-2 font-medium text-sm
+                group inline-flex min-h-11 items-center px-6 py-4 border-b-2 font-medium text-sm
                 ${
                   activeTab === 'invoices'
                     ? 'border-blue-500 text-blue-600 dark:text-blue-400'
@@ -84,6 +84,9 @@ export function Billing() {
             </button>
           </nav>
         </div>
+        <p className="border-b border-gray-100 px-6 py-2 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400 sm:hidden">
+          Scroll to view more billing sections on smaller screens.
+        </p>
 
         <div className="p-6">
           {/* Subscription Plans Tab */}
@@ -135,7 +138,7 @@ export function Billing() {
                         <p className="ml-3 text-base text-gray-700 dark:text-gray-300">Basic reporting</p>
                       </li>
                     </ul>
-                    <button className="mt-8 w-full bg-white text-blue-600 border-blue-600 hover:bg-blue-50 dark:bg-dark-lighter dark:text-blue-400 dark:border-blue-500 dark:hover:bg-gray-800 border rounded-md shadow-sm px-4 py-2 flex items-center justify-center text-base font-medium">
+                    <button className="mt-8 flex min-h-11 w-full items-center justify-center rounded-md border border-blue-600 bg-white px-4 py-2 text-base font-medium text-blue-600 shadow-sm hover:bg-blue-50 dark:border-blue-500 dark:bg-dark-lighter dark:text-blue-400 dark:hover:bg-gray-800">
                       <CreditCard className="mr-2 h-5 w-5" />
                       Contact Sales
                     </button>
@@ -143,7 +146,7 @@ export function Billing() {
                 </div>
                 
                 {/* Professional Plan */}
-                <div className="rounded-lg overflow-hidden border-2 border-blue-500 dark:border-blue-400 shadow-lg transform scale-105">
+                <div className="rounded-lg overflow-hidden border-2 border-blue-500 shadow-lg dark:border-blue-400 md:scale-105">
                   <div className="bg-blue-500 text-white text-center py-1 text-sm font-medium">
                     Most Popular
                   </div>
@@ -180,7 +183,7 @@ export function Billing() {
                         <p className="ml-3 text-base text-gray-700 dark:text-gray-300">Document management</p>
                       </li>
                     </ul>
-                    <button className="mt-8 w-full bg-blue-600 text-white hover:bg-blue-700 border border-transparent rounded-md shadow-sm px-4 py-2 flex items-center justify-center text-base font-medium">
+                    <button className="mt-8 flex min-h-11 w-full items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-blue-700">
                       <CreditCard className="mr-2 h-5 w-5" />
                       Contact Sales
                     </button>
@@ -230,7 +233,7 @@ export function Billing() {
                         <p className="ml-3 text-base text-gray-700 dark:text-gray-300">Dedicated support</p>
                       </li>
                     </ul>
-                    <button className="mt-8 w-full bg-white text-blue-600 border-blue-600 hover:bg-blue-50 dark:bg-dark-lighter dark:text-blue-400 dark:border-blue-500 dark:hover:bg-gray-800 border rounded-md shadow-sm px-4 py-2 flex items-center justify-center text-base font-medium">
+                    <button className="mt-8 flex min-h-11 w-full items-center justify-center rounded-md border border-blue-600 bg-white px-4 py-2 text-base font-medium text-blue-600 shadow-sm hover:bg-blue-50 dark:border-blue-500 dark:bg-dark-lighter dark:text-blue-400 dark:hover:bg-gray-800">
                       <CreditCard className="mr-2 h-5 w-5" />
                       Contact Sales
                     </button>
@@ -248,7 +251,7 @@ export function Billing() {
                   Payment Methods
                 </h2>
                 <button
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+                  className="flex min-h-11 items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   <Plus className="w-4 h-4 mr-2" />
                   Contact Support
@@ -265,7 +268,7 @@ export function Billing() {
                   Please contact our support team for assistance with payment methods.
                 </p>
                 <button
-                  className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-100 dark:bg-blue-900/20 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/30 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  className="min-h-11 rounded-md bg-blue-100 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/30"
                 >
                   Contact Support
                 </button>
@@ -290,7 +293,7 @@ export function Billing() {
                   Please contact our support team for assistance with invoices and receipts.
                 </p>
                 <button
-                  className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-100 dark:bg-blue-900/20 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/30 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  className="min-h-11 rounded-md bg-blue-100 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/30"
                 >
                   Contact Support
                 </button>

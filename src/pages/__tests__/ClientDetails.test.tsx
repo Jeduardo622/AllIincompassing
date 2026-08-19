@@ -330,6 +330,13 @@ describe('ClientDetails page', () => {
     expect(supabase.from).toHaveBeenCalledWith('sessions');
   });
 
+  it('shows a visible scroll affordance for the tab row', async () => {
+    renderWithProviders(<ClientDetails />);
+
+    expect(await screen.findByText('ProfileTabContent')).toBeInTheDocument();
+    expect(screen.getByText(/Scroll to view all client sections/i)).toBeInTheDocument();
+  });
+
   it('does not render Domains & Goals or summary queries for a client viewing another record', async () => {
     mockLocationSearch = '?tab=programs-goals';
 

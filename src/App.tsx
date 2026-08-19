@@ -11,6 +11,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { PrivateRoute } from './components/PrivateRoute';
 import { RoleGuard } from './components/RoleGuard';
 import { RouteLoadingSkeleton } from './components/RouteLoadingSkeleton';
+import { DocumentTitleManager } from './components/DocumentTitleManager';
 import { logger } from './lib/logger/logger';
 
 // Lazy load components
@@ -61,6 +62,9 @@ const SuperAdminPrompts = React.lazy(() =>
 );
 const Unauthorized = React.lazy(() =>
   import('./pages/Unauthorized').then(module => ({ default: module.Unauthorized })),
+);
+const NotFound = React.lazy(() =>
+  import('./pages/NotFound').then(module => ({ default: module.NotFound })),
 );
 const Authorizations = React.lazy(() =>
   import('./pages/Authorizations').then(module => ({ default: module.Authorizations })),
@@ -175,6 +179,7 @@ function App() {
         <AuthProvider>
           <div className="min-h-dvh bg-gray-50 dark:bg-dark text-gray-900 dark:text-gray-100 transition-colors">
             <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+              <DocumentTitleManager />
               <RouteTelemetry />
               <Suspense fallback={<LoadingSpinner />}>
                 <Routes>
@@ -383,8 +388,8 @@ function App() {
                       }
                     />
 
-                    {/* Catch all - redirect to dashboard */}
-                    <Route path="*" element={<Navigate to="/" replace />} />
+                    {/* Catch all - show a shell-level not found state without widening authority */}
+                    <Route path="*" element={<NotFound />} />
                   </Route>
                 </Routes>
               </Suspense>

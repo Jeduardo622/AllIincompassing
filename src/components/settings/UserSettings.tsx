@@ -113,7 +113,7 @@ export function UserSettings() {
                     id="first_name"
                     type="text"
                     {...register('first_name')}
-                    className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                    className="mt-1 block min-h-11 w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                   />
                 </div>
 
@@ -125,7 +125,7 @@ export function UserSettings() {
                     id="last_name"
                     type="text"
                     {...register('last_name')}
-                    className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                    className="mt-1 block min-h-11 w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                   />
                 </div>
 
@@ -137,7 +137,7 @@ export function UserSettings() {
                     id="title"
                     type="text"
                     {...register('title')}
-                    className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                    className="mt-1 block min-h-11 w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                   />
                 </div>
 
@@ -160,7 +160,7 @@ export function UserSettings() {
                             message: 'Invalid email address',
                           },
                         })}
-                        className="block w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                        className="block min-h-11 w-full rounded-md border-gray-300 pl-10 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                       />
                     </div>
                   </div>
@@ -182,7 +182,7 @@ export function UserSettings() {
                 <button
                   type="button"
                   onClick={() => setIsChangingPassword(!isChangingPassword)}
-                  className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-500"
+                  className="inline-flex min-h-11 items-center text-sm text-blue-600 hover:text-blue-500 dark:text-blue-400"
                 >
                   {isChangingPassword ? 'Cancel password change' : 'Change password'}
                 </button>
@@ -200,7 +200,7 @@ export function UserSettings() {
                       {...register('current_password', {
                         required: 'Current password is required',
                       })}
-                      className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                      className="mt-1 block min-h-11 w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                     />
                     {errors.current_password && (
                       <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.current_password.message}</p>
@@ -221,7 +221,7 @@ export function UserSettings() {
                           message: 'Password must be at least 8 characters',
                         },
                       })}
-                      className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                      className="mt-1 block min-h-11 w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                     />
                     {errors.new_password && (
                       <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.new_password.message}</p>
@@ -238,7 +238,7 @@ export function UserSettings() {
                       {...register('confirm_password', {
                         validate: value => value === newPassword || 'Passwords do not match',
                       })}
-                      className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                      className="mt-1 block min-h-11 w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                     />
                     {errors.confirm_password && (
                       <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.confirm_password.message}</p>
@@ -254,7 +254,7 @@ export function UserSettings() {
               <button
                 type="submit"
                 disabled={!isDirty || isSubmitting}
-                className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex min-h-11 items-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Save className="w-4 h-4 mr-2" />
                 {isSubmitting ? 'Saving...' : 'Save Changes'}

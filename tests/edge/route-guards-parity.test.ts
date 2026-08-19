@@ -39,7 +39,7 @@ const parseGuardedRoutesFromApp = (source: string): Map<string, AppGuardExpectat
 
   for (let index = 0; index < routeEntries.length; index += 1) {
     const entry = routeEntries[index];
-    if (entry.path.startsWith('/')) {
+    if (entry.path.startsWith('/') || entry.path === '*') {
       continue;
     }
     const snippetEnd = routeEntries[index + 1]?.index ?? source.length;

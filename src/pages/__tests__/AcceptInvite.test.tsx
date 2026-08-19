@@ -111,7 +111,10 @@ describe('AcceptInvite', () => {
 
     renderWithProviders(<AcceptInvite />, { auth: false });
 
-    expect(screen.getByText('Invite token is missing.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /accept invite/i })).toBeDisabled();
+    expect(screen.getByRole('heading', { name: /invite link unavailable/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText('First name')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Password*')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /accept invite/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /go to login/i })).toBeInTheDocument();
   });
 });

@@ -85,6 +85,35 @@ describe('select-browser-checks', () => {
     expect(selection.iehpAssessmentImportSmokeRequired).toBe(true);
   });
 
+  it('keeps the shared CI workflow fail-closed on every browser gate', () => {
+    const selection = runSelector('--changed-file', '.github/workflows/ci.yml');
+
+    expect(selection.tier0Required).toBe(true);
+    expect(selection.authSmokeRequired).toBe(true);
+    expect(selection.iehpAssessmentImportSmokeRequired).toBe(true);
+    expect(selection.supervisionCorrectionRequired).toBe(true);
+    expect(selection.tier0Specs).toHaveLength(6);
+    expect(selection.reasons).toEqual([
+      '.github/workflows/ci.yml: shared CI workflow surface',
+    ]);
+  });
+
+  it('runs every browser gate when the comparison range is unavailable', () => {
+    const selection = runSelector(
+      '--base',
+      '0000000000000000000000000000000000000000',
+      '--head',
+      'HEAD',
+    );
+
+    expect(selection.tier0Required).toBe(true);
+    expect(selection.authSmokeRequired).toBe(true);
+    expect(selection.iehpAssessmentImportSmokeRequired).toBe(true);
+    expect(selection.supervisionCorrectionRequired).toBe(true);
+    expect(selection.tier0Specs).toHaveLength(6);
+    expect(selection.reasons).toEqual(['diff unavailable; running full browser gates']);
+  });
+
   it('requires hosted auth smoke when the non-AI session credential contract changes', () => {
     const selection = runSelector(
       '--changed-file',
@@ -166,6 +195,22 @@ describe('select-browser-checks', () => {
     expect(selection.reasons).toEqual([
       '.github/workflows/bt-aba-disposable-browser-proof.yml: shared route/auth surface',
     ]);
+  });
+
+  it.each([
+    '.github/workflows/agent-work-ledger-hosted-advisory-canary.yml',
+    '.github/workflows/supabase-preview.yml',
+    '.github/workflows/iehp-pdf-mini-matrix-proof.yml',
+    '.github/workflows/auth-verification.yml',
+  ])('does not over-select browser gates for unrelated workflow changes: %s', (file) => {
+    const selection = runSelector('--changed-file', file);
+
+    expect(selection.tier0Required).toBe(false);
+    expect(selection.authSmokeRequired).toBe(false);
+    expect(selection.iehpAssessmentImportSmokeRequired).toBe(false);
+    expect(selection.supervisionCorrectionRequired).toBe(false);
+    expect(selection.tier0Specs).toEqual([]);
+    expect(selection.reasons).toEqual([]);
   });
 
   it('flags the hosted supervision-correction proof when its script changes', () => {

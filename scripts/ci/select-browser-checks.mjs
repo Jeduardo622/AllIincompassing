@@ -125,7 +125,6 @@ const classifyFile = (file) => {
   }
 
   if (matchAny(file, [
-    /^\.github\/workflows\//,
     /^scripts\/ci\//,
     /^scripts\/run-cypress\.ts$/,
     /^package(-lock)?\.json$/,

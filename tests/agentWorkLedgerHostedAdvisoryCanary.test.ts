@@ -1,10 +1,16 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { runCleanupSequence } from "../scripts/agent-work-ledger-hosted-advisory-canary.mjs";
+import {
+  captureCanarySecretDigests,
+  parseEdgeSecretListing,
+  runCleanupSequence,
+  writePhaseFailureArtifact,
+} from "../scripts/agent-work-ledger-hosted-advisory-canary.mjs";
 
 const workflowPath = path.resolve(
   ".github/workflows/agent-work-ledger-hosted-advisory-canary.yml",
@@ -147,10 +153,56 @@ describe("agent work hosted advisory canary contract", () => {
     expect(script).toContain("agent_work_hosted_sweeper_secret");
   });
 
+  it("parses JSON and ANSI table secret listings without secret values", () => {
+    expect(script).toContain('runManagementSecretsRequest("POST"');
+    expect(script).toContain('runManagementSecretsRequest("DELETE"');
+    expect(script).not.toContain('runManagementSecretsRequest("GET"');
+    const jsonListing = parseEdgeSecretListing(
+      JSON.stringify([
+        { name: "AGENT_WORK_LEDGER_RUNTIME_MODE", value: "runtime-digest" },
+        { name: "AGENT_WORK_RUNNER_SECRET", digest: "runner-digest" },
+      ]),
+    );
+    expect(jsonListing).toEqual(
+      new Map([
+        ["AGENT_WORK_LEDGER_RUNTIME_MODE", "runtime-digest"],
+        ["AGENT_WORK_RUNNER_SECRET", "runner-digest"],
+      ]),
+    );
+    const ansiListing = parseEdgeSecretListing(
+      "\u001b[1m NAME \u001b[0m │ \u001b[1m DIGEST \u001b[0m\nAGENT_WORK_LEDGER_RUNTIME_MODE │ runtime-digest\nAGENT_WORK_RUNNER_SECRET │ runner-digest\n",
+    );
+    expect(ansiListing).toEqual(jsonListing);
+    expect(() =>
+      parseEdgeSecretListing("unexpected human output without a digest column"),
+    ).toThrow("Secret listing output is unsupported.");
+  });
+
+  it("captures exact post-create digests before cleanup can claim ownership", () => {
+    expect(
+      captureCanarySecretDigests(
+        new Map([
+          ["AGENT_WORK_RUNNER_SECRET", "server-runner-digest"],
+          ["AGENT_WORK_SWEEPER_SECRET", "server-sweeper-digest"],
+          ["AGENT_WORK_HOSTED_PROJECT_REF", "server-project-digest"],
+        ]),
+      ),
+    ).toEqual({
+      AGENT_WORK_RUNNER_SECRET: "server-runner-digest",
+      AGENT_WORK_SWEEPER_SECRET: "server-sweeper-digest",
+      AGENT_WORK_HOSTED_PROJECT_REF: "server-project-digest",
+    });
+    expect(() => captureCanarySecretDigests(new Map())).toThrow(
+      "Created canary Edge secret digest is missing.",
+    );
+  });
+
   it("cleans up disabled-first and proves zero residue across jobs, vault names, edge secrets, pg_cron, and fixtures", () => {
     expect(script).toContain('cleanupOperations.setRuntimeMode("disabled")');
     expect(script).toContain("cleanupOperations.disableHostedScheduler()");
     expect(script).toContain("cleanupOperations.unsetEdgeSecrets(");
+    expect(script).toContain("secret.id = owned.id::uuid");
+    expect(script).not.toContain("delete from vault.secrets where name = any");
     expect(script).toContain(
       "cleanupOperations.dropCanaryPgCronExtension(state.pgCronExtensionOid)",
     );
@@ -174,12 +226,39 @@ describe("agent work hosted advisory canary contract", () => {
       calls.push(name);
     };
     await runCleanupSequence(
-      { pgCronInstalledByCanary: true, pgCronExtensionOid: 275 },
+      {
+        pgCronInstalledByCanary: true,
+        pgCronExtensionOid: 275,
+        edgeSecretDigests: {
+          AGENT_WORK_RUNNER_SECRET: "runner-digest",
+          AGENT_WORK_SWEEPER_SECRET: "sweeper-digest",
+          AGENT_WORK_HOSTED_PROJECT_REF: "project-digest",
+        },
+        vaultSecretIds: {
+          agent_work_hosted_project_ref: "00000000-0000-4000-8000-000000000001",
+          agent_work_hosted_publishable_key:
+            "00000000-0000-4000-8000-000000000002",
+          agent_work_hosted_runner_secret:
+            "00000000-0000-4000-8000-000000000003",
+          agent_work_hosted_sweeper_secret:
+            "00000000-0000-4000-8000-000000000004",
+        },
+      },
       {
         setRuntimeMode: async (mode: string) => calls.push(`mode:${mode}`),
         disableHostedScheduler: record("scheduler:disable"),
-        unsetEdgeSecrets: record("edge-secrets:unset"),
-        deleteVaultSecrets: record("vault:delete"),
+        listEdgeSecrets: async () => {
+          calls.push("edge-secrets:list");
+          return new Map([
+            ["AGENT_WORK_RUNNER_SECRET", "runner-digest"],
+            ["AGENT_WORK_SWEEPER_SECRET", "sweeper-digest"],
+            ["AGENT_WORK_HOSTED_PROJECT_REF", "project-digest"],
+          ]);
+        },
+        unsetEdgeSecrets: async (names: string[]) =>
+          calls.push(`edge-secrets:unset:${names.join(",")}`),
+        deleteVaultSecrets: async (ids: Record<string, string>) =>
+          calls.push(`vault:delete:${Object.keys(ids).join(",")}`),
         dropCanaryPgCronExtension: record("pg-cron:drop"),
         deleteSyntheticFixtures: record("fixtures:delete"),
       },
@@ -187,8 +266,9 @@ describe("agent work hosted advisory canary contract", () => {
     expect(calls).toEqual([
       "mode:disabled",
       "scheduler:disable",
-      "edge-secrets:unset",
-      "vault:delete",
+      "edge-secrets:list",
+      "edge-secrets:unset:AGENT_WORK_RUNNER_SECRET,AGENT_WORK_SWEEPER_SECRET,AGENT_WORK_HOSTED_PROJECT_REF",
+      "vault:delete:agent_work_hosted_project_ref,agent_work_hosted_publishable_key,agent_work_hosted_runner_secret,agent_work_hosted_sweeper_secret",
       "pg-cron:drop",
       "fixtures:delete",
     ]);
@@ -205,6 +285,7 @@ describe("agent work hosted advisory canary contract", () => {
             calls.push("scheduler:disable");
             throw new Error("synthetic scheduler cleanup failure");
           },
+          listEdgeSecrets: async () => new Map(),
           unsetEdgeSecrets: async () => calls.push("edge-secrets:unset"),
           deleteVaultSecrets: async () => calls.push("vault:delete"),
           dropCanaryPgCronExtension: async () => calls.push("pg-cron:drop"),
@@ -214,6 +295,84 @@ describe("agent work hosted advisory canary contract", () => {
     ).rejects.toThrow("Canary cleanup completed with failures.");
     expect(calls.at(-1)).toBe("fixtures:delete");
   });
+
+  it("does not unset canary secrets that were never created", async () => {
+    const calls: string[] = [];
+    await runCleanupSequence(
+      { pgCronInstalledByCanary: false },
+      {
+        setRuntimeMode: async () => calls.push("mode:disabled"),
+        disableHostedScheduler: async () => calls.push("scheduler:disable"),
+        listEdgeSecrets: async () =>
+          new Map([
+            ["AGENT_WORK_LEDGER_RUNTIME_MODE", "runtime-digest"],
+            ["UNRELATED_SECRET", "unrelated-digest"],
+          ]),
+        unsetEdgeSecrets: async () => calls.push("edge-secrets:unset"),
+        deleteVaultSecrets: async () => calls.push("vault:delete"),
+        dropCanaryPgCronExtension: async () => calls.push("pg-cron:drop"),
+        deleteSyntheticFixtures: async () => calls.push("fixtures:delete"),
+      },
+    );
+    expect(calls).toEqual([
+      "mode:disabled",
+      "scheduler:disable",
+      "fixtures:delete",
+    ]);
+  });
+
+  it("fails closed without deletion when a canary name has foreign ownership", async () => {
+    const calls: string[] = [];
+    await expect(
+      runCleanupSequence(
+        {
+          pgCronInstalledByCanary: false,
+          edgeSecretDigests: { AGENT_WORK_RUNNER_SECRET: "owned-digest" },
+        },
+        {
+          setRuntimeMode: async () => calls.push("mode:disabled"),
+          disableHostedScheduler: async () => calls.push("scheduler:disable"),
+          listEdgeSecrets: async () =>
+            new Map([["AGENT_WORK_RUNNER_SECRET", "foreign-digest"]]),
+          unsetEdgeSecrets: async () => calls.push("edge-secrets:unset"),
+          deleteVaultSecrets: async () => calls.push("vault:delete"),
+          dropCanaryPgCronExtension: async () => calls.push("pg-cron:drop"),
+          deleteSyntheticFixtures: async () => calls.push("fixtures:delete"),
+        },
+      ),
+    ).rejects.toThrow("Canary cleanup completed with failures.");
+    expect(calls).not.toContain("edge-secrets:unset");
+    expect(calls.at(-1)).toBe("fixtures:delete");
+  });
+
+  it.each([
+    ["preflight", "failure-preflight.json"],
+    ["setup/measure", "failure-setup-measure.json"],
+    ["cleanup/verify", "failure-cleanup-verify.json"],
+  ] as const)(
+    "writes a sanitized artifact when %s fails before normal evidence",
+    async (phase, filename) => {
+      const directory = mkdtempSync(path.join(os.tmpdir(), "win-275-failure-"));
+      try {
+        const artifact = await writePhaseFailureArtifact(phase, directory);
+        const contents = readFileSync(artifact, "utf8");
+        const parsed = JSON.parse(contents);
+        expect(parsed.fixed_booleans).toEqual({
+          execution_failed: true,
+          preflight_failed: phase === "preflight",
+          setup_measure_failed: phase === "setup/measure",
+          cleanup_verify_failed: phase === "cleanup/verify",
+          retention_activation_performed: false,
+          retention_deletion_performed: false,
+        });
+        expect(contents).not.toContain("error");
+        expect(contents).not.toContain("secret");
+        expect(path.basename(artifact)).toBe(filename);
+      } finally {
+        rmSync(directory, { force: true, recursive: true });
+      }
+    },
+  );
 
   it("binds the solo-owner path to passing specialists and exact protected-surface hashes", () => {
     const specialists = [
@@ -243,7 +402,9 @@ describe("agent work hosted advisory canary contract", () => {
     ];
     for (const surface of protectedSurfaces) {
       const actual = createHash("sha256")
-        .update(readFileSync(path.resolve(surface), "utf8").replace(/\r\n/g, "\n"))
+        .update(
+          readFileSync(path.resolve(surface), "utf8").replace(/\r\n/g, "\n"),
+        )
         .digest("hex");
       expect(soloAttestation.protectedSurfaceHashes?.[surface]).toBe(actual);
     }

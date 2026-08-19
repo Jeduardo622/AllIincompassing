@@ -16,6 +16,12 @@ The finite canary uses schedule `* * * * *`, HTTP timeout `5000` ms, and sweep b
 
 Dispatch remains a separate owner action after merge. A failed cleanup or a nonzero residue count blocks any cadence recommendation and requires protected incident handling; do not retry automatically.
 
+## Failed-run repair evidence
+
+Owner-dispatched run `32219271670` failed safely during read-only preflight on 2026-08-19. Supabase CLI `2.20.3` rendered `secrets list --output json` as an ANSI table, so no setup/measure phase, synthetic fixture creation, advisory transition, scheduler mutation, or cadence measurement occurred. The disabled fallback passed. A post-run read-only hosted audit found zero queue, archive, Ledger, draft-packet, Vault-name, scheduler, and ungranted-lock residue; `pg_cron` remained absent and the approved `365/90/30` retention decisions remained inert.
+
+The bounded repair uses the Supabase Management API for canary Edge-secret create/delete and accepts both JSON and ANSI-table forms of the CLI's name/digest-only listing. The script never serializes listing output or digests. Immediately after Edge-secret creation it captures the CLI-reported digests into private state, and cleanup deletes a canary-owned name only when the current digest matches that captured proof. Vault creation likewise captures the exact returned IDs before further work, and cleanup deletes only matching Vault ID/name pairs. A crash before capture or any missing/mismatched proof fails closed without deleting unowned secrets. The repair also writes a sanitized phase-failure artifact without exception text or secret metadata. It does not change runtime authority, fixture scope, scheduler behavior, retention policy, or the owner-only dispatch boundary. No hosted mutation is performed by the repair PR.
+
 ## Recommendation decision
 
 Approve sustained cadence only after the canary public artifact shows at least two runs, zero overlap, bounded p95 duration, zero queued/archive residue, and no lock contention. Until then the recommendation remains pending and runtime remains disabled.
@@ -24,11 +30,11 @@ Approve sustained cadence only after the canary public artifact shows at least t
 
 - classification: `high-risk human-reviewed`
 - lane: `critical`
-- files touched: the new canary workflow, script, contract test, handoff/review attestations, `package.json`, and the workflow Node-runtime inventory test
+- files touched: canary script, contract test, handoff/review attestations, and hash-bound review manifest
 - required agents: specification, implementation, code review, test, software architecture, security, and Supabase review
 - required checks: focused canary/Node24 contracts, `ci:check-focused`, lint, typecheck, `test:ci`, tenant validation, build, `verify:local`, exact-head PR CI, and current-main CI after merge
-- executed checks: focused contracts `12/12` pass; policy pass with documented secret-backed local skips; lint pass; typecheck pass; tenant validation pass; build pass; all five final specialist reviews pass
-- blocked checks: local `test:ci` and therefore `verify:local` are blocked by the pre-existing `tests/scripts/provision-ci-smoke-bcba.test.ts` canonical-role-readback assertion on current main; the isolated exact test reproduces the same failure and no implicated file changed in this PR
-- reviewer: completed; hash-bound code, test, architecture, security, and Supabase verdicts are recorded in the canary manifest
-- residual risk: hosted canary behavior is unexecuted until owner merge and a separate exact dispatch acknowledgement; exact-head PR CI and post-merge current-main CI remain required
-- pr handoff: review-ready after final local hash verification; owner merge is mandatory and Codex must not dispatch this critical workflow
+- executed checks: canary contract `18/18` pass; shadow-proof contract `38/38` pass; script syntax pass; policy pass; lint pass; typecheck pass; build pass; `test:ci` reached `5023` passing tests and reproduced one inherited `provision-ci-smoke-bcba` assertion failure unchanged from `origin/main`
+- blocked checks: `npm run verify:local` cannot pass because it includes the same deterministic inherited `test:ci` failure; hosted redispatch, exact-head PR CI, and post-merge current-main CI remain pending external gates
+- reviewer: completed through final hash-bound code, test, architecture, security, and Supabase verdicts recorded in the canary manifest
+- residual risk: the repaired hosted path remains unproved until owner merge and a separate exact dispatch acknowledgement; exact-head PR CI and post-merge current-main CI remain required
+- pr handoff: owner merge is mandatory and Codex must not dispatch this critical workflow

@@ -6,23 +6,23 @@
   "createdAt": "2026-08-18T23:01:08Z",
   "specialistReviews": {
     "code-review-engineer": {
-      "agentId": "01a01713-0dd8-7e72-b610-99c84ce35571",
+      "agentId": "01a01abd-df06-7c13-8848-9c27f28f8162",
       "verdict": "PASS"
     },
     "security-engineer": {
-      "agentId": "01a01713-0f00-71c0-8957-f848e95a22d8",
+      "agentId": "01a01abd-e13d-7241-a159-b191db735b59",
       "verdict": "PASS"
     },
     "test-engineer": {
-      "agentId": "01a0170c-2298-76b3-b3b4-a96c44fa44f1",
+      "agentId": "01a01abd-e00e-70c2-9ee4-9af8284da3ed",
       "verdict": "PASS"
     },
     "software-architect": {
-      "agentId": "01a0170c-2174-7ab0-87f3-7a3d4d5f5f7c",
+      "agentId": "01a01ac9-7e69-78e3-a981-2c2aa44e6c87",
       "verdict": "PASS"
     },
     "supabase-reviewer": {
-      "agentId": "01a01717-24c2-7933-b002-e52d70325553",
+      "agentId": "01a01abd-e26f-7f21-a258-23a4bff41007",
       "verdict": "PASS"
     }
   },
@@ -36,10 +36,10 @@
   },
   "protectedSurfaceHashes": {
     ".github/workflows/agent-work-ledger-hosted-advisory-canary.yml": "2e524aa65242822ec2c8e79ad2c6103feea74503c711f04c30faddd870b96908",
-    "scripts/agent-work-ledger-hosted-advisory-canary.mjs": "bfcb496613180692f68b2881a58cb79c3e637a964c2ae9188c8f266025dfc726",
-    "tests/agentWorkLedgerHostedAdvisoryCanary.test.ts": "d0f239df9091027d65706e34ea32890fe2da1fb5c9aef8c512bc8707b4d73584",
-    "docs/ai/handoffs/WIN-275-hosted-advisory-canary.md": "f089d569c845be65a7fa3940d7f7cb835f6f7dfba42d25ca8459ad639d5f4aba",
-    "docs/ai/reviews/WIN-275-hosted-advisory-canary-attestation.md": "f436dbe10a568c64d9e91d9a6b9506f3f29a8ae26677c09cbe5574a144c87f9a",
+    "scripts/agent-work-ledger-hosted-advisory-canary.mjs": "e0b78fdf24449cea2300abca17c4430c4b1d33019c94dae93a68060bc6c86575",
+    "tests/agentWorkLedgerHostedAdvisoryCanary.test.ts": "73ae4e890cafbf5be144f4b55dd1214e681e4744ba4cec070df100ec314a6655",
+    "docs/ai/handoffs/WIN-275-hosted-advisory-canary.md": "0fea3e7ebc0898e9f92e771711c3be7438c12beb580b448a2d98339b3030b9f2",
+    "docs/ai/reviews/WIN-275-hosted-advisory-canary-attestation.md": "bee9a9b198d5835a0e6ec65d638b751a3f3067d1ed89cf8a59c394cf409fa960",
     ".github/workflows/agent-work-ledger-hosted-shadow-proof.yml": "eef158750da0d0f4456c00fb247149827d882a7d332bb36e57ca236c5b8dd83f",
     "scripts/agent-work-ledger-hosted-shadow-proof.mjs": "2fd78613be6dba0583019bd93566b3df73ee75d9d1f1036480fdf7f4c1350323",
     "tests/agentWorkLedgerHostedShadowProof.test.ts": "c92e0fd0f9a6bcf71e61a58d404553d85ced204ca41392f5fa3a63b810ec57ae"

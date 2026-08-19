@@ -10,6 +10,7 @@ const execFileAsync = promisify(execFile);
 const PROJECT_REF = "wnnjeqheqxxyrgsjmygy";
 const PROJECT_URL = `https://${PROJECT_REF}.supabase.co`;
 const MANAGEMENT_API_URL = `https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query`;
+const MANAGEMENT_SECRETS_URL = `https://api.supabase.com/v1/projects/${PROJECT_REF}/secrets`;
 const AUTH_URL = `${PROJECT_URL}/auth/v1`;
 const ITEMS_URL = `${PROJECT_URL}/functions/v1/agent-work-items`;
 const CANARY_SCHEDULE = "* * * * *";
@@ -87,6 +88,23 @@ const managementRead = (query, parameters = []) =>
 const managementWrite = (query, parameters = []) =>
   runDatabaseQuery(query, parameters, false);
 
+const runManagementSecretsRequest = async (method, body) => {
+  const response = await fetch(MANAGEMENT_SECRETS_URL, {
+    method,
+    headers: {
+      Authorization: `Bearer ${requiredEnv("SUPABASE_ACCESS_TOKEN")}`,
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok)
+    throw new Error(
+      `Management secrets request failed with HTTP ${response.status}.`,
+    );
+  return undefined;
+};
+
 const runSupabase = async (args) =>
   execFileAsync("supabase", args, {
     env: {
@@ -101,13 +119,51 @@ const setRuntimeMode = async (mode) => {
     mode === "advisory" || mode === "disabled",
     "Unsupported canary runtime mode.",
   );
-  await runSupabase([
-    "secrets",
-    "set",
-    `AGENT_WORK_LEDGER_RUNTIME_MODE=${mode}`,
-    "--project-ref",
-    PROJECT_REF,
+  await runManagementSecretsRequest("POST", [
+    { name: "AGENT_WORK_LEDGER_RUNTIME_MODE", value: mode },
   ]);
+};
+
+export const parseEdgeSecretListing = (output) => {
+  const normalized = String(output).replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
+  if (normalized.trimStart().startsWith("[")) {
+    const parsed = JSON.parse(normalized);
+    assert(Array.isArray(parsed), "Secret listing JSON must be an array.");
+    const entries = parsed.map((entry) => [
+      entry?.name,
+      entry?.digest ?? entry?.value,
+    ]);
+    assert(
+      entries.every(
+        ([name, digest]) =>
+          typeof name === "string" &&
+          name.length > 0 &&
+          typeof digest === "string" &&
+          digest.length > 0,
+      ),
+      "Secret listing JSON contains invalid metadata.",
+    );
+    return new Map(entries);
+  }
+
+  const rows = normalized.split(/\r?\n/);
+  const headerIndex = rows.findIndex((row) => {
+    const cells = row.split(/[│|]/).map((cell) => cell.trim().toUpperCase());
+    return cells[0] === "NAME" && cells[1] === "DIGEST";
+  });
+  assert(headerIndex >= 0, "Secret listing output is unsupported.");
+  const entries = rows
+    .slice(headerIndex + 1)
+    .map((row) => row.split(/[│|]/).map((cell) => cell.trim()))
+    .filter(
+      (cells) =>
+        cells.length >= 2 &&
+        cells[0].length > 0 &&
+        cells[1].length > 0 &&
+        !/^[─-]+$/.test(cells[0]),
+    )
+    .map(([name, digest]) => [name, digest]);
+  return new Map(entries);
 };
 
 const listEdgeSecrets = async () => {
@@ -119,32 +175,33 @@ const listEdgeSecrets = async () => {
     "--project-ref",
     PROJECT_REF,
   ]);
-  const parsed = JSON.parse(result.stdout || "[]");
-  return new Set(parsed.map((entry) => entry.name));
+  return parseEdgeSecretListing(result.stdout);
+};
+
+export const captureCanarySecretDigests = (listing) => {
+  const digests = Object.fromEntries(
+    EDGE_SECRET_NAMES.map((name) => [name, listing.get(name)]),
+  );
+  assert(
+    EDGE_SECRET_NAMES.every(
+      (name) => typeof digests[name] === "string" && digests[name].length > 0,
+    ),
+    "Created canary Edge secret digest is missing.",
+  );
+  return digests;
 };
 
 const setEdgeSecrets = async (state) => {
-  await runSupabase([
-    "secrets",
-    "set",
-    `AGENT_WORK_LEDGER_RUNTIME_MODE=advisory`,
-    `AGENT_WORK_RUNNER_SECRET=${state.runnerSecret}`,
-    `AGENT_WORK_SWEEPER_SECRET=${state.sweeperSecret}`,
-    `AGENT_WORK_HOSTED_PROJECT_REF=${PROJECT_REF}`,
-    "--project-ref",
-    PROJECT_REF,
+  await runManagementSecretsRequest("POST", [
+    { name: "AGENT_WORK_LEDGER_RUNTIME_MODE", value: "advisory" },
+    { name: "AGENT_WORK_RUNNER_SECRET", value: state.runnerSecret },
+    { name: "AGENT_WORK_SWEEPER_SECRET", value: state.sweeperSecret },
+    { name: "AGENT_WORK_HOSTED_PROJECT_REF", value: PROJECT_REF },
   ]);
 };
 
 const unsetEdgeSecrets = async (names) => {
-  if (names.length > 0)
-    await runSupabase([
-      "secrets",
-      "unset",
-      ...names,
-      "--project-ref",
-      PROJECT_REF,
-    ]);
+  if (names.length > 0) await runManagementSecretsRequest("DELETE", names);
 };
 
 const preflightSql = `
@@ -218,21 +275,42 @@ select oid::bigint as extension_oid from pg_extension where extname = 'pg_cron';
   );
   return Number(row.extension_oid);
 };
-const createVaultSecrets = (state) =>
-  managementWrite(
-    `
-  select vault.create_secret($1::text, 'agent_work_hosted_project_ref');
-  select vault.create_secret($2::text, 'agent_work_hosted_publishable_key');
-  select vault.create_secret($3::text, 'agent_work_hosted_runner_secret');
-  select vault.create_secret($4::text, 'agent_work_hosted_sweeper_secret');
-`,
-    [
-      PROJECT_REF,
-      requiredEnv("SUPABASE_PUBLISHABLE_KEY"),
-      state.runnerSecret,
-      state.sweeperSecret,
-    ],
+const assertVaultSecretOwnershipProof = (ids) => {
+  assert(
+    ids &&
+      typeof ids === "object" &&
+      Object.keys(ids).length === VAULT_NAMES.length &&
+      VAULT_NAMES.every((name) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          ids[name],
+        ),
+      ),
+    "Created Vault secret ownership proof is missing.",
   );
+};
+
+const createVaultSecrets = async (state) => {
+  const row = firstRow(
+    await managementWrite(
+      `
+select jsonb_build_object(
+  'agent_work_hosted_project_ref', vault.create_secret($1::text, 'agent_work_hosted_project_ref'),
+  'agent_work_hosted_publishable_key', vault.create_secret($2::text, 'agent_work_hosted_publishable_key'),
+  'agent_work_hosted_runner_secret', vault.create_secret($3::text, 'agent_work_hosted_runner_secret'),
+  'agent_work_hosted_sweeper_secret', vault.create_secret($4::text, 'agent_work_hosted_sweeper_secret')
+) as vault_secret_ids`,
+      [
+        PROJECT_REF,
+        requiredEnv("SUPABASE_PUBLISHABLE_KEY"),
+        state.runnerSecret,
+        state.sweeperSecret,
+      ],
+    ),
+  );
+  const ids = row.vault_secret_ids;
+  assertVaultSecretOwnershipProof(ids);
+  return ids;
+};
 const enableHostedScheduler = () =>
   managementWrite(
     "select public.enable_hosted_agent_work_queue_scheduler($1::text, $2::integer, $3::integer) as scheduler",
@@ -242,10 +320,15 @@ const disableHostedScheduler = () =>
   managementWrite(
     "select public.disable_hosted_agent_work_queue_scheduler() as scheduler",
   );
-const deleteVaultSecrets = () =>
-  managementWrite("delete from vault.secrets where name = any($1::text[])", [
-    VAULT_NAMES,
-  ]);
+const deleteVaultSecrets = (ownedIds) => {
+  assertVaultSecretOwnershipProof(ownedIds);
+  return managementWrite(
+    `delete from vault.secrets as secret
+using jsonb_each_text($1::jsonb) as owned(name, id)
+where secret.name = owned.name and secret.id = owned.id::uuid`,
+    [JSON.stringify(ownedIds)],
+  );
+};
 const dropCanaryPgCronExtension = (extensionOid) =>
   managementWrite(
     `
@@ -337,7 +420,12 @@ const pollForSyntheticAdvisoryReadback = async () => {
     "Timed out waiting for authenticated synthetic advisory readback.",
   );
 };
-const writePublicArtifact = async (fixedBooleans, counts, timingsMs) => {
+const writePublicArtifact = async (
+  fixedBooleans,
+  counts,
+  timingsMs,
+  destination = artifactPath,
+) => {
   const evidence = {
     artifact: "agent-work-ledger-hosted-advisory-canary",
     fixed_booleans: fixedBooleans,
@@ -357,10 +445,35 @@ const writePublicArtifact = async (fixedBooleans, counts, timingsMs) => {
   ) {
     throw new Error("Refusing sensitive or identifying evidence output.");
   }
-  await mkdir(publicDir, { recursive: true });
-  await writeFile(artifactPath, `${JSON.stringify(evidence, null, 2)}\n`, {
+  await mkdir(path.dirname(destination), { recursive: true });
+  await writeFile(destination, `${JSON.stringify(evidence, null, 2)}\n`, {
     mode: 0o600,
   });
+  return destination;
+};
+
+export const writePhaseFailureArtifact = async (
+  phase,
+  destinationDirectory = publicDir,
+) => {
+  assert(PHASES.includes(phase), "Unsupported hosted advisory canary phase.");
+  const phaseKey = phase.replace("/", "_");
+  return writePublicArtifact(
+    {
+      execution_failed: true,
+      preflight_failed: phase === "preflight",
+      setup_measure_failed: phase === "setup/measure",
+      cleanup_verify_failed: phase === "cleanup/verify",
+      retention_activation_performed: false,
+      retention_deletion_performed: false,
+    },
+    {},
+    { elapsed: Date.now() - startedAt },
+    path.join(
+      destinationDirectory,
+      `failure-${phaseKey.replace("_", "-")}.json`,
+    ),
+  );
 };
 
 const deleteSyntheticFixtures = async () => {
@@ -374,6 +487,7 @@ const deleteSyntheticFixtures = async () => {
 const operations = {
   setRuntimeMode,
   disableHostedScheduler,
+  listEdgeSecrets,
   unsetEdgeSecrets,
   dropCanaryPgCronExtension,
   deleteSyntheticFixtures,
@@ -391,8 +505,32 @@ export const runCleanupSequence = async (state, cleanupOperations) => {
   };
   await attempt(() => cleanupOperations.setRuntimeMode("disabled"));
   await attempt(() => cleanupOperations.disableHostedScheduler());
-  await attempt(() => cleanupOperations.unsetEdgeSecrets(EDGE_SECRET_NAMES));
-  await attempt(() => cleanupOperations.deleteVaultSecrets());
+  await attempt(async () => {
+    const currentSecrets = await cleanupOperations.listEdgeSecrets();
+    const expectedDigests = state.edgeSecretDigests ?? {};
+    const foreignCanarySecrets = EDGE_SECRET_NAMES.filter(
+      (name) =>
+        currentSecrets.has(name) &&
+        currentSecrets.get(name) !== expectedDigests[name],
+    );
+    assert(
+      foreignCanarySecrets.length === 0,
+      "Canary Edge secret ownership drifted.",
+    );
+    const ownedCanarySecrets = EDGE_SECRET_NAMES.filter(
+      (name) =>
+        typeof expectedDigests[name] === "string" &&
+        currentSecrets.get(name) === expectedDigests[name],
+    );
+    if (ownedCanarySecrets.length > 0) {
+      await cleanupOperations.unsetEdgeSecrets(ownedCanarySecrets);
+    }
+  });
+  if (state.vaultSecretIds !== undefined) {
+    await attempt(() =>
+      cleanupOperations.deleteVaultSecrets(state.vaultSecretIds),
+    );
+  }
   if (state.pgCronInstalledByCanary) {
     await attempt(() =>
       cleanupOperations.dropCanaryPgCronExtension(state.pgCronExtensionOid),
@@ -419,9 +557,11 @@ const preflightPhase = async () => {
     "AGENT_WORK_LEDGER_RUNTIME_MODE",
   );
   assertPreflight(summary);
+  const runnerSecret = randomBytes(32).toString("base64url");
+  const sweeperSecret = randomBytes(32).toString("base64url");
   const state = {
-    runnerSecret: randomBytes(32).toString("base64url"),
-    sweeperSecret: randomBytes(32).toString("base64url"),
+    runnerSecret,
+    sweeperSecret,
     startedAt: Date.now(),
     databaseWriteBaseline: Number(summary.database_write_baseline),
     httpResponseBaseline: Number(summary.http_response_baseline),
@@ -447,8 +587,11 @@ const setupMeasurePhase = async () => {
   state.pgCronExtensionOid = await installCanaryPgCronExtension();
   state.pgCronInstalledByCanary = true;
   await writeState(state);
-  await createVaultSecrets(state);
+  state.vaultSecretIds = await createVaultSecrets(state);
+  await writeState(state);
   await setEdgeSecrets(state);
+  state.edgeSecretDigests = captureCanarySecretDigests(await listEdgeSecrets());
+  await writeState(state);
   await pollForSyntheticAdvisoryReadback();
   await enableHostedScheduler();
   await sleep(CANARY_WINDOW_MS);
@@ -523,5 +666,14 @@ export const executePhase = async (phase) => {
   return cleanupVerifyPhase();
 };
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href)
-  await executePhase(process.argv[2]);
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  const phase = process.argv[2];
+  try {
+    await executePhase(phase);
+  } catch (error) {
+    if (PHASES.includes(phase)) {
+      await writePhaseFailureArtifact(phase).catch(() => undefined);
+    }
+    throw error;
+  }
+}

@@ -349,6 +349,18 @@ describe("check-e2e-reliability-gates", () => {
     expect(cleanupStep).toContain("run: npx tsx scripts/provision-ci-smoke-therapist.ts --cleanup");
   });
 
+  test("auth browser smoke installs Playwright from node_modules without with-deps", () => {
+    const workflow = normalizeLf(readFileSync(path.join(repoRoot, ".github/workflows/ci.yml"), "utf8"));
+    const jobStart = workflow.indexOf("  auth_browser_smoke:\n");
+    const jobEnd = workflow.indexOf("\n  playwright_env_readiness:\n", jobStart);
+    const authBrowserSmokeJob = jobStart >= 0 && jobEnd > jobStart
+      ? workflow.slice(jobStart, jobEnd)
+      : "";
+
+    expect(authBrowserSmokeJob).toContain("run: ./node_modules/.bin/playwright install chromium");
+    expect(authBrowserSmokeJob).not.toContain("--with-deps");
+  });
+
   test("accepts ci:playwright runner invocation semantics", () => {
     const fixtureRoot = createFixture(`tsx scripts/playwright-ci-runner.ts ${runnerChildren.join(" ")}`);
 

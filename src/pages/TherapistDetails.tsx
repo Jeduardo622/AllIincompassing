@@ -70,8 +70,9 @@ export function TherapistDetails() {
 
   if (isAuthorizationLoading || isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex h-64 items-center justify-center" role="status">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <span className="sr-only">Loading therapist details</span>
       </div>
     );
   }
@@ -85,7 +86,7 @@ export function TherapistDetails() {
         </h2>
         <button
           onClick={() => navigate('/therapists')}
-          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          className="min-h-11 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
         >
           Back to Therapist List
         </button>
@@ -103,7 +104,7 @@ export function TherapistDetails() {
         </p>
         <button
           onClick={() => navigate('/therapists')}
-          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          className="min-h-11 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
         >
           Return to Therapists
         </button>
@@ -116,7 +117,8 @@ export function TherapistDetails() {
       <div className="flex items-center mb-6">
         <button
           onClick={() => navigate('/therapists')}
-          className="mr-4 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+          className="mr-4 min-h-11 min-w-11 rounded-full p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800"
+          aria-label="Back to therapists"
         >
           <svg className="h-5 w-5 text-gray-500 dark:text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 19l-7-7 7-7" />
@@ -128,7 +130,11 @@ export function TherapistDetails() {
       </div>
 
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow mb-6">
-        <div className="flex items-center px-4 border-b dark:border-gray-700 overflow-x-auto">
+        <div className="border-b px-4 py-2 dark:border-gray-700">
+          <p className="pb-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+            Scroll to view all therapist sections.
+          </p>
+          <div className="flex items-center overflow-x-auto">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -136,7 +142,7 @@ export function TherapistDetails() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`
-                  group inline-flex items-center px-6 py-4 border-b-2 font-medium text-sm
+                  group inline-flex min-h-11 shrink-0 items-center px-6 py-4 border-b-2 font-medium text-sm
                   ${
                     activeTab === tab.id
                       ? 'border-blue-500 text-blue-600 dark:text-blue-400'
@@ -156,6 +162,7 @@ export function TherapistDetails() {
               </button>
             );
           })}
+          </div>
         </div>
 
         <div className="p-6">
@@ -174,10 +181,10 @@ export function TherapistDetails() {
             <Calendar className="h-8 w-8 text-blue-500 mr-3" />
             <div>
               <div className="text-sm font-medium text-gray-900 dark:text-white">
-                Next Session
+                Upcoming schedule
               </div>
               <div className="text-sm text-gray-500 dark:text-gray-400">
-                Tomorrow at 3:00 PM
+                Open the Schedule tab to review assigned sessions.
               </div>
             </div>
           </div>

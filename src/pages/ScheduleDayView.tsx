@@ -123,10 +123,11 @@ const ScheduleDayViewComponent: React.FC<ScheduleDayViewProps> = ({
   }, [allowDragAndDrop, clearDragState, onRescheduleSession, sessionsById]);
 
   return (
-    <div
-      className="bg-white dark:bg-dark-lighter rounded-lg shadow overflow-x-auto"
-      data-testid="day-view"
-    >
+    <div className="space-y-2" data-testid="day-view">
+      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+        Scroll horizontally if schedule details are clipped.
+      </p>
+      <div className="bg-white dark:bg-dark-lighter rounded-lg shadow overflow-x-auto">
       <div className="grid grid-cols-2 border-b dark:border-gray-700">
         <div className="py-4 px-2 text-center text-sm font-medium text-gray-500 border-r dark:border-gray-700 dark:text-gray-400">
           Time
@@ -171,6 +172,7 @@ const ScheduleDayViewComponent: React.FC<ScheduleDayViewProps> = ({
           scheduleSessions={renderedScheduleSessions}
           showInvalidSessions
         />
+      </div>
       </div>
     </div>
   );

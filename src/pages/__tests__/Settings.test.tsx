@@ -57,6 +57,7 @@ describe('Settings', () => {
 
     expect(screen.getByRole('button', { name: /Feature Flags/i })).toHaveClass('border-blue-500');
     expect(screen.getByText('FeatureFlagsPanel')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Feature Flags/i }).closest('[data-settings-tab-scroll]')).not.toBeNull();
   });
 
   it('opens the impersonation tab from a settings deep link for super admins', () => {

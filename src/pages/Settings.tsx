@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { OrganizationSettings } from '../components/settings/OrganizationSettings';
@@ -34,6 +34,7 @@ export function Settings() {
   const { isSuperAdmin } = useAuth();
   const queryClient = useQueryClient();
   const showSuperAdminTabs = isSuperAdmin();
+  const tabRefs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
 
   const initialTab = useMemo<Tab>(() => {
     const path = location.pathname.toLowerCase();
@@ -81,6 +82,19 @@ export function Settings() {
     queryClient.invalidateQueries({ refetchType: 'active' });
   }, [activeTab, queryClient]);
 
+  useEffect(() => {
+    const activeTabElement = tabRefs.current[activeTab];
+    const tabScroller = activeTabElement?.closest<HTMLElement>('[data-settings-tab-scroll]');
+    if (!activeTabElement || !tabScroller) {
+      return;
+    }
+
+    tabScroller.scrollLeft = Math.max(
+      0,
+      activeTabElement.offsetLeft + (activeTabElement.offsetWidth / 2) - (tabScroller.clientWidth / 2),
+    );
+  }, [activeTab]);
+
   const tabs = [
     { id: 'user' as Tab, name: 'Personal Settings', icon: User },
     { id: 'company' as Tab, name: 'Company Settings', icon: Building },
@@ -99,25 +113,29 @@ export function Settings() {
   ];
 
   return (
-    <div className="h-full">
+    <div className="h-full min-w-0 max-w-full">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h1>
       </div>
 
-      <div className="bg-white dark:bg-dark-lighter rounded-lg shadow">
-        <div className="overflow-x-auto border-b border-gray-200 dark:border-gray-700">
+      <div className="min-w-0 max-w-full overflow-hidden rounded-lg bg-white shadow dark:bg-dark-lighter">
+        <div data-settings-tab-scroll className="max-w-full overflow-x-auto border-b border-gray-200 dark:border-gray-700">
           <nav className="flex min-w-max -mb-px">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
                   key={tab.id}
+                  ref={(element) => {
+                    tabRefs.current[tab.id] = element;
+                  }}
                   onClick={() => {
                     setActiveTab(tab.id);
                     navigate(tab.id === 'user' ? '/settings' : `/settings/${tab.id}`);
                   }}
+                  aria-current={activeTab === tab.id ? 'page' : undefined}
                   className={`
-                    group inline-flex items-center px-6 py-4 border-b-2 font-medium text-sm
+                    group inline-flex min-h-11 items-center px-6 py-4 border-b-2 font-medium text-sm
                     ${
                       activeTab === tab.id
                         ? 'border-blue-500 text-blue-600 dark:text-blue-400'
@@ -139,6 +157,9 @@ export function Settings() {
             })}
           </nav>
         </div>
+        <p className="border-b border-gray-100 px-6 py-2 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400 sm:hidden">
+          Scroll to view more settings sections on smaller screens.
+        </p>
 
         <div className="p-6">
           {activeTab === 'user' && <UserSettings />}

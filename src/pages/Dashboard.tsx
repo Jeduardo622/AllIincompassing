@@ -821,8 +821,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   if (isLoading && !displayData.todaySessions.length) {
     return (
-      <div className="h-full flex items-center justify-center">
+      <div className="flex h-full items-center justify-center" role="status">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <span className="sr-only">Loading dashboard</span>
       </div>
     );
   }

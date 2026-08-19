@@ -67,6 +67,7 @@ export const routeGroups = {
       roles: ["public"],
       expectedPath: "/auth/recovery",
     },
+    { path: "/accept-invite", roles: ["public"] },
     { path: "/unauthorized", roles: ["public"] },
   ],
   client: [
@@ -78,7 +79,7 @@ export const routeGroups = {
         bt: "/",
         therapist: "/schedule",
         midtier: "/schedule",
-        admin_schedule: "/",
+        admin_schedule: "/schedule",
         admin: "/",
         bcba: "/",
         super_admin: "/",
@@ -291,21 +292,24 @@ export const installRouteDataStubs = (): void => {
 export const assertVisibleRoute = (path: string, expectedPath = path): void => {
   cy.visit(path);
   cy.wait("@runtimeConfig");
-  cy.get("body").should("be.visible");
+  cy.get("body").should("be.visible").invoke("text").should("match", /\S+/);
   cy.get('[data-testid="error-boundary"]').should("not.exist");
   cy.url().should("not.include", "/login");
   cy.url().should("not.include", "/unauthorized");
   cy.location("pathname").should("eq", expectedPath);
+  cy.document().its("title").should("match", /\S+/);
+  cy.get("main, [role='main'], form, h1").filter(":visible").its("length").should("be.gte", 1);
 };
 
 export const assertBlockedRoute = (path: string): void => {
   cy.visit(path);
   cy.wait("@runtimeConfig");
+  cy.get("body").should("be.visible").invoke("text").should("match", /\S+/);
+  cy.get('[data-testid="error-boundary"]').should("not.exist");
   cy.url().should((current) => {
     expect(
       current.includes("/unauthorized")
-      || current.includes("/login")
-      || current === `${Cypress.config("baseUrl")}/`,
+      || current.includes("/login"),
     ).to.be.true;
   });
 };

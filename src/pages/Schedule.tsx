@@ -2490,7 +2490,7 @@ export const Schedule = React.memo(() => {
             <button
               type="button"
               onClick={handleRetryScheduleDataLoad}
-              className="mt-6 inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+              className="mt-6 inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
             >
               Retry
             </button>
@@ -2511,7 +2511,7 @@ export const Schedule = React.memo(() => {
             onClick={() => handleDateNavigation("prev")}
             onFocus={handlePrefetchPreviousPeriod}
             onMouseEnter={handlePrefetchPreviousPeriod}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
+            className="min-h-11 min-w-11 rounded-full p-2 hover:bg-gray-100 transition-colors dark:hover:bg-gray-800"
           >
             <ChevronLeft aria-hidden="true" className="w-5 h-5" />
           </button>
@@ -2528,7 +2528,7 @@ export const Schedule = React.memo(() => {
             onClick={() => handleDateNavigation("next")}
             onFocus={handlePrefetchNextPeriod}
             onMouseEnter={handlePrefetchNextPeriod}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
+            className="min-h-11 min-w-11 rounded-full p-2 hover:bg-gray-100 transition-colors dark:hover:bg-gray-800"
           >
             <ChevronRight aria-hidden="true" className="w-5 h-5" />
           </button>
@@ -2539,7 +2539,7 @@ export const Schedule = React.memo(() => {
             <button
               onClick={() => handleViewChange("day")}
               aria-pressed={view === "day"}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
+              className={`min-h-11 px-4 py-2 text-sm font-medium transition-colors ${
                 view === "day"
                   ? "bg-blue-600 text-white"
                   : "bg-white dark:bg-dark-lighter text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
@@ -2551,7 +2551,7 @@ export const Schedule = React.memo(() => {
             <button
               onClick={() => handleViewChange("week")}
               aria-pressed={view === "week"}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
+              className={`min-h-11 px-4 py-2 text-sm font-medium transition-colors ${
                 view === "week"
                   ? "bg-blue-600 text-white"
                   : "bg-white dark:bg-dark-lighter text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
@@ -2677,14 +2677,14 @@ export const Schedule = React.memo(() => {
                         <button
                           type="button"
                           onClick={selectAllWeekForwardSourceSessions}
-                          className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+                          className="min-h-11 rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
                         >
                           Select all
                         </button>
                         <button
                           type="button"
                           onClick={clearWeekForwardSourceSessions}
-                          className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+                          className="min-h-11 rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
                         >
                           Clear
                         </button>
@@ -2741,7 +2741,7 @@ export const Schedule = React.memo(() => {
                     type="button"
                     onClick={() => void weekForwardPreviewMutation.mutateAsync()}
                     disabled={!weekForwardCanPreview || weekForwardPreviewMutation.isPending || weekForwardApplyMutation.isPending}
-                    className="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {weekForwardPreviewMutation.isPending ? "Previewing..." : "Preview week-forward schedule"}
                   </button>
@@ -2749,7 +2749,7 @@ export const Schedule = React.memo(() => {
                     type="button"
                     onClick={() => void weekForwardApplyMutation.mutateAsync()}
                     disabled={!weekForwardCanPreview || !weekForwardPreview || weekForwardPreview.generatedSessionCount === 0 || weekForwardPreviewMutation.isPending || weekForwardApplyMutation.isPending}
-                    className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex min-h-11 items-center justify-center rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {weekForwardApplyMutation.isPending ? "Applying..." : "Apply this week forward"}
                   </button>
@@ -2843,7 +2843,7 @@ export const Schedule = React.memo(() => {
                           type="button"
                           aria-pressed={isSelected}
                           onClick={() => handleToggleRecurrenceWeekday(option.value)}
-                          className={`inline-flex min-w-14 items-center justify-center rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                          className={`inline-flex min-h-11 min-w-14 items-center justify-center rounded-full border px-3 py-1.5 text-sm font-medium transition ${
                             isSelected
                               ? "border-blue-600 bg-blue-600 text-white"
                               : "border-gray-300 bg-white text-gray-700 hover:border-blue-400 hover:text-blue-600 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
@@ -2909,7 +2909,7 @@ export const Schedule = React.memo(() => {
                     <button
                       type="button"
                       onClick={handleAddRecurrenceException}
-                      className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 focus:outline-none"
+                      className="inline-flex min-h-11 items-center px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 focus:outline-none"
                     >
                       Add exception
                     </button>
@@ -2940,7 +2940,7 @@ export const Schedule = React.memo(() => {
                             type="button"
                             onClick={() => handleRemoveRecurrenceException(index)}
                             aria-label={`Remove exception date ${index + 1}`}
-                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 focus:outline-none"
+                            className="inline-flex min-h-11 items-center px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 focus:outline-none"
                           >
                             Remove
                           </button>

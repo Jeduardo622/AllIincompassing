@@ -3,10 +3,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 
 import { describePreviewConfig, resolvePreviewConfig } from '../src/preview/config';
 
-const loadPreviewEnv = (): void => {
+export const loadPreviewEnv = (): void => {
   const envPath = path.resolve('.env.preview');
   if (!fs.existsSync(envPath)) {
     console.log('[preview] .env.preview not found; using process environment variables only.');
@@ -17,7 +18,11 @@ const loadPreviewEnv = (): void => {
   console.log(`[preview] Loaded environment variables from ${envPath}.`);
 };
 
-const runCommand = async (command: string, args: readonly string[], env: NodeJS.ProcessEnv): Promise<void> => {
+export const runCommand = async (
+  command: string,
+  args: readonly string[],
+  env: NodeJS.ProcessEnv,
+): Promise<void> => {
   await new Promise<void>((resolve, reject) => {
     const child = spawn(command, args, {
       env,
@@ -38,7 +43,7 @@ const runCommand = async (command: string, args: readonly string[], env: NodeJS.
   });
 };
 
-const ensureCleanOutput = (outDir: string): void => {
+export const ensureCleanOutput = (outDir: string): void => {
   if (!fs.existsSync(outDir)) {
     return;
   }
@@ -46,7 +51,7 @@ const ensureCleanOutput = (outDir: string): void => {
   console.log(`[preview] Cleared existing preview output at ${path.resolve(outDir)}.`);
 };
 
-const main = async (): Promise<void> => {
+export const buildPreviewArtifacts = async (): Promise<void> => {
   loadPreviewEnv();
   const previewConfig = resolvePreviewConfig(process.env);
   console.log(`[preview] Using configuration -> ${describePreviewConfig(previewConfig)}`);
@@ -62,7 +67,20 @@ const main = async (): Promise<void> => {
   console.log(`[preview] Baseline preview URL: ${previewConfig.url}`);
 };
 
-main().catch((error) => {
-  console.error('[preview] Build failed:', error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-});
+const isMainModule = (() => {
+  if (!process.argv[1]) {
+    return false;
+  }
+  try {
+    return import.meta.url === pathToFileURL(process.argv[1]).href;
+  } catch {
+    return false;
+  }
+})();
+
+if (isMainModule) {
+  buildPreviewArtifacts().catch((error) => {
+    console.error('[preview] Build failed:', error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}

@@ -61,46 +61,8 @@ export function ProfileTab({ therapist }: ProfileTabProps) {
   const [isVisibleToTherapist, setIsVisibleToTherapist] = useState(false);
   const [noteStatus, setNoteStatus] = useState<'resolved' | 'open' | 'follow-up'>('open');
   
-  // Mock data for notes and issues
-  const [notes, setNotes] = useState<Note[]>([
-    {
-      id: '1',
-      content: 'Completed annual HIPAA training. All certificates updated in the system.',
-      author: 'Admin User',
-      created_at: '2025-05-15T14:30:00Z',
-      is_visible_to_therapist: true,
-      status: 'resolved'
-    },
-    {
-      id: '2',
-      content: 'Requested time off for the week of July 15-19. Need to reassign clients during this period.',
-      author: 'Admin User',
-      created_at: '2025-05-10T09:15:00Z',
-      is_visible_to_therapist: true,
-      status: 'open'
-    }
-  ]);
-  
-  const [issues, setIssues] = useState<Issue[]>([
-    {
-      id: '1',
-      category: 'Certification',
-      description: 'RBT certification expires in 30 days. Reminder sent for renewal.',
-      status: 'Open',
-      priority: 'High',
-      date_opened: '2025-05-01T00:00:00Z',
-      last_action: '2025-05-01T00:00:00Z'
-    },
-    {
-      id: '2',
-      category: 'Scheduling',
-      description: 'Requested schedule change to accommodate additional client.',
-      status: 'In Progress',
-      priority: 'Medium',
-      date_opened: '2025-04-28T00:00:00Z',
-      last_action: '2025-05-05T00:00:00Z'
-    }
-  ]);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [issues, setIssues] = useState<Issue[]>([]);
   
   const queryClient = useQueryClient();
   
@@ -259,7 +221,7 @@ export function ProfileTab({ therapist }: ProfileTabProps) {
             {canInviteStaff && therapist.email && (
               <button
                 onClick={() => setIsInviteModalOpen(true)}
-                className="px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 rounded-md shadow-sm hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:bg-blue-900/20 dark:text-blue-200 dark:hover:bg-blue-900/30 flex items-center"
+                className="flex min-h-11 items-center rounded-md bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 shadow-sm hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-900/20 dark:text-blue-200 dark:hover:bg-blue-900/30"
               >
                 <Mail className="w-4 h-4 mr-1" />
                 Invite to app
@@ -268,7 +230,7 @@ export function ProfileTab({ therapist }: ProfileTabProps) {
             {(hasRole('admin') || isOwnProfile) && (
               <button
                 onClick={() => setIsEditModalOpen(true)}
-                className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+                className="flex min-h-11 items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               >
                 <Edit2 className="w-4 h-4 mr-1" />
                 Edit
@@ -351,7 +313,7 @@ export function ProfileTab({ therapist }: ProfileTabProps) {
           {hasRole('admin') && (
             <button
               onClick={() => setIsAddNoteModalOpen(true)}
-              className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+              className="flex min-h-11 items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
               <Plus className="w-4 h-4 mr-1" />
               Add Note
@@ -409,7 +371,7 @@ export function ProfileTab({ therapist }: ProfileTabProps) {
           {hasRole('admin') && (
             <button
               onClick={() => setIsAddIssueModalOpen(true)}
-              className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+              className="flex min-h-11 items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
               <Plus className="w-4 h-4 mr-1" />
               Add Issue

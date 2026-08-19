@@ -12,8 +12,9 @@ import {
   startPreviewServer,
   type PreviewServerHandle,
 } from './lib/preview-runtime';
+import { buildPreviewArtifacts } from './preview-build';
 
-type Role = 'public' | 'client' | 'bt' | 'therapist' | 'midtier' | 'admin_schedule' | 'admin' | 'bcba' | 'super_admin';
+export type Role = 'public' | 'client' | 'bt' | 'therapist' | 'midtier' | 'admin_schedule' | 'admin' | 'bcba' | 'super_admin';
 
 type ApiCallRecord = {
   readonly url: string;
@@ -21,21 +22,37 @@ type ApiCallRecord = {
   readonly timestamp: string;
 };
 
-type RouteDefinition = {
+export type RouteDefinition = {
   readonly path: string;
   readonly component: string;
   readonly roles: readonly Role[];
   readonly permissions: readonly string[];
+  readonly auditPath?: string;
+  readonly expectedPath?: string;
+  readonly expectedPathByRole?: Partial<Record<Role, string>>;
 };
 
 type RouteResult = {
   readonly path: string;
+  readonly settledPath: string;
   readonly component: string;
   readonly role: Role | null;
   readonly status: 'success' | 'error';
   readonly errors: readonly string[];
   readonly networkCalls: readonly ApiCallRecord[];
   readonly renderTime: number;
+  readonly pageTitle: string;
+};
+
+export type RouteDocumentSnapshot = {
+  readonly settledPath: string;
+  readonly hasErrorBoundary: boolean;
+  readonly errorBoundaryText: string;
+  readonly mainText: string;
+  readonly routeContentText: string;
+  readonly hasRouteContentContainer: boolean;
+  readonly bodyText: string;
+  readonly title: string;
 };
 
 type MismatchRecord =
@@ -94,12 +111,29 @@ export const ROUTES: readonly RouteDefinition[] = [
   // Public routes
   { path: '/login', component: 'Login', roles: ['public'], permissions: [] },
   { path: '/signup', component: 'Signup', roles: ['public'], permissions: [] },
-  { path: '/auth/recovery', component: 'PasswordRecovery', roles: ['public'], permissions: [] },
+  {
+    path: '/auth/recovery',
+    auditPath: '/auth/recovery?type=recovery&access_token=test-access-token&refresh_token=test-refresh-token',
+    component: 'PasswordRecovery',
+    roles: ['public'],
+    permissions: [],
+  },
   { path: '/accept-invite', component: 'AcceptInvite', roles: ['public'], permissions: [] },
   { path: '/unauthorized', component: 'Unauthorized', roles: ['public'], permissions: [] },
 
   // Protected routes
-  { path: '/', component: 'Dashboard', roles: ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
+  {
+    path: '/',
+    component: 'Dashboard',
+    roles: ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
+    permissions: [],
+    expectedPathByRole: {
+      client: '/documentation',
+      therapist: '/schedule',
+      midtier: '/schedule',
+      admin_schedule: '/schedule',
+    },
+  },
   { path: '/schedule', component: 'Schedule', roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
   { path: '/time', component: 'Time', roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
   { path: '/time/review', component: 'TimeReview', roles: ['bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'], permissions: [] },
@@ -135,15 +169,105 @@ export const ROUTES: readonly RouteDefinition[] = [
   { path: '/billing', component: 'Billing', roles: ['admin', 'bcba', 'super_admin'], permissions: [] },
   { path: '/monitoring', component: 'MonitoringDashboard', roles: ['admin', 'super_admin'], permissions: [] },
   { path: '/reports', component: 'Reports', roles: ['admin', 'bcba', 'super_admin'], permissions: [] },
-  { path: '/family', component: 'FamilyDashboard', roles: ['client'], permissions: [] },
+  {
+    path: '/family',
+    component: 'FamilyDashboard',
+    roles: ['client'],
+    permissions: [],
+    expectedPathByRole: { client: '/unauthorized' },
+  },
   { path: '/settings', component: 'Settings', roles: ['admin', 'super_admin'], permissions: [] },
   { path: '/settings/:tabId', component: 'Settings', roles: ['admin', 'super_admin'], permissions: [] },
   { path: '/super-admin/feature-flags', component: 'SuperAdminFeatureFlags', roles: ['super_admin'], permissions: [] },
   { path: '/super-admin/impersonation', component: 'SuperAdminImpersonation', roles: ['super_admin'], permissions: [] },
   { path: '/super-admin/prompts', component: 'SuperAdminPrompts', roles: ['super_admin'], permissions: [] },
+  {
+    path: '/*',
+    auditPath: '/route-audit-not-found',
+    component: 'NotFound',
+    roles: ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'],
+    permissions: [],
+    expectedPath: '/route-audit-not-found',
+  },
 ];
 
 const TEST_ROLES: readonly Role[] = ['client', 'bt', 'therapist', 'midtier', 'admin_schedule', 'admin', 'bcba', 'super_admin'];
+
+const normalizeText = (value: string | null | undefined): string => value?.replace(/\s+/g, ' ').trim() ?? '';
+
+const routeMatchesPathname = (actualPathname: string, expectedRoutePath: string): boolean => {
+  const normalizePathname = (value: string) => {
+    const normalized = value.toLowerCase().replace(/\/+$/, '');
+    return normalized || '/';
+  };
+  const pathname = normalizePathname(actualPathname);
+  const expectedPathname = normalizePathname(new URL(expectedRoutePath, 'http://local.test').pathname);
+  return pathname === expectedPathname;
+};
+
+const sanitizeRoutePath = (routePath: string): string =>
+  routePath.replace(/:(\w+)/g, (_, param: string) => `test-${param}`);
+
+export const resolveExpectedSettledPath = (route: RouteDefinition, role: Role | null): string => {
+  if (role && route.expectedPathByRole?.[role]) {
+    return route.expectedPathByRole[role]!;
+  }
+  if (!role && route.expectedPathByRole?.public) {
+    return route.expectedPathByRole.public;
+  }
+  return route.expectedPath ?? sanitizeRoutePath(route.path);
+};
+
+export const assessRouteDocumentState = (
+  snapshot: RouteDocumentSnapshot,
+  expectedPath: string,
+): { status: RouteResult['status']; errors: string[] } => {
+  const errors: string[] = [];
+  const meaningfulMainText = normalizeText(snapshot.mainText);
+  const meaningfulRouteContent = normalizeText(snapshot.routeContentText);
+  const meaningfulBodyText = normalizeText(snapshot.bodyText);
+
+  if (!routeMatchesPathname(snapshot.settledPath, expectedPath)) {
+    errors.push(`Settled path mismatch: expected ${expectedPath} but reached ${snapshot.settledPath}`);
+  }
+
+  if (snapshot.hasErrorBoundary) {
+    errors.push(`Error boundary rendered: ${snapshot.errorBoundaryText || 'Unknown route error'}`);
+  }
+
+  if (snapshot.hasRouteContentContainer && !meaningfulRouteContent) {
+    errors.push('Protected route rendered without meaningful outlet content');
+  } else if (!snapshot.hasRouteContentContainer && !meaningfulMainText && !meaningfulBodyText) {
+    errors.push('Route rendered without meaningful main or body content');
+  }
+
+  return {
+    status: errors.length > 0 ? 'error' : 'success',
+    errors,
+  };
+};
+
+type AuditPreviewDependencies = {
+  readonly buildPreviewArtifacts: () => Promise<void>;
+  readonly ensureBuildArtifactsExist: (config: PreviewConfig) => void;
+  readonly ensureSupabaseEnv: (config: PreviewConfig) => void;
+  readonly startPreviewServer: (config: PreviewConfig) => Promise<PreviewServerHandle>;
+};
+
+export const ensureAuditPreviewReady = async (
+  previewConfig: PreviewConfig,
+  dependencies: AuditPreviewDependencies = {
+    buildPreviewArtifacts,
+    ensureBuildArtifactsExist,
+    ensureSupabaseEnv,
+    startPreviewServer,
+  },
+): Promise<PreviewServerHandle> => {
+  await dependencies.buildPreviewArtifacts();
+  dependencies.ensureBuildArtifactsExist(previewConfig);
+  dependencies.ensureSupabaseEnv(previewConfig);
+  return dependencies.startPreviewServer(previewConfig);
+};
 
 type ApiEndpointEntry = {
   readonly type: 'table' | 'function' | 'edge_function';
@@ -327,9 +451,7 @@ export class RouteAuditor {
   }
 
   private async startPreview(): Promise<void> {
-    ensureBuildArtifactsExist(this.previewConfig);
-    ensureSupabaseEnv(this.previewConfig);
-    this.previewServer = await startPreviewServer(this.previewConfig);
+    this.previewServer = await ensureAuditPreviewReady(this.previewConfig);
     console.log(`[audit] Preview server ready at ${this.previewConfig.url}`);
   }
 
@@ -383,10 +505,6 @@ export class RouteAuditor {
     return url.includes('/functions/v1/') || url.includes('supabase.co') || url.includes('/api/') || url.includes('/rpc/');
   }
 
-  private sanitizePath(routePath: string): string {
-    return routePath.replace(/:(\w+)/g, (_, param: string) => `test-${param}`);
-  }
-
   private async testPublicRoutes(): Promise<void> {
     for (const route of ROUTES.filter((definition) => definition.roles.includes('public'))) {
       const result = await this.testRoute(route, null);
@@ -421,8 +539,14 @@ export class RouteAuditor {
       window.localStorage.setItem(
         'auth-storage',
         JSON.stringify({
-          access_token: 'test-token',
-          user: { id: `test-${currentRole}`, email: `test-${currentRole}@example.com` },
+          accessToken: 'test-access-token',
+          refreshToken: 'test-refresh-token',
+          expiresAt: Date.now() + 60 * 60 * 1000,
+          user: {
+            id: `test-${currentRole}`,
+            email: `test-${currentRole}@example.com`,
+            role: currentRole,
+          },
           role: currentRole,
         }),
       );
@@ -442,41 +566,52 @@ export class RouteAuditor {
     let status: RouteResult['status'] = 'success';
     const errors: string[] = [];
     let renderTime = 0;
+    let settledPath = '';
+    let pageTitle = '';
 
     try {
-      const testPath = this.sanitizePath(route.path);
+      const testPath = route.auditPath ?? sanitizeRoutePath(route.path);
+      const expectedPath = resolveExpectedSettledPath(route, role);
       const targetUrl = new URL(testPath, `${this.baseUrl}/`).toString();
 
       const startTime = Date.now();
       const response = await this.page.goto(targetUrl, { waitUntil: 'networkidle' });
       renderTime = Date.now() - startTime;
+      await this.page.waitForFunction(() => {
+        const routeContent = document.querySelector('[data-route-content]');
+        return !routeContent || Boolean(routeContent.textContent?.replace(/\s+/g, ' ').trim());
+      }, undefined, { timeout: 2_000 }).catch(() => undefined);
 
       if (response && response.status() >= 400) {
-        status = 'error';
         errors.push(`HTTP ${response.status()}: ${response.statusText()}`);
       }
 
-      const pageErrors = await this.page.evaluate(() => {
-        const collected: string[] = [];
-        const elements = document.querySelectorAll('.error, [data-testid="error"]');
-        elements.forEach((element) => {
-          const text = element.textContent?.trim();
-          if (text) {
-            collected.push(text);
-          }
-        });
-        return collected;
+      const documentState = await this.page.evaluate(() => {
+        const errorBoundary = document.querySelector('[data-testid="error-boundary"], .error-boundary');
+        const main = document.querySelector('main, [role="main"]');
+        const routeContent = document.querySelector('[data-route-content]');
+        return {
+          settledPath: window.location.pathname,
+          hasErrorBoundary: Boolean(errorBoundary),
+          errorBoundaryText: (errorBoundary?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+          mainText: (main?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+          routeContentText: (routeContent?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+          hasRouteContentContainer: Boolean(routeContent),
+          bodyText: (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim(),
+          title: document.title.replace(/\s+/g, ' ').trim(),
+        } satisfies RouteDocumentSnapshot;
       });
+      const documentAssessment = assessRouteDocumentState(documentState, expectedPath);
+      settledPath = documentState.settledPath;
+      pageTitle = documentState.title;
+      errors.push(...documentAssessment.errors);
 
-      if (pageErrors.length > 0) {
-        status = 'error';
-        errors.push(...pageErrors);
-      }
+      status = errors.length > 0 ? 'error' : 'success';
 
       if (status === 'success') {
-        console.log(`✅ Route ${route.path} tested successfully (${renderTime}ms)`);
+        console.log(`✅ Route ${route.path} settled on ${settledPath} (${renderTime}ms)`);
       } else {
-        console.log(`⚠️  Route ${route.path} completed with warnings`);
+        console.log(`⚠️  Route ${route.path} settled on ${settledPath || 'unknown'} with warnings`);
       }
     } catch (error) {
       status = 'error';
@@ -487,12 +622,14 @@ export class RouteAuditor {
 
     return {
       path: route.path,
+      settledPath,
       component: route.component,
       role,
       status,
       errors,
       networkCalls: [...this.currentApiCalls],
       renderTime,
+      pageTitle,
     };
   }
 
@@ -621,13 +758,17 @@ if (isMainModule) {
 
   auditor
     .run()
-    .then(() => {
-      console.log('\n🎉 Route audit completed successfully!');
-      process.exit(0);
+    .then((report) => {
+      if (report.summary.failedRoutes > 0) {
+        console.error(`\nRoute audit failed: ${report.summary.failedRoutes} route checks did not pass.`);
+        process.exitCode = 1;
+        return;
+      }
+      console.log('\nRoute audit completed successfully.');
     })
     .catch((error) => {
       console.error('💥 Route audit failed:', error instanceof Error ? error.message : error);
-      process.exit(1);
+      process.exitCode = 1;
     });
 }
 

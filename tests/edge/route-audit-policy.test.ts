@@ -93,4 +93,11 @@ describe('route-audit role matrix parity', () => {
     expect(auditRoutes.get('/payroll')).toEqual(normalizeRoles(['admin', 'super_admin']));
     expect(routeScenarios).toMatch(/path:\s*["']\/payroll["'][\s\S]*?roles:\s*\[["']admin["'],\s*["']super_admin["']\]/);
   });
+
+  it('keeps public route coverage for accept-invite and the admin_schedule root redirect target', () => {
+    const routeScenarios = readFileSync(ROUTE_SCENARIOS_PATH, 'utf8');
+
+    expect(routeScenarios).toMatch(/path:\s*["']\/accept-invite["'][\s\S]*?roles:\s*\[["']public["']\]/);
+    expect(routeScenarios).toMatch(/admin_schedule:\s*["']\/schedule["']/);
+  });
 });

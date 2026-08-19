@@ -950,7 +950,7 @@ jobs:
 
       - name: Install Playwright browser
         if: steps.browser_scope.outputs.auth_smoke_required == 'true'
-        run: npx playwright install --with-deps chromium
+        run: ./node_modules/.bin/playwright install chromium
 
       - name: Auth browser smoke gate
         if: steps.browser_scope.outputs.auth_smoke_required == 'true'

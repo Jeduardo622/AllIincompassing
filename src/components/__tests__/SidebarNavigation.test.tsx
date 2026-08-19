@@ -256,7 +256,31 @@ describe("Sidebar navigation active styling", () => {
     expect(screen.getByRole("link", { name: /schedule/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /clients/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /messages/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /fill docs/i })).toBeInTheDocument();
     expect(screen.getByText("Behavioral Therapist Account")).toBeInTheDocument();
+  });
+
+  it("preserves authoritative BT dashboard navigation while profile hydration is incomplete", async () => {
+    mockUseAuth.mockReturnValue({
+      signOut: vi.fn(),
+      hasRole: vi.fn((role: string) => role === "bt"),
+      user: {
+        id: "bt-user-1",
+        email: "bt@example.com",
+        user_metadata: {},
+      },
+      profile: null,
+      isGuardian: false,
+      effectiveRole: "bt",
+      hasCapability: vi.fn(capabilityForRole("bt")),
+      hasAnyCapability: vi.fn((capabilities: string[]) => capabilities.some(capabilityForRole("bt"))),
+    });
+
+    renderSidebar(["/"]);
+
+    expect(screen.getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /fill docs/i })).toBeInTheDocument();
+    await waitFor(() => expect(mockFetchPendingSupervisionSessionNoteCount).toHaveBeenCalled());
   });
 
   it("hides the dashboard link for legacy therapist users", () => {
@@ -716,6 +740,60 @@ describe("Sidebar navigation active styling", () => {
     expect(nav).not.toBeNull();
     expect(nav).toHaveClass("min-h-0");
     expect(nav).toHaveClass("overflow-y-auto");
+  });
+
+  it("removes the closed mobile drawer from keyboard navigation", () => {
+    const { container } = renderSidebar(["/"]);
+
+    const sidebar = container.querySelector("#app-sidebar");
+    expect(sidebar).toHaveClass("invisible");
+    expect(sidebar).toHaveClass("lg:visible");
+  });
+
+  it("opens the mobile drawer as a modal, moves focus inside, closes on Escape, and restores the opener", async () => {
+    render(
+      <div>
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/"]}>
+            <Sidebar />
+          </MemoryRouter>
+        </QueryClientProvider>
+        <main data-testid="shell-main">Page content</main>
+      </div>,
+    );
+
+    const opener = screen.getByRole("button", { name: /open navigation/i });
+    fireEvent.click(opener);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^close navigation$/i })).toHaveAttribute("aria-expanded", "true");
+    });
+
+    const sidebar = screen.getByRole("dialog", { name: /primary navigation/i });
+    expect(sidebar).toHaveAttribute("aria-modal", "true");
+    expect(screen.getByTestId("shell-main")).toHaveAttribute("inert");
+    expect(screen.getByRole("link", { name: /schedule/i })).toHaveFocus();
+
+    await userEvent.keyboard("{Escape}");
+
+    expect(screen.queryByRole("dialog", { name: /primary navigation/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /open navigation/i })).toHaveFocus();
+    expect(screen.getByTestId("shell-main")).not.toHaveAttribute("inert");
+  });
+
+  it("uses full-width navigation rows and does not expose the brand as a page heading", () => {
+    const { container } = renderSidebar(["/"]);
+
+    expect(screen.queryByRole("heading", { name: /allincompassing/i, level: 1 })).not.toBeInTheDocument();
+
+    const scheduleLink = screen.getByRole("link", { name: /schedule/i });
+    expect(scheduleLink).toHaveClass("w-full");
+
+    const footerButton = screen.getByRole("button", { name: /sign out/i });
+    expect(footerButton).toHaveClass("w-full");
+
+    const sidebar = container.querySelector("#app-sidebar");
+    expect(sidebar).toHaveAttribute("aria-label", "Primary navigation");
   });
 
   it("shows an unread badge on the messages nav item when unread threads exist", async () => {

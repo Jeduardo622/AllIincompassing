@@ -28,6 +28,8 @@ const emptyAuthRow = {
   services: [] as unknown[],
 };
 
+let authorizationRows = [emptyAuthRow];
+
 const {
   fetchClientsMock,
   supabaseFromMock,
@@ -48,7 +50,7 @@ const {
         select: vi.fn(() => ({
           order: vi.fn(() =>
             Promise.resolve({
-              data: [emptyAuthRow],
+              data: authorizationRows,
               error: null,
             }),
           ),
@@ -118,6 +120,7 @@ const baseProfile = (overrides: Partial<UserProfile>): UserProfile => ({
 describe('Authorizations page query scope', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authorizationRows = [emptyAuthRow];
     fetchClientsMock.mockResolvedValue([
       {
         id: 'client-1',
@@ -254,5 +257,26 @@ describe('Authorizations page query scope', () => {
     expect(screen.queryByRole('button', { name: 'New Authorization' })).not.toBeInTheDocument();
     expect(screen.queryByTitle('Edit authorization')).not.toBeInTheDocument();
     expect(screen.queryByTitle('Delete authorization')).not.toBeInTheDocument();
+  });
+
+  it('renders a dedicated empty state outside the clipped table layout', async () => {
+    authorizationRows = [];
+
+    useAuthMock.mockReturnValue({
+      user: null,
+      effectiveRole: 'admin',
+      hasCapability: () => true,
+      profile: baseProfile({
+        id: 'admin-user',
+        role: 'admin',
+        organization_id: 'org-admin-1',
+      }),
+    });
+
+    renderWithProviders(<Authorizations />, { auth: false });
+
+    expect(await screen.findByText(/No authorizations yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/Create a new authorization or adjust your filters to continue./i)).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 });

@@ -210,4 +210,14 @@ describe('Therapists page filtering', () => {
 
     expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument();
   });
+
+  it('shows a horizontal-scroll affordance and keeps the primary onboarding action touch sized with stronger green contrast', () => {
+    renderWithProviders(<Therapists />);
+
+    expect(screen.getByText(/Scroll to view all staff columns/i)).toBeInTheDocument();
+
+    const onboardButton = screen.getByRole('button', { name: /onboard therapist/i });
+    expect(onboardButton).toHaveClass('min-h-11');
+    expect(onboardButton).toHaveClass('bg-green-700');
+  });
 });

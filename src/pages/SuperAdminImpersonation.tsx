@@ -199,7 +199,7 @@ export const SuperAdminImpersonation: React.FC = () => {
   if (!hasCapability('accessSuperAdminTools')) {
     return (
       <div className="p-8">
-        <h1 className="text-2xl font-semibold text-slate-900">Super Admin Impersonation</h1>
+        <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Super Admin Impersonation</h1>
         <p className="mt-4 text-sm text-slate-600">
           You must be a super admin to issue impersonation tokens.
         </p>
@@ -242,30 +242,30 @@ export const SuperAdminImpersonation: React.FC = () => {
 
   return (
     <div className="mx-auto max-w-5xl p-8">
-      <h1 className="text-3xl font-semibold text-slate-900">Super Admin Impersonation</h1>
-      <p className="mt-2 text-sm text-slate-600">
+      <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">Super Admin Impersonation</h1>
+      <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
         Issue short-lived impersonation tokens for secure troubleshooting. Tokens automatically expire and are revoked within {MAX_IMPERSONATION_MINUTES} minutes.
       </p>
 
-      <form className="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={handleIssue}>
-        <h2 className="text-xl font-semibold text-slate-900">Issue token</h2>
+      <form className="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-dark-lighter" onSubmit={handleIssue}>
+        <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Issue token</h2>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <div className="md:col-span-1">
-            <label className="block text-sm font-medium text-slate-700" htmlFor="target-user-id">Target user ID</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200" htmlFor="target-user-id">Target user ID</label>
             <input
               id="target-user-id"
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-600 dark:bg-dark dark:text-white"
               value={targetUserId}
               onChange={event => setTargetUserId(event.target.value)}
               placeholder="uuid-of-user"
             />
-            <p className="mt-1 text-xs text-slate-500">Provide either the user ID or email address.</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Provide either the user ID or email address.</p>
           </div>
           <div className="md:col-span-1">
-            <label className="block text-sm font-medium text-slate-700" htmlFor="target-user-email">Target user email</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200" htmlFor="target-user-email">Target user email</label>
             <input
               id="target-user-email"
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-600 dark:bg-dark dark:text-white"
               value={targetUserEmail}
               onChange={event => setTargetUserEmail(event.target.value)}
               placeholder="user@example.com"
@@ -273,10 +273,10 @@ export const SuperAdminImpersonation: React.FC = () => {
             />
           </div>
           <div className="md:col-span-1">
-            <label className="block text-sm font-medium text-slate-700" htmlFor="target-org">Target organization ID</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200" htmlFor="target-org">Target organization ID</label>
             <input
               id="target-org"
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-600 dark:bg-dark dark:text-white"
               value={targetOrganizationId}
               onChange={event => setTargetOrganizationId(event.target.value)}
               placeholder="organization uuid"
@@ -284,10 +284,10 @@ export const SuperAdminImpersonation: React.FC = () => {
             />
           </div>
           <div className="md:col-span-1">
-            <label className="block text-sm font-medium text-slate-700" htmlFor="expires-minutes">Duration (minutes)</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200" htmlFor="expires-minutes">Duration (minutes)</label>
           <input
             id="expires-minutes"
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-600 dark:bg-dark dark:text-white"
             type="number"
             min={MIN_IMPERSONATION_MINUTES}
             max={MAX_IMPERSONATION_MINUTES}
@@ -297,55 +297,55 @@ export const SuperAdminImpersonation: React.FC = () => {
               setExpiresInMinutes(Number.isNaN(nextValue) ? DEFAULT_IMPERSONATION_MINUTES : nextValue);
             }}
           />
-            <p className="mt-1 text-xs text-slate-500">Must be between {MIN_IMPERSONATION_MINUTES} and {MAX_IMPERSONATION_MINUTES} minutes.</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Must be between {MIN_IMPERSONATION_MINUTES} and {MAX_IMPERSONATION_MINUTES} minutes.</p>
           </div>
         </div>
         <div className="mt-4">
-          <label className="block text-sm font-medium text-slate-700" htmlFor="impersonation-reason">Reason</label>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-200" htmlFor="impersonation-reason">Reason</label>
           <textarea
             id="impersonation-reason"
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-600 dark:bg-dark dark:text-white"
             rows={3}
             value={reason}
             onChange={event => setReason(event.target.value)}
             placeholder="Document the justification for impersonation"
             required
           />
-          <p className="mt-1 text-xs text-slate-500">This reason will be recorded in the audit trail.</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">This reason will be recorded in the audit trail.</p>
         </div>
         <div className="mt-6 flex items-center gap-3">
           <button
             type="submit"
-            className="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-400"
+            className="inline-flex min-h-11 items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-400"
             disabled={issueMutation.isPending}
           >
             {issueMutation.isPending ? 'Issuing token…' : 'Issue impersonation token'}
           </button>
-          <span className="text-xs text-slate-500">Token expires automatically after the configured duration.</span>
+          <span className="text-xs text-slate-500 dark:text-slate-400">Token expires automatically after the configured duration.</span>
         </div>
       </form>
 
       {issuedToken && issuedExpiresAt && (
-        <div className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+        <div className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-100">
           <p className="font-semibold">Token issued</p>
           <p className="mt-1 break-all font-mono">{issuedToken}</p>
           <p className="mt-2 text-xs">Expires at {new Date(issuedExpiresAt).toLocaleString()}</p>
         </div>
       )}
 
-      <div className="mt-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="mt-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-dark-lighter">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-slate-900">Active impersonation tokens</h2>
-          <span className="text-sm text-slate-500">Auto-refreshing every 15 seconds</span>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Active impersonation tokens</h2>
+          <span className="text-sm text-slate-500 dark:text-slate-400">Auto-refreshing every 15 seconds</span>
         </div>
         {impersonationsQuery.isLoading ? (
-          <p className="mt-4 text-sm text-slate-500" aria-live="polite">Loading impersonation activity…</p>
+          <p className="mt-4 text-sm text-slate-500 dark:text-slate-400" aria-live="polite">Loading impersonation activity…</p>
         ) : impersonations.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-500">No impersonation activity recorded.</p>
+          <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">No impersonation activity recorded.</p>
         ) : (
           <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200">
-              <thead className="bg-slate-50">
+            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+              <thead className="bg-slate-50 dark:bg-slate-900/60">
                 <tr>
                   <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Target user</th>
                   <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Reason</th>
@@ -355,28 +355,28 @@ export const SuperAdminImpersonation: React.FC = () => {
                   <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 bg-white">
+              <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-700 dark:bg-dark-lighter">
                 {impersonations.map(entry => {
                   const countdown = getExpiryCountdownLabel(entry.expires_at, now);
                   const isExpired = shouldAutoRevoke(entry.expires_at, entry.revoked_at, now);
                   const statusColor = entry.revoked_at ? 'text-rose-600' : isExpired ? 'text-amber-600' : 'text-emerald-600';
                   return (
                     <tr key={entry.id}>
-                      <td className="whitespace-nowrap px-4 py-2 text-sm text-slate-800">{entry.target_user_id}</td>
-                      <td className="max-w-xs px-4 py-2 text-sm text-slate-600">{entry.reason ?? '—'}</td>
-                      <td className="whitespace-nowrap px-4 py-2 text-sm text-slate-600">{new Date(entry.issued_at).toLocaleString()}</td>
-                      <td className="whitespace-nowrap px-4 py-2 text-sm text-slate-600" aria-live="polite">{countdown}</td>
+                      <td className="whitespace-nowrap px-4 py-2 text-sm text-slate-800 dark:text-slate-100">{entry.target_user_id}</td>
+                      <td className="max-w-xs px-4 py-2 text-sm text-slate-600 dark:text-slate-300">{entry.reason ?? '—'}</td>
+                      <td className="whitespace-nowrap px-4 py-2 text-sm text-slate-600 dark:text-slate-300">{new Date(entry.issued_at).toLocaleString()}</td>
+                      <td className="whitespace-nowrap px-4 py-2 text-sm text-slate-600 dark:text-slate-300" aria-live="polite">{countdown}</td>
                       <td className={`whitespace-nowrap px-4 py-2 text-sm font-medium ${statusColor}`}>
                         {entry.revoked_at ? 'Revoked' : isExpired ? 'Expired' : 'Active'}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-2 text-sm text-slate-600">
+                      <td className="whitespace-nowrap px-4 py-2 text-sm text-slate-600 dark:text-slate-300">
                         {entry.revoked_at ? (
-                          <span className="text-xs text-slate-400">—</span>
+                          <span className="text-xs text-slate-400 dark:text-slate-500">—</span>
                         ) : (
                           <button
                             type="button"
                             onClick={() => handleRevoke(entry.id)}
-                            className="rounded-md border border-rose-200 px-3 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                            className="min-h-11 rounded-md border border-rose-200 px-4 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-950/30"
                             disabled={revokeMutation.isPending}
                           >
                             Revoke

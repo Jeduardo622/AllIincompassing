@@ -20,7 +20,7 @@ export function Layout() {
   return (
     <div className="flex min-h-dvh bg-gray-50 dark:bg-dark">
       <Sidebar />
-      <main className="flex-1 min-w-0 w-full lg:ml-64 p-4 pt-14 pb-[max(1rem,env(safe-area-inset-bottom))] lg:p-8 lg:pt-8">
+      <main className="min-w-0 flex-1 lg:ml-64 p-4 pt-14 pb-[max(1rem,env(safe-area-inset-bottom))] lg:p-8 lg:pt-8">
         {/* User role indicator */}
         {user && (
           <div className="mb-4 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm">
@@ -29,7 +29,7 @@ export function Layout() {
           </div>
         )}
         <Suspense fallback={<RouteLoadingSkeleton />}>
-          <div className="min-h-[24rem]">
+          <div className="min-h-[24rem]" data-route-content>
             <Outlet />
           </div>
         </Suspense>

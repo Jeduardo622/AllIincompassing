@@ -199,4 +199,32 @@ describe('TherapistDetails record authorization', () => {
     expect(mockFrom).not.toHaveBeenCalledWith('user_therapist_links');
     expect(mockFrom).toHaveBeenCalledWith('therapists');
   });
+
+  it('uses an accessible back button name and avoids fabricated upcoming-session copy', async () => {
+    mockUseAuth.mockReturnValue({
+      effectiveRole: 'admin',
+      profile: { id: 'admin-user-id', role: 'admin' },
+      user: { id: 'admin-user-id', user_metadata: {} },
+    });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'therapists') {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: async () => ({ data: therapistRecord, error: null }),
+            }),
+          }),
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    renderDetails('foreign-therapist-id');
+
+    expect(await screen.findByRole('button', { name: /back to therapists/i })).toBeInTheDocument();
+    expect(screen.getByText(/Scroll to view all therapist sections/i)).toBeInTheDocument();
+    expect(screen.getByText(/Open the Schedule tab to review assigned sessions\./i)).toBeInTheDocument();
+    expect(screen.queryByText(/Tomorrow at 3:00 PM/i)).not.toBeInTheDocument();
+  });
 });

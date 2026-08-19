@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { NavLink, useNavigate, Link } from 'react-router-dom';
 import { 
@@ -43,8 +43,10 @@ const ChatAssistantFallback = () => (
   </div>
 );
 
-const isBtCorrectionDashboardRole = (role: AppRole | null | undefined) =>
-  role === 'bt';
+const isBtCorrectionDashboardRole = (
+  effectiveRole: AppRole | null | undefined,
+  profileRole: AppRole | null | undefined,
+) => effectiveRole === 'bt' && (profileRole == null || profileRole === 'bt');
 
 const resolveBrowserLocalDate = (): string =>
   new Intl.DateTimeFormat('en-CA', {
@@ -62,6 +64,8 @@ export function Sidebar() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isChatAssistantOpen, setIsChatAssistantOpen] = useState(false);
   const [hasLoadedChatAssistant, setHasLoadedChatAssistant] = useState(false);
+  const mobileMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const sidebarRef = useRef<HTMLElement | null>(null);
   const navigate = useNavigate();
 
   // `therapist` is a legacy role value; Behavioral Therapist is the product label.
@@ -249,7 +253,7 @@ export function Sidebar() {
       icon: FileText,
       label: 'Fill Docs',
       path: '/fill-docs',
-      roles: ['therapist', 'midtier', 'admin', 'bcba', 'super_admin'] as AppRole[],
+      roles: ['bt', 'therapist', 'midtier', 'admin', 'bcba', 'super_admin'] as AppRole[],
       requiresGuardian: false,
     },
     {
@@ -292,12 +296,14 @@ export function Sidebar() {
   // Mobile menu button
   const MobileMenuButton = () => (
     <button
+      ref={mobileMenuButtonRef}
       type="button"
       onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
       className="lg:hidden fixed z-50 flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-dark-lighter top-[max(0.75rem,env(safe-area-inset-top))] left-[max(0.75rem,env(safe-area-inset-left))]"
       aria-label={isMobileMenuOpen ? 'Close navigation' : 'Open navigation'}
       aria-expanded={isMobileMenuOpen}
       aria-controls="app-sidebar"
+      tabIndex={isMobileMenuOpen ? -1 : 0}
     >
       {isMobileMenuOpen ? (
         <X aria-hidden="true" className="h-6 w-6 text-gray-600 dark:text-gray-300" />
@@ -311,8 +317,10 @@ export function Sidebar() {
   const canAccessMessages = hasCapability('viewMessages');
   const canViewStaffDashboard = canAccessDashboardRoute(effectiveRole);
   const canViewSupervisionNotifications =
-    canViewStaffDashboard || isBtCorrectionDashboardRole(profile?.role);
-  const supervisionRoleBucket = canViewStaffDashboard ? 'staff' : isBtCorrectionDashboardRole(profile?.role) ? 'bt' : 'other';
+    canViewStaffDashboard || isBtCorrectionDashboardRole(effectiveRole, profile?.role);
+  const supervisionRoleBucket = canViewStaffDashboard
+    ? 'staff'
+    : isBtCorrectionDashboardRole(effectiveRole, profile?.role) ? 'bt' : 'other';
 
   const { data: unreadMessagesData } = useQuery({
     queryKey: [MESSAGES_QUERY_KEY, 'inbox', organizationId, profile?.id],
@@ -342,14 +350,48 @@ export function Sidebar() {
       return;
     }
 
+    const sidebarElement = sidebarRef.current;
+    const firstFocusable =
+      sidebarElement?.querySelector<HTMLElement>('nav a[href], nav button:not([disabled])') ??
+      sidebarElement?.querySelector<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+    const shellMain = sidebarElement?.parentElement?.querySelector<HTMLElement>('main');
     const previousBodyOverflow = document.body.style.overflow;
     const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousMainAriaHidden = shellMain?.getAttribute('aria-hidden') ?? null;
+    const mainWasInert = shellMain?.hasAttribute('inert') ?? false;
+
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
+    shellMain?.setAttribute('inert', '');
+    shellMain?.setAttribute('aria-hidden', 'true');
+    firstFocusable?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
 
     return () => {
+      document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = previousBodyOverflow;
       document.documentElement.style.overflow = previousHtmlOverflow;
+      if (shellMain) {
+        if (!mainWasInert) {
+          shellMain.removeAttribute('inert');
+        }
+        if (previousMainAriaHidden === null) {
+          shellMain.removeAttribute('aria-hidden');
+        } else {
+          shellMain.setAttribute('aria-hidden', previousMainAriaHidden);
+        }
+      }
+      mobileMenuButtonRef.current?.focus();
     };
   }, [isMobileMenuOpen]);
 
@@ -357,16 +399,23 @@ export function Sidebar() {
     <>
       <MobileMenuButton />
       
-      <aside id="app-sidebar" className={`
+      <aside
+        id="app-sidebar"
+        ref={sidebarRef}
+        aria-label="Primary navigation"
+        aria-modal={isMobileMenuOpen ? true : undefined}
+        role={isMobileMenuOpen ? 'dialog' : undefined}
+        className={`
         fixed inset-y-0 left-0 z-40
         w-64 bg-white dark:bg-dark-lighter border-r border-gray-200 dark:border-dark-border
         transform lg:transform-none transition-transform duration-200 ease-in-out
-        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        ${isMobileMenuOpen ? 'visible translate-x-0' : 'invisible -translate-x-full lg:visible lg:translate-x-0'}
         flex flex-col h-dvh lg:h-dvh overflow-y-auto overscroll-contain
-      `}>
+      `}
+      >
         <div className="flex items-center p-6">
           <Calendar aria-hidden="true" className="h-8 w-8 text-blue-600" />
-          <h1 className="ml-2 text-xl font-bold text-gray-900 dark:text-white">AllIncompassing</h1>
+          <div className="ml-2 text-xl font-bold text-gray-900 dark:text-white">AllIncompassing</div>
         </div>
         
         {/* User info */}
@@ -388,7 +437,7 @@ export function Sidebar() {
             </div>
             <button 
               onClick={handleRefreshSession}
-              className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 flex items-center"
+              className="flex min-h-11 items-center text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
               disabled={isRefreshing}
             >
               <RefreshCw aria-hidden="true" className={`h-3 w-3 mr-1 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -402,7 +451,7 @@ export function Sidebar() {
           <div className="border-b dark:border-gray-700 px-4 py-2">
             <Link
               to={`/therapists/${therapistId}`}
-              className="flex items-center w-full px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
+              className="flex min-h-11 w-full items-center rounded-lg px-4 py-2 text-gray-600 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
             >
               <User aria-hidden="true" className="h-5 w-5 mr-3 text-blue-600 dark:text-blue-400" />
               My Profile
@@ -422,10 +471,9 @@ export function Sidebar() {
             if (roles.length > 0 && !roles.includes(effectiveRole)) {
               return null;
             }
-            if (path === '/' && effectiveRole === 'bt' && profile?.role !== 'bt') {
+            if (path === '/' && effectiveRole === 'bt' && profile?.role && profile.role !== 'bt') {
               return null;
             }
-
             return (
               <NavLink
                 key={path}
@@ -434,11 +482,11 @@ export function Sidebar() {
                 onMouseEnter={() => handleNavIntent(path)}
                 onFocus={() => handleNavIntent(path)}
                 className={({ isActive }) =>
-                  `group inline-flex items-center px-6 py-4 border-b-2 font-medium text-sm
+                  `group flex min-h-11 w-full items-center justify-start rounded-lg border border-transparent px-4 py-3 text-sm font-medium
                   ${
                     isActive
-                      ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                      ? 'border-blue-500 bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
+                      : 'text-gray-500 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-300'
                   }`
                 }
               >
@@ -489,7 +537,7 @@ export function Sidebar() {
                 openChatAssistant();
                 setIsMobileMenuOpen(false);
               }}
-              className="flex items-center w-full px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
+              className="flex min-h-11 w-full items-center rounded-lg px-4 py-2 text-gray-600 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
             >
               <MessageSquare aria-hidden="true" className="h-5 w-5 mr-3" />
               Chat Assistant
@@ -501,7 +549,7 @@ export function Sidebar() {
               toggleTheme();
               setIsMobileMenuOpen(false);
             }}
-            className="flex items-center w-full px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
+            className="flex min-h-11 w-full items-center rounded-lg px-4 py-2 text-gray-600 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
           >
             <Sun aria-hidden="true" className="h-5 w-5 mr-3 dark:hidden" />
             <Moon aria-hidden="true" className="h-5 w-5 mr-3 hidden dark:block" />
@@ -511,7 +559,7 @@ export function Sidebar() {
           <button
             onClick={handleSignOut}
             disabled={isSigningOut}
-            className={`flex items-center w-full px-4 py-2 rounded-lg transition-colors ${
+            className={`flex min-h-11 w-full items-center rounded-lg px-4 py-2 transition-colors ${
               isSigningOut
                 ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                 : 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'

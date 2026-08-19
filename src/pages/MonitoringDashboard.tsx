@@ -937,26 +937,26 @@ export function MonitoringDashboard() {
       <span data-testid="refresh-token-value" className="hidden" aria-hidden="true">
         {refreshToken}
       </span>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
+      <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <h1 className="flex items-center text-2xl font-bold text-gray-900 dark:text-white">
           <Activity className="w-6 h-6 mr-2 text-blue-600" />
           Real-Time Performance Monitoring
         </h1>
-        <div className="flex items-center space-x-4">
+        <div className="flex flex-wrap items-center gap-3">
           <ConnectionStatus />
           <HealthScore />
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setShowSettings(!showSettings)}
               aria-label={showSettings ? 'Close monitoring settings' : 'Open monitoring settings'}
-              className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
             >
               <Settings className="w-5 h-5" />
             </button>
             <button
               onClick={refreshMonitoringData}
               aria-label="Refresh monitoring data"
-              className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
             >
               <RefreshCw className="w-5 h-5" />
             </button>
@@ -997,16 +997,16 @@ export function MonitoringDashboard() {
               <p className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Actions
               </p>
-              <div className="flex space-x-2">
+              <div className="flex flex-wrap gap-2">
                 <button
                   onClick={clearMetrics}
-                  className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded"
+                  className="min-h-11 rounded bg-gray-100 px-4 py-2 text-sm hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700"
                 >
                   Clear Metrics
                 </button>
                 <button
                   onClick={clearAlerts}
-                  className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded"
+                  className="min-h-11 rounded bg-gray-100 px-4 py-2 text-sm hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700"
                 >
                   Clear Alerts
                 </button>
@@ -1018,22 +1018,22 @@ export function MonitoringDashboard() {
 
       {/* System Status */}
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow mb-6 p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
               <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
               <span className="text-sm text-gray-600 dark:text-gray-400">
                 Real-time monitoring {isConnected ? 'active' : 'inactive'}
               </span>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-gray-400" />
               <span className="text-sm text-gray-600 dark:text-gray-400">
                 Last updated: {new Date().toLocaleTimeString()}
               </span>
             </div>
           </div>
-          <div className="flex items-center space-x-4">
+          <div className="flex flex-wrap items-center gap-4">
             <span className="text-sm text-gray-600 dark:text-gray-400">
               {metrics.length} metrics tracked
             </span>
@@ -1055,7 +1055,7 @@ export function MonitoringDashboard() {
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`
-                    group inline-flex items-center px-6 py-4 border-b-2 font-medium text-sm
+                    group inline-flex min-h-11 items-center px-6 py-4 border-b-2 font-medium text-sm
                     ${
                       activeTab === tab.id
                         ? 'border-blue-500 text-blue-600 dark:text-blue-400'
@@ -1077,6 +1077,9 @@ export function MonitoringDashboard() {
             })}
           </nav>
         </div>
+        <p className="border-b border-gray-100 px-6 py-2 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400 sm:hidden">
+          Scroll to view more monitoring tabs on smaller screens.
+        </p>
 
         <div className="p-6">
           {activeTab === 'overview' && <OverviewTab />}
@@ -1091,7 +1094,7 @@ export function MonitoringDashboard() {
 
       {/* System Information Footer */}
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow p-4">
-        <div className="flex justify-between items-center text-xs text-gray-500 dark:text-gray-400">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500 dark:text-gray-400">
           <div>Enhanced Real-Time Monitoring Dashboard v2.0</div>
           <div>Connection: {connectionStatus}</div>
           <div>Data Retention: 30 days</div>

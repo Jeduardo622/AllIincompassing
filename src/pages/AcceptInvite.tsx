@@ -102,6 +102,37 @@ export function AcceptInvite() {
     );
   }
 
+  if (!token) {
+    return (
+      <main className="flex min-h-dvh items-center justify-center bg-gray-50 px-4 py-10 dark:bg-dark">
+        <section className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-dark-lighter">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="rounded-full bg-amber-100 p-2 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+              <Mail className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">Invite link unavailable</h1>
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                This invite link is missing the required token and cannot be completed from this screen.
+              </p>
+            </div>
+          </div>
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+            Ask your administrator to send a new invite, then open the most recent email link directly.
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/login', { replace: true })}
+            className="mt-6 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          >
+            <KeyRound className="h-4 w-4" />
+            Go to login
+          </button>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-dvh bg-gray-50 dark:bg-dark flex items-center justify-center px-4 py-10">
       <section className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-dark-lighter">
@@ -114,12 +145,6 @@ export function AcceptInvite() {
             <p className="text-sm text-gray-600 dark:text-gray-300">Create your password to finish staff onboarding.</p>
           </div>
         </div>
-
-        {!token && (
-          <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-200">
-            Invite token is missing.
-          </div>
-        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -180,7 +205,7 @@ export function AcceptInvite() {
           <button
             type="submit"
             disabled={!token || isSubmitting}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
           >
             <KeyRound className="h-4 w-4" />
             {isSubmitting ? 'Accepting invite...' : 'Accept invite'}

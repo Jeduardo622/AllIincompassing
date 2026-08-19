@@ -77,44 +77,51 @@ export function SuperAdminPrompts() {
         </p>
       </div>
 
-      <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Set Current Version</h2>
+      <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-dark-lighter">
+        <h2 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-200">Set Current Version</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <input
             type="text"
             value={promptVersion}
             onChange={(event) => setPromptVersion(event.target.value)}
             placeholder="Prompt version"
-            className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+            className="min-h-11 w-full rounded-md border-gray-300 bg-white text-sm shadow-sm dark:border-gray-600 dark:bg-dark dark:text-white"
           />
           <input
             type="text"
             value={toolVersion}
             onChange={(event) => setToolVersion(event.target.value)}
             placeholder="Tool version"
-            className="w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-dark shadow-sm text-sm"
+            className="min-h-11 w-full rounded-md border-gray-300 bg-white text-sm shadow-sm dark:border-gray-600 dark:bg-dark dark:text-white"
           />
           <button
             type="button"
             onClick={() => createVersion.mutate()}
             disabled={!promptVersion || !toolVersion || createVersion.isLoading}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+            className="min-h-11 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
             {createVersion.isLoading ? "Saving..." : "Set Current"}
           </button>
         </div>
       </div>
 
-      <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Version History</h2>
+      <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-dark-lighter">
+        <h2 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-200">Version History</h2>
         {isLoading ? (
           <div className="flex items-center justify-center h-32">
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
           </div>
+        ) : versions.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center dark:border-gray-700 dark:bg-dark">
+            <p className="text-sm font-medium text-gray-900 dark:text-white">No prompt history yet</p>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+              Set the current prompt and tool version to create the first entry.
+            </p>
+          </div>
         ) : (
           <div className="space-y-3">
             {versions.map((version) => (
-              <div key={version.id} className="rounded-md border border-gray-200 dark:border-gray-700 p-3">
+              <div key={version.id} className="rounded-md border border-gray-200 p-3 dark:border-gray-700">
                 <div className="flex items-center justify-between text-sm">
                   <div className="font-medium text-gray-800 dark:text-gray-200">
                     Prompt {version.prompt_version} · Tool {version.tool_version}

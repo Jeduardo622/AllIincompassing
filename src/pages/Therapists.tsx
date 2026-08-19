@@ -341,14 +341,14 @@ const Therapists = () => {
         <div className="flex space-x-3">
           <button
             onClick={() => setIsImportModalOpen(true)}
-            className="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md shadow-sm hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+            className="inline-flex min-h-11 items-center justify-center rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
           >
             <FileUp className="w-5 h-5 mr-2 inline-block" />
             Import CSV
           </button>
           <button
             onClick={handleOnboardTherapist}
-            className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+            className="inline-flex min-h-11 items-center justify-center rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-800 focus:outline-none focus:ring-2 focus:ring-green-600 focus:ring-offset-2"
           >
             <UserPlus className="w-5 h-5 mr-2 inline-block" />
             Onboard Therapist
@@ -419,6 +419,9 @@ const Therapists = () => {
           </div>
         </div>
 
+        <p className="px-4 pt-3 text-xs font-medium text-gray-500 dark:text-gray-400">
+          Scroll to view all staff columns.
+        </p>
         <div className="overflow-x-auto">
           <table
             className="min-w-full divide-y divide-gray-200 dark:divide-gray-700"
@@ -536,7 +539,7 @@ const Therapists = () => {
                         {therapist.deleted_at ? (
                           <button
                             onClick={() => handleRestoreTherapist(therapist)}
-                            className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300"
+                            className="min-h-11 min-w-11 text-green-700 hover:text-green-900 dark:text-green-300 dark:hover:text-green-100"
                             title="Restore therapist"
                             aria-label={`Restore ${therapist.full_name || 'therapist'}`}
                             type="button"
@@ -546,7 +549,7 @@ const Therapists = () => {
                         ) : (
                           <button
                             onClick={() => handleArchiveTherapist(therapist)}
-                            className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
+                            className="min-h-11 min-w-11 text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
                             title="Archive therapist"
                             aria-label={`Archive ${therapist.full_name || 'therapist'}`}
                             type="button"
@@ -557,7 +560,7 @@ const Therapists = () => {
                         {isSuperAdmin() && (
                           <button
                             onClick={() => handleDeleteTherapist(therapist)}
-                            className={`text-red-700 dark:text-red-300 hover:text-red-900 dark:hover:text-red-100 ${
+                            className={`min-h-11 min-w-11 text-red-700 hover:text-red-900 dark:text-red-300 dark:hover:text-red-100 ${
                               deleteTherapistMutation.isPending ? 'opacity-60 cursor-not-allowed' : ''
                             }`}
                             title="Delete therapist"

@@ -450,124 +450,128 @@ export function Authorizations() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-800">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Authorization
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Client
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Provider
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Services
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-dark-lighter divide-y divide-gray-200 dark:divide-gray-700">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
-                    Loading authorizations...
-                  </td>
-                </tr>
-              ) : filteredAuthorizations.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
-                    No authorizations found
-                  </td>
-                </tr>
-              ) : (
-                filteredAuthorizations.map((auth) => (
-                  <tr key={auth.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center">
-                        <FileText className="w-8 h-8 text-blue-600 bg-blue-100 dark:bg-blue-900/20 rounded-full p-1.5" />
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">
-                            {auth.authorization_number}
-                          </div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center">
-                            <Calendar className="w-3 h-3 mr-1" />
-                            {format(parseISO(auth.start_date), 'MMM d, yyyy')} -
-                            {format(parseISO(auth.end_date), 'MMM d, yyyy')}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900 dark:text-white">
-                        {auth.client?.full_name}
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        {auth.diagnosis_code} - {auth.diagnosis_description}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900 dark:text-white">
-                        {auth.provider?.full_name}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="space-y-1">
-                        {auth.services?.map((service) => (
-                          <div
-                            key={service.id}
-                            className="text-xs bg-gray-100 dark:bg-gray-800 rounded px-2 py-1"
-                          >
-                            <div className="font-medium text-gray-900 dark:text-white">
-                              {service.service_code}
-                            </div>
-                            <div className="text-gray-500 dark:text-gray-400">
-                              {service.approved_units || service.requested_units} {service.unit_type}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(auth.status)}`}>
-                        {auth.status.charAt(0).toUpperCase() + auth.status.slice(1)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      {canManageAuthorizations ? (
-                        <div className="flex items-center space-x-3">
-                          <button
-                            onClick={() => handleEditAuthorization(auth)}
-                            className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300"
-                            title="Edit authorization"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteAuthorization(auth.id)}
-                            className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
-                            title="Delete authorization"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-500 dark:text-gray-400">View only</span>
-                      )}
-                    </td>
+        {isLoading ? (
+          <div className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">Loading authorizations...</div>
+        ) : filteredAuthorizations.length === 0 ? (
+          <div className="px-6 py-10 text-center">
+            <div className="mx-auto max-w-md rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-8 dark:border-gray-700 dark:bg-dark">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">No authorizations yet</h2>
+              <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                Create a new authorization or adjust your filters to continue.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <p className="px-6 py-2 text-xs text-gray-500 dark:text-gray-400 sm:hidden">
+              Scroll horizontally to review every authorization column.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-800">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Authorization
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Client
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Provider
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Services
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody className="bg-white dark:bg-dark-lighter divide-y divide-gray-200 dark:divide-gray-700">
+                  {filteredAuthorizations.map((auth) => (
+                    <tr key={auth.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center">
+                          <FileText className="w-8 h-8 text-blue-600 bg-blue-100 dark:bg-blue-900/20 rounded-full p-1.5" />
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-gray-900 dark:text-white">
+                              {auth.authorization_number}
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center">
+                              <Calendar className="w-3 h-3 mr-1" />
+                              {format(parseISO(auth.start_date), 'MMM d, yyyy')} -
+                              {format(parseISO(auth.end_date), 'MMM d, yyyy')}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-900 dark:text-white">
+                          {auth.client?.full_name}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          {auth.diagnosis_code} - {auth.diagnosis_description}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-900 dark:text-white">
+                          {auth.provider?.full_name}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="space-y-1">
+                          {auth.services?.map((service) => (
+                            <div
+                              key={service.id}
+                              className="text-xs bg-gray-100 dark:bg-gray-800 rounded px-2 py-1"
+                            >
+                              <div className="font-medium text-gray-900 dark:text-white">
+                                {service.service_code}
+                              </div>
+                              <div className="text-gray-500 dark:text-gray-400">
+                                {service.approved_units || service.requested_units} {service.unit_type}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(auth.status)}`}>
+                          {auth.status.charAt(0).toUpperCase() + auth.status.slice(1)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {canManageAuthorizations ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleEditAuthorization(auth)}
+                              className="inline-flex h-11 w-11 items-center justify-center rounded-md text-blue-600 hover:bg-blue-50 hover:text-blue-900 dark:text-blue-400 dark:hover:bg-blue-900/20 dark:hover:text-blue-300"
+                              title="Edit authorization"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteAuthorization(auth.id)}
+                              className="inline-flex h-11 w-11 items-center justify-center rounded-md text-red-600 hover:bg-red-50 hover:text-red-900 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+                              title="Delete authorization"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-500 dark:text-gray-400">View only</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
 
       {isModalOpen && canManageAuthorizations && (

@@ -25,19 +25,19 @@ export function MessageThread() {
   const { data: messages = [], isLoading: messagesLoading, refetch } = useQuery({
     queryKey: [MESSAGES_QUERY_KEY, 'thread-messages', threadId],
     queryFn: () => fetchThreadMessages(threadId!),
-    enabled: Boolean(threadId),
+    enabled: Boolean(threadId && thread?.id),
     refetchInterval: 15_000,
   });
 
   useEffect(() => {
-    if (!threadId || !profile?.id) {
+    if (!threadId || !profile?.id || !thread?.id) {
       return;
     }
     void (async () => {
       await markThreadRead(threadId, profile.id);
       await queryClient.invalidateQueries({ queryKey: [MESSAGES_QUERY_KEY] });
     })();
-  }, [threadId, profile?.id, messages.length, queryClient]);
+  }, [threadId, profile?.id, thread?.id, messages.length, queryClient]);
 
   const sendMutation = useMutation({
     mutationFn: (body: string) => sendThreadMessage(threadId!, body, profile!.id),
@@ -52,6 +52,41 @@ export function MessageThread() {
 
   if (!threadId) {
     return null;
+  }
+
+  if (threadLoading) {
+    return (
+      <div className="mx-auto flex max-w-3xl flex-col p-4 md:p-6" data-testid="messages-thread-page">
+        <Link
+          to="/messages"
+          className="mb-4 inline-flex min-h-11 items-center gap-2 text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400"
+        >
+          <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+          Back to inbox
+        </Link>
+        <p className="text-sm text-gray-500 dark:text-gray-400" role="status">Loading conversation...</p>
+      </div>
+    );
+  }
+
+  if (!threadLoading && !thread) {
+    return (
+      <div className="mx-auto flex max-w-3xl flex-col p-4 md:p-6" data-testid="messages-thread-page">
+        <Link
+          to="/messages"
+          className="mb-4 inline-flex min-h-11 items-center gap-2 text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400"
+        >
+          <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+          Back to inbox
+        </Link>
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-dark-lighter">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Conversation unavailable</h1>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+            This message thread could not be loaded. It may have been removed, or you may no longer have access to it.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   const participantLabel = thread?.participant_names?.join(', ').trim();
@@ -72,7 +107,7 @@ export function MessageThread() {
         Back to inbox
       </Link>
 
-      <h1 className="mb-4 text-2xl font-bold text-gray-900 dark:text-white">{threadLoading ? 'Loading...' : title}</h1>
+      <h1 className="mb-4 text-2xl font-bold text-gray-900 dark:text-white">{title}</h1>
       <PhiNoticeBanner />
 
       {messagesLoading ? (

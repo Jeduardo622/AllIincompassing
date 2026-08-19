@@ -253,8 +253,9 @@ export function ClientDetails() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex h-64 items-center justify-center" role="status">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <span className="sr-only">Loading client details</span>
       </div>
     );
   }
@@ -337,7 +338,7 @@ export function ClientDetails() {
       <div className="mb-4 flex items-start gap-3 sm:mb-6 sm:items-center">
         <button
           onClick={() => navigate('/clients')}
-          className="mt-0.5 rounded-full p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 sm:mt-0"
+          className="mt-0.5 min-h-11 min-w-11 rounded-full p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 sm:mt-0"
           aria-label="Back to clients"
         >
           <ArrowLeft className="h-5 w-5 text-gray-500 dark:text-gray-400" />
@@ -366,7 +367,10 @@ export function ClientDetails() {
 
       <div className="bg-white dark:bg-dark-lighter rounded-lg shadow mb-6">
         <div className="border-b dark:border-gray-700 px-3 py-2 sm:px-4">
-            <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1">
+          <p className="px-1 pb-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+            Scroll to view all client sections.
+          </p>
+          <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1">
             {visibleTabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;

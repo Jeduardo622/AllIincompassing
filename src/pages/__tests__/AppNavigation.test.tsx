@@ -11,6 +11,7 @@ type TestCapability = 'staffDashboard' | 'viewClients' | 'viewSchedule' | 'viewM
 let authRole: TestRole = 'client';
 let persistedProfileRole: TestRole | null = null;
 let profileAvailable = true;
+let authUserAvailable = true;
 let authIsGuardian = false;
 const { mockLoggerInfo } = vi.hoisted(() => ({
   mockLoggerInfo: vi.fn(),
@@ -37,7 +38,7 @@ vi.mock('../../lib/authContext', () => {
   return {
     useAuth: () => ({
       profile: profileAvailable ? { role: persistedProfileRole ?? authRole, is_active: true } : null,
-      user: { id: 'user-1', email: 'user@example.com' },
+      user: authUserAvailable ? { id: 'user-1', email: 'user@example.com' } : null,
       loading: false,
       profileLoading: false,
       isGuardian: authIsGuardian,
@@ -89,6 +90,10 @@ vi.mock('../../pages/PasswordRecovery', () => ({
 
 vi.mock('../../pages/AcceptInvite', () => ({
   AcceptInvite: () => <div>AcceptInvitePage</div>,
+}));
+
+vi.mock('../../pages/NotFound', () => ({
+  NotFound: () => <div>NotFoundPage</div>,
 }));
 
 vi.mock('../../pages/ClientOnboardingPage', () => ({
@@ -148,6 +153,7 @@ describe('App navigation landing', () => {
     authRole = 'client';
     persistedProfileRole = null;
     profileAvailable = true;
+    authUserAvailable = true;
     authIsGuardian = false;
     mockLoggerInfo.mockReset();
   });
@@ -334,6 +340,59 @@ describe('App navigation landing', () => {
     expect(await screen.findByText('AcceptInvitePage')).toBeInTheDocument();
     expect(screen.queryByTestId('layout')).not.toBeInTheDocument();
     expect(window.location.pathname).toBe('/accept-invite');
+  });
+
+  it('renders a protected-shell not found page without changing the current path', async () => {
+    authRole = 'admin';
+    window.history.pushState({}, '', '/definitely-missing');
+    renderApp();
+
+    expect(await screen.findByText('NotFoundPage')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/definitely-missing');
+  });
+
+  it('sets a route-specific document title without leaking invite tokens', async () => {
+    authRole = 'client';
+    window.history.pushState({}, '', '/accept-invite?token=secret-token#refresh_token=secret-refresh');
+    renderApp();
+
+    expect(await screen.findByText('AcceptInvitePage')).toBeInTheDocument();
+    expect(document.title).toContain('Accept Invite');
+    expect(document.title).not.toContain('secret-token');
+    expect(document.title).not.toContain('secret-refresh');
+  });
+
+  it.each([
+    ['/clients/new', 'New Client'],
+    ['/therapists/new', 'New Behavioral Therapist'],
+  ])('sets an onboarding-specific title for %s', async (path, expectedTitle) => {
+    authRole = 'admin';
+    window.history.pushState({}, '', path);
+
+    renderApp();
+
+    await waitFor(() => expect(document.title).toContain(expectedTitle));
+  });
+
+  it('does not expose a protected title while redirecting an unauthorized role', async () => {
+    authRole = 'therapist';
+    window.history.pushState({}, '', '/super-admin/prompts');
+    renderApp();
+
+    await waitFor(() => expect(window.location.pathname).toBe('/unauthorized'));
+    expect(document.title).toBe('Unauthorized | AllIncompassing');
+    expect(document.title).not.toContain('Super Admin Prompts');
+  });
+
+  it('does not expose a protected title while redirecting an unauthenticated user', async () => {
+    authUserAvailable = false;
+    profileAvailable = false;
+    window.history.pushState({}, '', '/clients/new');
+    renderApp();
+
+    await waitFor(() => expect(window.location.pathname).toBe('/login'));
+    await waitFor(() => expect(document.title).toBe('Login | AllIncompassing'));
+    expect(document.title).not.toContain('New Client');
   });
 
   it('allows admins and super admins to open settings tabs', async () => {

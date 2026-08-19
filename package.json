@@ -126,6 +126,7 @@
     "agent-work:hosted-scheduler:contract": "tsx scripts/agent-work-ledger-local-env.ts run -- node scripts/agent-work-ledger-hosted-scheduler-contract.mjs",
     "payroll:timesheet-derive-contract": "node scripts/payroll-timesheet-derive-contract.mjs",
     "agent-work:hosted-shadow-proof:contract": "npm test -- --run tests/agentWorkLedgerHostedShadowProof.test.ts",
+    "agent-work:hosted-advisory-canary:contract": "npm test -- --run tests/agentWorkLedgerHostedAdvisoryCanary.test.ts",
     "migration:new": "node scripts/migrations/new-migration-with-header.mjs",
     "validate:tenant": "npx tsx scripts/check-tenant-safety.ts",
     "perf:p2:baseline": "node scripts/perf/capture-p2-baseline.mjs",

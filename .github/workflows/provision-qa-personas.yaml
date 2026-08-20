@@ -35,10 +35,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
+      checks: read
       contents: read
       pull-requests: read
     steps:
-      - name: Validate owner approval and immutable reviewed main SHA
+      - name: Validate owner approval, exact main, CI, and review route
+        id: approval
         env:
           APPROVAL_ACKNOWLEDGEMENT: ${{ inputs.approval_acknowledgement }}
           COMMIT_SHA: ${{ inputs.commit_sha }}
@@ -51,6 +53,9 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           node --input-type=module <<'NODE'
+          import { createHash } from 'node:crypto';
+          import { appendFileSync } from 'node:fs';
+
           const expectedAcknowledgement = 'I_APPROVE_WIN_43_QA_PERSONA_PROVISIONING';
           const acknowledgement = process.env.APPROVAL_ACKNOWLEDGEMENT ?? '';
           const commitSha = process.env.COMMIT_SHA ?? '';
@@ -86,6 +91,22 @@ jobs:
             if (!response.ok) throw new Error(`Unable to validate ${label}: HTTP ${response.status}.`);
             return response.json();
           };
+          const fetchAll = async (urlForPage, label, select = (value) => value) => {
+            const values = [];
+            for (let page = 1; page <= 20; page += 1) {
+              const items = select(await fetchJson(urlForPage(page), label));
+              if (!Array.isArray(items)) throw new Error(`${label} is not an array.`);
+              values.push(...items);
+              if (items.length < 100) return values;
+            }
+            throw new Error(`${label} pagination exceeded the fail-closed limit.`);
+          };
+          const getContent = async (repositoryPath) => {
+            const encoded = repositoryPath.split('/').map(encodeURIComponent).join('/');
+            const payload = await fetchJson(`https://api.github.com/repos/${repository}/contents/${encoded}?ref=${commitSha}`, repositoryPath);
+            if (Array.isArray(payload) || payload.type !== 'file' || payload.encoding !== 'base64') throw new Error(`${repositoryPath} is not a file.`);
+            return Buffer.from(String(payload.content ?? '').replace(/\s/g, ''), 'base64');
+          };
 
           const [repositoryRecord, mainRef, pull] = await Promise.all([
             fetchJson(`https://api.github.com/repos/${repository}`, 'repository'),
@@ -115,12 +136,76 @@ jobs:
           if (!/(^|[^A-Z0-9])WIN-43([^A-Z0-9]|$)/i.test(`${pull.title ?? ''}\n${pull.body ?? ''}`)) {
             throw new Error('Approval pull request must reference WIN-43.');
           }
+
+          const mainCheckRuns = await fetchAll(
+            (page) => `https://api.github.com/repos/${repository}/commits/${commitSha}/check-runs?per_page=100&page=${page}`,
+            'current main check runs',
+            (payload) => payload.check_runs,
+          );
+          const requiredCiChecks = ['policy', 'lint-typecheck', 'unit-tests', 'build', 'tier0-browser', 'auth-browser-smoke', 'ci-gate'];
+          const missingMain = requiredCiChecks.filter((name) => !mainCheckRuns.some((check) => check.name === name && check.head_sha === commitSha && check.app?.slug === 'github-actions' && check.status === 'completed' && check.conclusion === 'success'));
+          if (missingMain.length) throw new Error(`Current-main required CI is missing: ${missingMain.join(', ')}.`);
+
+          if (
+            repositoryRecord.owner?.type !== 'User'
+            || repositoryRecord.owner?.login !== process.env.GITHUB_REPOSITORY_OWNER
+            || String(repositoryRecord.owner?.id) !== process.env.GITHUB_ACTOR_ID
+          ) {
+            throw new Error('Solo-maintainer owner identity mismatch.');
+          }
+          const collaborators = await fetchAll(
+            (page) => `https://api.github.com/repos/${repository}/collaborators?affiliation=direct&per_page=100&page=${page}`,
+            'collaborators',
+          );
+          const maintainers = collaborators.filter((value) => value.type === 'User' && (value.permissions?.admin || value.permissions?.maintain || value.permissions?.push));
+          if (maintainers.length !== 1 || maintainers[0]?.login !== process.env.GITHUB_REPOSITORY_OWNER || String(maintainers[0]?.id) !== process.env.GITHUB_ACTOR_ID) {
+            throw new Error('Solo-maintainer topology is unavailable.');
+          }
+
+          const attestationPath = 'docs/ai/reviews/WIN-43-qa-persona-delegated-browser-dispatch-attestation.json';
+          const attestationBytes = await getContent(attestationPath);
+          const attestationSha256 = createHash('sha256').update(attestationBytes).digest('hex');
+          const attestation = JSON.parse(attestationBytes.toString('utf8'));
+          const specialists = ['code-review-engineer', 'security-engineer', 'test-engineer', 'software-architect', 'supabase-reviewer', 'devops-engineer'];
+          if (attestation.schemaVersion !== 1 || attestation.issue !== 'WIN-43' || attestation.reviewMode !== 'solo-maintainer-owner-attestation' || attestation.repository !== repository) {
+            throw new Error('QA persona delegated-dispatch attestation identity is invalid.');
+          }
+          if (specialists.some((name) => attestation.specialistReviews?.[name]?.verdict !== 'PASS')) {
+            throw new Error('Passing specialist attestations are incomplete.');
+          }
+          const surfaces = [
+            '.github/workflows/provision-qa-personas.yaml',
+            'scripts/provision-persistent-qa-personas.ts',
+            'tests/scripts/provision-persistent-qa-personas.test.ts',
+            'tests/workflows/provision-qa-personas.test.ts',
+            'tests/agentWorkLedgerDelegatedBrowserDispatchPolicy.test.ts',
+            'AGENTS.md',
+            '.agents/skills/route-task/SKILL.md',
+            'docs/ai/cto-lane-contract.md',
+            'docs/ai/high-risk-paths.md',
+            'docs/ai/WIN-43-persistent-qa-personas-handoff.md',
+            'docs/ai/WIN-43-qa-audit-credential-handoff.md',
+            'docs/ai/handoffs/WIN-275-stale-edge-secret-cleanup.md',
+            'docs/ai/handoffs/WIN-275-hosted-advisory-canary.md',
+            'docs/ai/reviews/WIN-275-stale-edge-secret-cleanup-attestation.md',
+            'docs/ai/reviews/WIN-275-hosted-advisory-canary-attestation.md',
+            'docs/ai/reviews/WIN-275-stale-edge-secret-cleanup-solo-maintainer-attestation.json',
+            'docs/ai/reviews/WIN-275-hosted-advisory-canary-solo-maintainer-attestation.json',
+          ];
+          for (const surface of surfaces) {
+            const expected = attestation.protectedSurfaceHashes?.[surface];
+            const actual = createHash('sha256').update(await getContent(surface)).digest('hex');
+            if (!/^[0-9a-f]{64}$/.test(expected ?? '') || actual !== expected) {
+              throw new Error(`Protected surface hash drifted: ${surface}.`);
+            }
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `validated_sha=${commitSha}\nattestation_sha256=${attestationSha256}\n`);
           NODE
 
       - name: Check out immutable reviewed main
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: ${{ inputs.commit_sha }}
+          ref: ${{ steps.approval.outputs.validated_sha }}
           persist-credentials: false
 
       - name: Set up Node.js
@@ -132,15 +217,45 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      - name: Re-attest current main immediately before protected credentials
+      - name: Revalidate authority immediately before protected credentials
         env:
-          COMMIT_SHA: ${{ inputs.commit_sha }}
-          GH_TOKEN: ${{ github.token }}
-          GH_REPOSITORY: ${{ github.repository }}
+          EXPECTED_SHA: ${{ steps.approval.outputs.validated_sha }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_ACTOR_ID: ${{ github.actor_id }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          set -euo pipefail
-          live_main_sha="$(gh api "repos/${GH_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
-          test "${live_main_sha}" = "${COMMIT_SHA}"
+          node --input-type=module <<'NODE'
+          const headers = { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+          const fetchJson = async (url, label) => {
+            const response = await fetch(url, { headers });
+            if (!response.ok) throw new Error(`Unable to revalidate ${label}: HTTP ${response.status}.`);
+            return response.json();
+          };
+          const fetchAll = async (urlForPage, label, select = (value) => value) => {
+            const values = [];
+            for (let page = 1; page <= 20; page += 1) {
+              const items = select(await fetchJson(urlForPage(page), label));
+              if (!Array.isArray(items)) throw new Error(`${label} is not an array.`);
+              values.push(...items);
+              if (items.length < 100) return values;
+            }
+            throw new Error(`${label} pagination exceeded the fail-closed limit.`);
+          };
+          const mainRef = await fetchJson(`https://api.github.com/repos/${process.env.REPOSITORY}/git/ref/heads/main`, 'main ref');
+          if (mainRef.object?.sha !== process.env.EXPECTED_SHA) throw new Error('Current main changed before protected credentials.');
+          if (process.env.GITHUB_ACTOR !== process.env.GITHUB_REPOSITORY_OWNER) throw new Error('Persona provisioning actor changed before protected credentials.');
+          const mainCheckRuns = await fetchAll((page) => `https://api.github.com/repos/${process.env.REPOSITORY}/commits/${process.env.EXPECTED_SHA}/check-runs?per_page=100&page=${page}`, 'current main check runs', (payload) => payload.check_runs);
+          const requiredCiChecks = ['policy', 'lint-typecheck', 'unit-tests', 'build', 'tier0-browser', 'auth-browser-smoke', 'ci-gate'];
+          const missingMain = requiredCiChecks.filter((name) => !mainCheckRuns.some((check) => check.name === name && check.head_sha === process.env.EXPECTED_SHA && check.app?.slug === 'github-actions' && check.status === 'completed' && check.conclusion === 'success'));
+          if (missingMain.length) throw new Error(`Current-main required CI changed before protected credentials: ${missingMain.join(', ')}.`);
+          const repositoryDetails = await fetchJson(`https://api.github.com/repos/${process.env.REPOSITORY}`, 'repository identity');
+          if (repositoryDetails.owner?.type !== 'User' || repositoryDetails.owner?.login !== process.env.GITHUB_REPOSITORY_OWNER || String(repositoryDetails.owner?.id) !== process.env.GITHUB_ACTOR_ID) throw new Error('Solo-maintainer identity changed before protected credentials.');
+          const collaborators = await fetchAll((page) => `https://api.github.com/repos/${process.env.REPOSITORY}/collaborators?affiliation=direct&per_page=100&page=${page}`, 'collaborators');
+          const maintainers = collaborators.filter((value) => value.type === 'User' && (value.permissions?.admin || value.permissions?.maintain || value.permissions?.push));
+          if (maintainers.length !== 1 || maintainers[0]?.login !== process.env.GITHUB_REPOSITORY_OWNER || String(maintainers[0]?.id) !== process.env.GITHUB_ACTOR_ID) throw new Error('Solo-maintainer topology changed before protected credentials.');
+          NODE
 
       - name: Provision and verify persistent synthetic QA personas
         env:

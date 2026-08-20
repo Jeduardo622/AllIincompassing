@@ -42,8 +42,8 @@
     ".github/workflows/agent-work-ledger-hosted-advisory-canary.yml": "2e524aa65242822ec2c8e79ad2c6103feea74503c711f04c30faddd870b96908",
     "scripts/agent-work-ledger-hosted-advisory-canary.mjs": "6e747c0efd7764d75deb65d181ea02e475a4e9ea51a34c43c35a7ee42a501df6",
     "tests/agentWorkLedgerHostedAdvisoryCanary.test.ts": "d41561cff01329de862ac522bff240328a2256250a72aafc14bf821ac7bdb45a",
-    "docs/ai/handoffs/WIN-275-hosted-advisory-canary.md": "ae9863988128d05666b5bf81fbf9c80305af5978bef980cb5b73ca80b5c55512",
-    "docs/ai/reviews/WIN-275-hosted-advisory-canary-attestation.md": "1c7a880cde9f527bccad95b58f46f323dac41c29e4f95ec823201e4cc712ae72",
+    "docs/ai/handoffs/WIN-275-hosted-advisory-canary.md": "fd435d05ded8e011ba2569f769a4ce0553a14ae0f8b80dc8aa31fc34841bc49f",
+    "docs/ai/reviews/WIN-275-hosted-advisory-canary-attestation.md": "3cade3aede43b6f8e2d85851cbcf5bdd7e1b5c26417f5c498bc43b3a83b8f8a6",
     ".github/workflows/agent-work-ledger-hosted-shadow-proof.yml": "eef158750da0d0f4456c00fb247149827d882a7d332bb36e57ca236c5b8dd83f",
     "scripts/agent-work-ledger-hosted-shadow-proof.mjs": "2fd78613be6dba0583019bd93566b3df73ee75d9d1f1036480fdf7f4c1350323",
     "tests/agentWorkLedgerHostedShadowProof.test.ts": "c92e0fd0f9a6bcf71e61a58d404553d85ced204ca41392f5fa3a63b810ec57ae"

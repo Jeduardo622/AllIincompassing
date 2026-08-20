@@ -7,7 +7,7 @@ const agentsPath = path.resolve("AGENTS.md");
 const laneContractPath = path.resolve("docs/ai/cto-lane-contract.md");
 const highRiskPathsPath = path.resolve("docs/ai/high-risk-paths.md");
 const routeTaskSkillPath = path.resolve(".agents/skills/route-task/SKILL.md");
-const handoffPath = path.resolve(
+const cleanupHandoffPath = path.resolve(
   "docs/ai/handoffs/WIN-275-stale-edge-secret-cleanup.md",
 );
 const cleanupAttestationPath = path.resolve(
@@ -19,13 +19,22 @@ const canaryHandoffPath = path.resolve(
 const canaryAttestationPath = path.resolve(
   "docs/ai/reviews/WIN-275-hosted-advisory-canary-attestation.md",
 );
+const qaPersonaHandoffPath = path.resolve(
+  "docs/ai/WIN-43-persistent-qa-personas-handoff.md",
+);
+const qaAuditHandoffPath = path.resolve(
+  "docs/ai/WIN-43-qa-audit-credential-handoff.md",
+);
 
 const policySources = [
   { label: "AGENTS", text: readFileSync(agentsPath, "utf8") },
   { label: "lane contract", text: readFileSync(laneContractPath, "utf8") },
   { label: "high-risk paths", text: readFileSync(highRiskPathsPath, "utf8") },
   { label: "route-task skill", text: readFileSync(routeTaskSkillPath, "utf8") },
-  { label: "WIN-275 handoff", text: readFileSync(handoffPath, "utf8") },
+  {
+    label: "WIN-275 cleanup handoff",
+    text: readFileSync(cleanupHandoffPath, "utf8"),
+  },
   {
     label: "WIN-275 cleanup attestation",
     text: readFileSync(cleanupAttestationPath, "utf8"),
@@ -38,27 +47,51 @@ const policySources = [
     label: "WIN-275 canary attestation",
     text: readFileSync(canaryAttestationPath, "utf8"),
   },
+  {
+    label: "WIN-43 persona handoff",
+    text: readFileSync(qaPersonaHandoffPath, "utf8"),
+  },
+  {
+    label: "WIN-43 audit handoff",
+    text: readFileSync(qaAuditHandoffPath, "utf8"),
+  },
 ] as const;
+
+const hostedSafetyPolicySources = policySources.filter(
+  ({ label }) => !label.startsWith("WIN-43"),
+);
 
 const cleanupWorkflowPath =
   ".github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml";
 const canaryWorkflowPath =
   ".github/workflows/agent-work-ledger-hosted-advisory-canary.yml";
+const qaPersonaWorkflowPath = ".github/workflows/provision-qa-personas.yaml";
 const cleanupWorkflow = readFileSync(path.resolve(cleanupWorkflowPath), "utf8");
 const canaryWorkflow = readFileSync(path.resolve(canaryWorkflowPath), "utf8");
+const qaPersonaWorkflow = readFileSync(
+  path.resolve(qaPersonaWorkflowPath),
+  "utf8",
+);
 const cleanupAcknowledgement =
   "I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_STALE_EDGE_SECRET_CLEANUP";
 const canaryAcknowledgement =
   "I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_AGENT_WORK_LEDGER_HOSTED_ADVISORY_CANARY";
+const qaPersonaAcknowledgement =
+  "I_APPROVE_WIN_43_QA_PERSONA_PROVISIONING";
 const exactAllowlist =
-  "Delegated browser dispatch allowlist (exactly two literal entries): [`.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`, `.github/workflows/agent-work-ledger-hosted-advisory-canary.yml`].";
-const delegatedWorkflowPaths = [cleanupWorkflowPath, canaryWorkflowPath] as const;
+  "Delegated browser dispatch allowlist (exactly three literal entries): [`.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`, `.github/workflows/agent-work-ledger-hosted-advisory-canary.yml`, `.github/workflows/provision-qa-personas.yaml`].";
+const delegatedWorkflowPaths = [
+  cleanupWorkflowPath,
+  canaryWorkflowPath,
+  qaPersonaWorkflowPath,
+] as const;
 const delegatedAcknowledgements = [
   cleanupAcknowledgement,
   canaryAcknowledgement,
+  qaPersonaAcknowledgement,
 ] as const;
 
-describe("WIN-275 delegated browser dispatch policy", () => {
+describe("delegated browser dispatch policy", () => {
   it("retains the cleanup workflow's enforceable fail-closed dispatch gates", () => {
     expect(cleanupWorkflow).toContain(cleanupAcknowledgement);
     expect(cleanupWorkflow).toContain(
@@ -119,13 +152,61 @@ describe("WIN-275 delegated browser dispatch policy", () => {
     expect(advisoryStart).toBeGreaterThan(revalidationStart);
   });
 
+  it("retains the QA persona workflow's owner-bound and secret-isolated gates", () => {
+    expect(qaPersonaWorkflow).toContain(qaPersonaAcknowledgement);
+    expect(qaPersonaWorkflow).toContain("github.actor_id == '129695080'");
+    expect(qaPersonaWorkflow).toContain(
+      "process.env.GITHUB_REF !== 'refs/heads/main'",
+    );
+    expect(qaPersonaWorkflow).toContain(
+      "mainRef.object?.sha !== commitSha",
+    );
+    expect(qaPersonaWorkflow).toContain(
+      "pull.merge_commit_sha !== commitSha",
+    );
+    expect(qaPersonaWorkflow).toContain(
+      "Approval pull request must reference WIN-43.",
+    );
+
+    const revalidationStart = qaPersonaWorkflow.indexOf(
+      "- name: Revalidate authority immediately before protected credentials",
+    );
+    const provisionStart = qaPersonaWorkflow.indexOf(
+      "- name: Provision and verify persistent synthetic QA personas",
+      revalidationStart,
+    );
+    expect(revalidationStart).toBeGreaterThan(-1);
+    expect(provisionStart).toBeGreaterThan(revalidationStart);
+
+    for (const role of [
+      "ADMIN",
+      "ADMIN_SCHEDULE",
+      "BCBA",
+      "BT",
+      "CLIENT",
+      "MIDTIER",
+      "SUPERADMIN",
+      "THERAPIST",
+    ]) {
+      expect(qaPersonaWorkflow).toContain(
+        `secrets.QA_BOOTSTRAP_${role}_EMAIL`,
+      );
+      expect(qaPersonaWorkflow).toContain(
+        `secrets.QA_BOOTSTRAP_${role}_PASSWORD`,
+      );
+    }
+    expect(qaPersonaWorkflow).not.toContain("gh secret set");
+    expect(qaPersonaWorkflow).not.toContain("actions: write");
+    expect(qaPersonaWorkflow).not.toContain("contents: write");
+  });
+
   it("encodes the only delegated-dispatch allowlist and exact binding inputs", () => {
     for (const { label, text } of policySources) {
       expect(
         text.match(/Delegated browser dispatch allowlist/g) ?? [],
         `${label} should define exactly one delegated-dispatch allowlist`,
       ).toHaveLength(1);
-      expect(text, `${label} should use the exact two-entry allowlist`).toContain(
+      expect(text, `${label} should use the exact three-entry allowlist`).toContain(
         exactAllowlist,
       );
       const namedWorkflowPaths = [
@@ -133,7 +214,7 @@ describe("WIN-275 delegated browser dispatch policy", () => {
       ].map(([workflowPath]) => workflowPath);
       expect(
         [...new Set(namedWorkflowPaths)],
-        `${label} should name only the two delegated workflow paths`,
+        `${label} should name only the three delegated workflow paths`,
       ).toEqual([...delegatedWorkflowPaths]);
       for (const workflowPath of delegatedWorkflowPaths) {
         expect(
@@ -141,7 +222,10 @@ describe("WIN-275 delegated browser dispatch policy", () => {
           `${label} should scope the exception to ${workflowPath}`,
         ).toContain(workflowPath);
       }
-      for (const acknowledgement of delegatedAcknowledgements) {
+      const requiredAcknowledgements = label.startsWith("WIN-43")
+        ? [qaPersonaAcknowledgement]
+        : delegatedAcknowledgements;
+      for (const acknowledgement of requiredAcknowledgements) {
         expect(
           text,
           `${label} should require the exact acknowledgement ${acknowledgement}`,
@@ -149,15 +233,15 @@ describe("WIN-275 delegated browser dispatch policy", () => {
       }
       expect(
         text,
-        `${label} should bind authorization to the merged WIN-275 PR number for both workflows`,
-      ).toMatch(/merged WIN-275 PR number|merged PR number/i);
+        `${label} should bind authorization to the applicable merged issue PR number`,
+      ).toMatch(/merged WIN-(?:275|43) PR number|merged PR number/i);
       expect(
         text,
-        `${label} should bind authorization to the current-main commit SHA for both workflows`,
+        `${label} should bind authorization to the current-main commit SHA`,
       ).toMatch(/current[- ]main (?:commit )?SHA|exact current `main`|exact current main/i);
       expect(
         text,
-        `${label} should bind authorization to immutable workflow inputs for both workflows`,
+        `${label} should bind authorization to immutable workflow inputs`,
       ).toMatch(/workflow-specific immutable inputs|immutable inputs/i);
     }
   });
@@ -171,11 +255,11 @@ describe("WIN-275 delegated browser dispatch policy", () => {
       expect(
         text,
         `${label} should require separate current-task owner authorization per workflow`,
-      ).toMatch(/current task/i);
+      ).toMatch(/current[- ]task/i);
       expect(
         text,
         `${label} should state one click and separate authorization per workflow`,
-      ).toMatch(/exactly one browser click dispatch|one browser click dispatch|separate current-task owner authorization per workflow|fresh current-task owner authorization per workflow/i);
+      ).toMatch(/exactly one (?:Browser-plugin )?(?:browser )?click dispatch|one browser click dispatch|separate current-task owner authorization per workflow|fresh current-task owner authorization per workflow/i);
       expect(
         text,
         `${label} should require immediate revalidation before the click`,
@@ -183,7 +267,7 @@ describe("WIN-275 delegated browser dispatch policy", () => {
       expect(
         text,
         `${label} should require rechecking current main, PR, CI, owner identity, maintainer topology, manifest hashes, and visible exact inputs`,
-      ).toMatch(/main\/PR\/required CI\/owner identity\/sole-maintainer topology\/manifest hashes|main, PR, required CI, owner identity, sole-maintainer topology, manifest hashes, and visible exact inputs/i);
+      ).toMatch(/main\/PR\/required CI\/owner identity\/sole-maintainer topology\/manifest hashes|main, (?:the merged )?PR, required CI, owner identity, sole-maintainer topology, (?:manifest hashes|the hash-bound specialist manifest), and (?:the )?visible exact inputs/i);
       expect(
         text,
         `${label} should make the authorization one-time and consumed on click`,
@@ -194,7 +278,7 @@ describe("WIN-275 delegated browser dispatch policy", () => {
       ).toMatch(/revoked by any drift|missing evidence|navigation\/session ambiguity|failed run|fresh authorization/i);
       expect(
         text,
-        `${label} should preserve owner review and merge before delegated dispatch for both workflows`,
+        `${label} should preserve owner review and merge before delegated dispatch`,
       ).toMatch(/owner must .*inspect and merge|owner (?:must )?personally .*inspect(?:s)? and merge(?:s)?/i);
     }
   });
@@ -217,12 +301,31 @@ describe("WIN-275 delegated browser dispatch policy", () => {
       ).toMatch(/forbid gh\/CLI\/API\/token dispatch|secret viewing|self-authorization/i);
       expect(
         text,
-        `${label} should preserve temporary advisory-only canary, disabled-first restore, and zero-residue cleanup`,
-      ).toMatch(/temporary advisory only|advisory only|restore disabled first|disabled first|zero residue/i);
+        `${label} should preserve gate weakening and workflow broadening bans`,
+      ).toMatch(/gate weakening|any other workflow|extension to any other workflow|exact allowlist/i);
+    }
+  });
+
+  it("retains cleanup and canary hosted-safety invariants", () => {
+    for (const { label, text } of hostedSafetyPolicySources) {
       expect(
         text,
-        `${label} should preserve no provider calls, no retention deletion, active forbidden, gate weakening ban, and no workflow broadening`,
-      ).toMatch(/no provider\/model calls|no retention deletion|active mode|gate weakening|any other workflow|extension to any other workflow/i);
+        `${label} should preserve temporary advisory-only canary, disabled-first restore, and zero-residue cleanup`,
+      ).toMatch(/temporary advisory only|advisory only/i);
+      expect(text, `${label} should preserve disabled-first restore`).toMatch(
+        /restore(?:s)? disabled first|disabled-first|disabled first/i,
+      );
+      expect(text, `${label} should preserve zero residue`).toMatch(
+        /zero residue|zero-residue/i,
+      );
+      expect(
+        text,
+        `${label} should preserve no provider calls and no retention deletion`,
+      ).toMatch(/no provider\/model calls|forbids provider\/model calls/i);
+      expect(text).toMatch(/no retention deletion|forbids .*retention deletion/i);
+      expect(text, `${label} should preserve active-mode prohibition`).toMatch(
+        /active mode remains forbidden|active mode.*forbidden|no active mode/i,
+      );
     }
   });
 });

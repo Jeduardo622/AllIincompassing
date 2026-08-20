@@ -63,8 +63,11 @@ Sanitized readiness evidence:
 - Run `32322929505` failed because the isolated bootstrap secrets were absent; no persistent persona mutation was performed.
 - All 16 expected `QA_BOOTSTRAP_*` repository secret names are now present. Values are intentionally not recorded or validated in repository content.
 - The retry must use this PR's merge commit as both current `main` and the immutable `commit_sha` input.
-- The repository owner must personally review and merge this PR, then separately dispatch the workflow with the exact acknowledgement required by the workflow.
-- Automation must not merge this PR, dispatch the protected workflow, expose secret values, or rotate active `PW_*` secrets before the sanitized provisioning manifest and hosted persona graph pass validation.
+- The repository owner must personally inspect and merge the policy PR before any dispatch authorization.
+- Delegated browser dispatch allowlist (exactly three literal entries): [`.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`, `.github/workflows/agent-work-ledger-hosted-advisory-canary.yml`, `.github/workflows/provision-qa-personas.yaml`].
+- For `.github/workflows/provision-qa-personas.yaml` only, the owner may give fresh current-task authorization for exactly one browser click dispatch through the owner's already-authenticated in-app GitHub browser session using `I_APPROVE_WIN_43_QA_PERSONA_PROVISIONING`, the merged WIN-43 PR number, the exact current-main SHA, and the workflow's immutable inputs.
+- Immediately before click, Codex must recheck current main, the merged PR, required CI, owner identity, sole-maintainer topology, the hash-bound specialist manifest, and the visible exact inputs. Authorization is consumed on click and revoked by drift, missing evidence, session ambiguity, or a failed run; reruns require fresh authorization. The general prohibition remains for all other solo-maintainer dispatch actions.
+- Codex must not merge the policy PR. gh/CLI/API/token dispatch, secret viewing, self-authorization, gate weakening, and active `PW_*` rotation before the sanitized provisioning manifest and hosted persona graph pass validation remain forbidden.
 
 Post-dispatch acceptance remains:
 

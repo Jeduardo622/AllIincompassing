@@ -15,27 +15,27 @@
   ],
   "specialistReviews": {
     "code-review-engineer": {
-      "agentId": "019fd88c-289d-7523-8eb5-e5406fbb41f9",
+      "agentId": "01a01d3e-d44d-7021-a44b-abbbba3d7103",
       "verdict": "PASS"
     },
     "security-engineer": {
-      "agentId": "019fd88c-29dd-72a3-be85-702d94a77367",
+      "agentId": "01a01d3e-d693-7242-a146-e91c0b93a2b8",
       "verdict": "PASS"
     },
     "test-engineer": {
-      "agentId": "019fd88c-2b7a-79b0-a88e-4a314230965b",
+      "agentId": "01a01d3e-d554-7220-a0fb-8729af2edaf0",
       "verdict": "PASS"
     },
     "software-architect": {
-      "agentId": "019fd88c-3126-75f1-868b-029e631775cb",
+      "agentId": "01a01d35-3014-76b1-936c-369d1fc6d9e5",
       "verdict": "PASS"
     },
     "supabase-reviewer": {
-      "agentId": "019fd88c-2dbc-7670-befc-c0e03ee0d200",
+      "agentId": "01a01d44-a496-72f1-915b-9c4e10e6e8c0",
       "verdict": "PASS"
     },
     "documentation-engineer": {
-      "agentId": "019fd88c-3530-7662-a540-760fc668e41d",
+      "agentId": "01a01d45-62a0-7a51-8ade-e8d108969334",
       "verdict": "PASS"
     }
   },
@@ -129,10 +129,10 @@
     ".github/workflows/agent-work-ledger-hosted-shadow-proof.yml": "eef158750da0d0f4456c00fb247149827d882a7d332bb36e57ca236c5b8dd83f",
     "scripts/agent-work-ledger-hosted-shadow-proof.mjs": "2fd78613be6dba0583019bd93566b3df73ee75d9d1f1036480fdf7f4c1350323",
     "tests/agentWorkLedgerHostedShadowProof.test.ts": "c92e0fd0f9a6bcf71e61a58d404553d85ced204ca41392f5fa3a63b810ec57ae",
-    "AGENTS.md": "1be8157897d395aee0ae78503a04b9d35203d5e07dc80149198afff2f1301c81",
-    ".agents/skills/route-task/SKILL.md": "fbeb48b4131759168641f936abb86676a3f2b0fc856a949fdb14b36de20d8c15",
-    "docs/ai/cto-lane-contract.md": "53263ab6570deb1f863e2cdb87d10473a5cf0e3d0925a4ace0488fc68d6443d0",
-    "docs/ai/high-risk-paths.md": "6e4cb5d907542c31c177cf33312dad7bd62bf047c8f36cb23eb308102e452714",
+    "AGENTS.md": "aabd05922b2b9a241a8473aa9aa35278d1f9632d913d66033047a46cca8e0380",
+    ".agents/skills/route-task/SKILL.md": "3687ae06d25d19fd1497d9803276350e6504996da1410891380b9c514ff59129",
+    "docs/ai/cto-lane-contract.md": "83c3411f19257daf23d58ae1eb6cba798dfd0de3a506942ef62bff5e5276a695",
+    "docs/ai/high-risk-paths.md": "e81055234fb62d0b3294fb894a78a0cb52c2e30fa65a39b2d79e093470c5f17f",
     "docs/ops/agent-work-ledger.md": "a0beafe3398affaf7ecd73304823f1bbf40a85566ff86094f7914e107f75dc1b",
     "docs/superpowers/plans/2026-08-04-agent-work-ledger-operational-activation.md": "c790c3aaec29e2557bd6895b71371ca422321de8c21aedbc4fbce2409b66a2b5",
     "docs/ai/handoffs/agent-work-ledger-foundation.md": "5fdec5facaa69fe4600b957f01d8438f59340db127c6b2c48279257d0af8d2e0",

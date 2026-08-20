@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -319,7 +318,7 @@ describe("WIN-275 stale Edge-secret cleanup contract", () => {
       "scripts/agent-work-ledger-hosted-advisory-canary.mjs",
     ]) {
       const actual = createHash("sha256")
-        .update(execFileSync("git", ["show", `:${surface}`]))
+        .update(readFileSync(path.resolve(surface), "utf8").replace(/\r\n/g, "\n"))
         .digest("hex");
       expect(manifest.protectedSurfaceHashes?.[surface]).toBe(actual);
     }

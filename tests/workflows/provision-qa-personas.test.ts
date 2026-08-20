@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const workflow = readFileSync(
-  path.resolve(process.cwd(), '.github/workflows/provision-qa-personas.yml'),
+  path.resolve(process.cwd(), '.github/workflows/provision-qa-personas.yaml'),
   'utf8',
 );
 
@@ -36,6 +36,13 @@ describe('persistent QA persona protected workflow', () => {
     expect(workflow).not.toContain('gh secret set');
     expect(workflow).not.toContain('actions: write');
     expect(workflow).not.toContain('contents: write');
+  });
+
+  it('pins every GitHub-authored action to a repository-approved immutable SHA', () => {
+    expect(workflow).toContain('actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09');
+    expect(workflow).toContain('actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444');
+    expect(workflow).toContain('actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f');
+    expect(workflow).not.toMatch(/uses:\s+actions\/[\w-]+@v\d+/);
   });
 
   it('re-attests main before credentials and uploads only the sanitized manifest', () => {

@@ -23,7 +23,6 @@ const expectedWorkflowFiles = [
   'database-first-ci.yml',
   'iehp-pdf-mini-matrix-proof.yml',
   'lighthouse.yml',
-  'provision-qa-personas.yml',
   'rollback-drill.yml',
   'supabase-preview.yml',
   'supabase-validate.yml',

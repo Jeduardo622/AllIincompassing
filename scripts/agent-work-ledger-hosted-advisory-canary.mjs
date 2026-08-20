@@ -329,12 +329,20 @@ where secret.name = owned.name and secret.id = owned.id::uuid`,
     [JSON.stringify(ownedIds)],
   );
 };
-const dropCanaryPgCronExtension = (extensionOid) =>
-  managementWrite(
-    `
+export const buildDropCanaryPgCronExtensionQuery = (extensionOid) => {
+  const validatedOid = Number(extensionOid);
+  assert(
+    Number.isSafeInteger(validatedOid) && validatedOid > 0,
+    "Canary pg_cron ownership proof is missing.",
+  );
+  return `
+begin;
+select pg_advisory_xact_lock(2750818);
+select pg_advisory_xact_lock(27104214731);
+lock table cron.job in access exclusive mode;
 do $guard$
 begin
-  if not exists (select 1 from pg_extension where extname = 'pg_cron' and oid = $1::oid) then
+  if not exists (select 1 from pg_extension where extname = 'pg_cron' and oid = ${validatedOid}::oid) then
     raise exception 'canary_pg_cron_ownership_drifted';
   end if;
   if exists (select 1 from cron.job) then
@@ -342,30 +350,41 @@ begin
   end if;
 end
 $guard$;
-drop extension pg_cron;`,
-    [extensionOid],
-  );
+drop extension pg_cron;
+commit;`;
+};
+const dropCanaryPgCronExtension = (extensionOid) =>
+  managementWrite(buildDropCanaryPgCronExtensionQuery(extensionOid));
 
-const readMeasurements = async (baseline) =>
-  firstRow(
-    await managementRead(
-      `
+export const buildMeasurementQuery = () => `
+with target_runs as materialized (
+  select runs.*, jobs.jobname
+  from cron.job_run_details as runs
+  join cron.job as jobs on jobs.jobid = runs.jobid
+  where jobs.jobname in ('agent-work-runner-hosted','agent-work-sweeper-hosted')
+    and runs.start_time >= $1::timestamptz
+)
 select jsonb_build_object(
   'cron_jobs', (select count(*)::integer from cron.job where jobname in ('agent-work-runner-hosted','agent-work-sweeper-hosted') and active),
-  'cron_runs', (select count(*)::integer from cron.job_run_details where jobname in ('agent-work-runner-hosted','agent-work-sweeper-hosted') and start_time >= $1::timestamptz),
-  'runner_runs', (select count(*)::integer from cron.job_run_details where jobname = 'agent-work-runner-hosted' and start_time >= $1::timestamptz),
-  'sweeper_runs', (select count(*)::integer from cron.job_run_details where jobname = 'agent-work-sweeper-hosted' and start_time >= $1::timestamptz),
-  'successful_cron_runs', (select count(*)::integer from cron.job_run_details where jobname in ('agent-work-runner-hosted','agent-work-sweeper-hosted') and start_time >= $1::timestamptz and status = 'succeeded'),
+  'cron_runs', (select count(*)::integer from target_runs),
+  'runner_runs', (select count(*)::integer from target_runs where jobname = 'agent-work-runner-hosted'),
+  'sweeper_runs', (select count(*)::integer from target_runs where jobname = 'agent-work-sweeper-hosted'),
+  'successful_cron_runs', (select count(*)::integer from target_runs where status = 'succeeded'),
   'http_successes', (select count(*)::integer from net._http_response where id > $3::bigint and created >= $1::timestamptz and status_code = 200 and not timed_out and error_msg is null),
   'http_failures', (select count(*)::integer from net._http_response where id > $3::bigint and created >= $1::timestamptz and (status_code is distinct from 200 or timed_out or error_msg is not null)),
-  'p50_ms', coalesce((select (percentile_cont(0.5) within group (order by extract(epoch from (end_time-start_time))*1000))::integer from cron.job_run_details where jobname in ('agent-work-runner-hosted','agent-work-sweeper-hosted') and start_time >= $1::timestamptz and end_time is not null), 0),
-  'p95_ms', coalesce((select (percentile_cont(0.95) within group (order by extract(epoch from (end_time-start_time))*1000))::integer from cron.job_run_details where jobname in ('agent-work-runner-hosted','agent-work-sweeper-hosted') and start_time >= $1::timestamptz and end_time is not null), 0),
-  'overlap_count', (select count(*)::integer from cron.job_run_details a join cron.job_run_details b on a.jobid=b.jobid and a.runid<b.runid and a.start_time < b.end_time and b.start_time < a.end_time where a.start_time >= $1::timestamptz),
+  'p50_ms', coalesce((select (percentile_cont(0.5) within group (order by extract(epoch from (end_time-start_time))*1000))::integer from target_runs where end_time is not null), 0),
+  'p95_ms', coalesce((select (percentile_cont(0.95) within group (order by extract(epoch from (end_time-start_time))*1000))::integer from target_runs where end_time is not null), 0),
+  'overlap_count', (select count(*)::integer from target_runs a join target_runs b on a.runid<b.runid and a.start_time < b.end_time and b.start_time < a.end_time),
   'queue_depth', (select count(*)::integer from pgmq.q_agent_work_steps),
   'archive_depth', (select count(*)::integer from pgmq.a_agent_work_steps),
   'database_lock_count', (select count(*)::integer from pg_locks where granted = false),
   'database_write_delta', greatest(0, (select sum(xact_commit+xact_rollback)::bigint from pg_stat_database where datname=current_database()) - $2::bigint)
-) as measurements`,
+) as measurements`;
+
+const readMeasurements = async (baseline) =>
+  firstRow(
+    await managementRead(
+      buildMeasurementQuery(),
       [
         new Date(baseline.startedAt).toISOString(),
         baseline.databaseWriteBaseline,

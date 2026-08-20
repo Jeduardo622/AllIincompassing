@@ -25,6 +25,12 @@ const qaPersonaHandoffPath = path.resolve(
 const qaAuditHandoffPath = path.resolve(
   "docs/ai/WIN-43-qa-audit-credential-handoff.md",
 );
+const recoveryHandoffPath = path.resolve(
+  "docs/ai/handoffs/WIN-275-pg-cron-residue-recovery.md",
+);
+const recoveryAttestationPath = path.resolve(
+  "docs/ai/reviews/WIN-275-pg-cron-residue-recovery-attestation.md",
+);
 
 const policySources = [
   { label: "AGENTS", text: readFileSync(agentsPath, "utf8") },
@@ -35,17 +41,16 @@ const policySources = [
     label: "WIN-275 cleanup handoff",
     text: readFileSync(cleanupHandoffPath, "utf8"),
   },
+  { label: "WIN-275 cleanup attestation", text: readFileSync(cleanupAttestationPath, "utf8") },
+  { label: "WIN-275 canary handoff", text: readFileSync(canaryHandoffPath, "utf8") },
+  { label: "WIN-275 canary attestation", text: readFileSync(canaryAttestationPath, "utf8") },
   {
-    label: "WIN-275 cleanup attestation",
-    text: readFileSync(cleanupAttestationPath, "utf8"),
+    label: "WIN-275 pg_cron recovery handoff",
+    text: readFileSync(recoveryHandoffPath, "utf8"),
   },
   {
-    label: "WIN-275 canary handoff",
-    text: readFileSync(canaryHandoffPath, "utf8"),
-  },
-  {
-    label: "WIN-275 canary attestation",
-    text: readFileSync(canaryAttestationPath, "utf8"),
+    label: "WIN-275 pg_cron recovery attestation",
+    text: readFileSync(recoveryAttestationPath, "utf8"),
   },
   {
     label: "WIN-43 persona handoff",
@@ -66,6 +71,9 @@ const cleanupWorkflowPath =
 const canaryWorkflowPath =
   ".github/workflows/agent-work-ledger-hosted-advisory-canary.yml";
 const qaPersonaWorkflowPath = ".github/workflows/provision-qa-personas.yaml";
+const recoveryWorkflowPath =
+  ".github/workflows/agent-work-ledger-pg-cron-residue-recovery.yml";
+const recoveryWorkflow = readFileSync(path.resolve(recoveryWorkflowPath), "utf8");
 const cleanupWorkflow = readFileSync(path.resolve(cleanupWorkflowPath), "utf8");
 const canaryWorkflow = readFileSync(path.resolve(canaryWorkflowPath), "utf8");
 const qaPersonaWorkflow = readFileSync(
@@ -78,16 +86,20 @@ const canaryAcknowledgement =
   "I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_AGENT_WORK_LEDGER_HOSTED_ADVISORY_CANARY";
 const qaPersonaAcknowledgement =
   "I_APPROVE_WIN_43_QA_PERSONA_PROVISIONING";
+const recoveryAcknowledgement =
+  "I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_PG_CRON_RESIDUE_RECOVERY";
 const exactAllowlist =
-  "Delegated browser dispatch allowlist (exactly three literal entries): [`.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`, `.github/workflows/agent-work-ledger-hosted-advisory-canary.yml`, `.github/workflows/provision-qa-personas.yaml`].";
+  "Delegated browser dispatch allowlist (exactly four literal entries): [`.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`, `.github/workflows/agent-work-ledger-hosted-advisory-canary.yml`, `.github/workflows/agent-work-ledger-pg-cron-residue-recovery.yml`, `.github/workflows/provision-qa-personas.yaml`].";
 const delegatedWorkflowPaths = [
   cleanupWorkflowPath,
   canaryWorkflowPath,
+  recoveryWorkflowPath,
   qaPersonaWorkflowPath,
 ] as const;
 const delegatedAcknowledgements = [
   cleanupAcknowledgement,
   canaryAcknowledgement,
+  recoveryAcknowledgement,
   qaPersonaAcknowledgement,
 ] as const;
 
@@ -200,13 +212,43 @@ describe("delegated browser dispatch policy", () => {
     expect(qaPersonaWorkflow).not.toContain("contents: write");
   });
 
+  it("adds the pg_cron residue recovery workflow with the same fail-closed dispatch gates", () => {
+    expect(recoveryWorkflow).toContain(recoveryAcknowledgement);
+    expect(recoveryWorkflow).toContain(
+      "process.env.GITHUB_ACTOR !== process.env.GITHUB_REPOSITORY_OWNER",
+    );
+    expect(recoveryWorkflow).toContain(
+      "mainRef.object?.sha !== commitSha",
+    );
+    expect(recoveryWorkflow).toContain(
+      "pull.merge_commit_sha !== commitSha",
+    );
+    expect(recoveryWorkflow).toContain(
+      "check.head_sha === commitSha",
+    );
+    expect(recoveryWorkflow).toContain("check.app?.slug === 'github-actions'");
+    expect(recoveryWorkflow).toContain("check.conclusion === 'success'");
+    expect(recoveryWorkflow).toContain("protectedSurfaceHashes");
+    expect(recoveryWorkflow).toContain("specialistReviews");
+
+    const revalidationStart = recoveryWorkflow.indexOf(
+      "- name: Revalidate authority immediately before pg_cron recovery",
+    );
+    const preflightStart = recoveryWorkflow.indexOf(
+      "- name: Read-only residue preflight",
+      revalidationStart,
+    );
+    expect(revalidationStart).toBeGreaterThan(-1);
+    expect(preflightStart).toBeGreaterThan(revalidationStart);
+  });
+
   it("encodes the only delegated-dispatch allowlist and exact binding inputs", () => {
     for (const { label, text } of policySources) {
       expect(
         text.match(/Delegated browser dispatch allowlist/g) ?? [],
         `${label} should define exactly one delegated-dispatch allowlist`,
       ).toHaveLength(1);
-      expect(text, `${label} should use the exact three-entry allowlist`).toContain(
+      expect(text, `${label} should use the exact four-entry allowlist`).toContain(
         exactAllowlist,
       );
       const namedWorkflowPaths = [
@@ -214,7 +256,7 @@ describe("delegated browser dispatch policy", () => {
       ].map(([workflowPath]) => workflowPath);
       expect(
         [...new Set(namedWorkflowPaths)],
-        `${label} should name only the three delegated workflow paths`,
+        `${label} should name only the four delegated workflow paths`,
       ).toEqual([...delegatedWorkflowPaths]);
       for (const workflowPath of delegatedWorkflowPaths) {
         expect(

@@ -15,6 +15,7 @@ const workflowDir = path.join(process.cwd(), '.github', 'workflows');
 const expectedWorkflowFiles = [
   'agent-work-ledger-hosted-advisory-canary.yml',
   'agent-work-ledger-hosted-shadow-proof.yml',
+  'agent-work-ledger-pg-cron-residue-recovery.yml',
   'agent-work-ledger-stale-edge-secret-cleanup.yml',
   'auth-verification.yml',
   'bcba-smoke-janitor.yml',

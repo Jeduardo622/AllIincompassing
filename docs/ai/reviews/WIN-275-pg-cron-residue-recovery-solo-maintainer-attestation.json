@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "issue": "WIN-275",
+  "reviewMode": "solo-maintainer-owner-attestation",
+  "repository": "Jeduardo622/AllIincompassing",
+  "createdAt": "2026-08-20T16:30:00Z",
+  "approvedIncidentPgCronOid": 457927,
+  "specialistReviews": {
+    "code-review-engineer": {
+      "agentId": "01a02002-b0ca-7261-80db-83f40d7a6a83",
+      "verdict": "PASS"
+    },
+    "security-engineer": {
+      "agentId": "01a01fff-9d25-7210-bbca-f3ca7f7436a1",
+      "verdict": "PASS"
+    },
+    "test-engineer": {
+      "agentId": "01a01fff-9b93-76c3-9ab2-ec18e44d846e",
+      "verdict": "PASS"
+    },
+    "software-architect": {
+      "agentId": "01a02004-fb89-71e2-b099-75c1f186c630",
+      "verdict": "PASS"
+    },
+    "supabase-reviewer": {
+      "agentId": "01a01fff-9eeb-7eb0-9b27-dbbe1e80c8a5",
+      "verdict": "PASS"
+    },
+    "devops-engineer": {
+      "agentId": "01a02004-fd6e-7861-8d0c-92e49e8ff2c7",
+      "verdict": "PASS"
+    }
+  },
+  "invariants": {
+    "exactMainAndCi": true,
+    "exactIncidentOidOnly": true,
+    "oneDatabaseMutationOnly": true,
+    "runtimeDisabledRequired": true,
+    "activeModeForbidden": true,
+    "zeroResidueRequired": true,
+    "sanitizedEvidenceOnly": true
+  },
+  "protectedSurfaceHashes": {
+    ".github/workflows/agent-work-ledger-pg-cron-residue-recovery.yml": "c24664f38624974b53d8526d8345b843529c37d8c6d363744643d98cae7573aa",
+    ".github/workflows/provision-qa-personas.yaml": "19af52ee96d4c881b8af3bc187158346ae5365e19badaf0471b0d7c9fa5af6e2",
+    ".agents/skills/route-task/SKILL.md": "e3c25983e67178ec9f80e2547657170200c38d72327b7de0e17c7cdcce8556ab",
+    "AGENTS.md": "cf4deb9ecb4147707d7ab99162767906edc11bd5c239935c3a4a3b38197a8522",
+    "docs/ai/WIN-43-persistent-qa-personas-handoff.md": "a20c84872a787738a9b280f87ac017a9603220430cdaf356df2135f59c6e9779",
+    "docs/ai/WIN-43-qa-audit-credential-handoff.md": "eb83ea36f44c4c12c0d20cb5e2f32654e855a1328a57538963e32241f32380ee",
+    "docs/ai/cto-lane-contract.md": "1d5ec4ceaca735808a5c9ed7d6a37e455dd048bc13a7195cfd35e1a332fdd072",
+    "docs/ai/handoffs/WIN-275-hosted-advisory-canary.md": "f64376bf6ff1b3a1c63850710d3f35579decbf7c181c0b0b1d486dc15bf88ea1",
+    "docs/ai/handoffs/WIN-275-pg-cron-residue-recovery.md": "f77a0a627d8b3c3d39f01e351c8a54436b51dbd1b612866fd2bc1190596910fe",
+    "docs/ai/handoffs/WIN-275-stale-edge-secret-cleanup.md": "1d7a864a5a5186eaf0146f8ae1b82e7162baa8e18f2d37c2f84365af294a26d1",
+    "docs/ai/high-risk-paths.md": "9fb049bc197d2a1dad5cf80529d79570ee8750fe533a3c3dd584c5660f67020a",
+    "docs/ai/reviews/WIN-275-hosted-advisory-canary-attestation.md": "2288501396f3e3d7bcc72c22cd72b821487adc9c1719a8778a4da03d48b52289",
+    "docs/ai/reviews/WIN-275-hosted-advisory-canary-solo-maintainer-attestation.json": "9ee9eb74e2d657ee56c2a7fe78b416557890fbfcb9bfb0a9c185ed45c34431ad",
+    "docs/ai/reviews/WIN-275-pg-cron-residue-recovery-attestation.md": "9cc191497f244c0529fb7cf631fcee09cf55d776d65613957146b0825306109e",
+    "docs/ai/reviews/WIN-275-solo-maintainer-attestation.json": "894e38199cedd9c6bb905ac2482e17b8e9175370c31e2f26656141bfe5783810",
+    "docs/ai/reviews/WIN-275-stale-edge-secret-cleanup-attestation.md": "edbe87fd312deedca0dee53097a3c55e1be7793a39ebc1e25abc34a205cdcef2",
+    "docs/ai/reviews/WIN-275-stale-edge-secret-cleanup-solo-maintainer-attestation.json": "8318f3b2b4919788ca3927fd9b3290f39402f6cae64508a1d251695deb0f9a75",
+    "docs/ai/reviews/WIN-43-qa-persona-delegated-browser-dispatch-attestation.json": "ac49c33d7605694dff21175771ea12967894e751cb9cdd5b5b7dad6f0e8bee63",
+    "package.json": "8cc16bf66034d80c0b7aea9e5b72ffbe0367011671b77d86be8a1c13204f8555",
+    "scripts/agent-work-ledger-pg-cron-residue-recovery.mjs": "9afc87ee2afc2ffbfffa4ed3e6aed3b56ee872bd57efd98f88201dca9df119de",
+    "tests/agentWorkLedgerDelegatedBrowserDispatchPolicy.test.ts": "d654a579fac01a71148d0f9783c5bd58e46d4ddaf40345a061ed6e48855b38bb",
+    "tests/agentWorkLedgerPgCronResidueRecovery.test.ts": "7b72f25e62d9401cd9b140bf2fb70dfbd4cd1e7b5d181473c1299a0c09eadfac",
+    "tests/workflows/github-actions-node24-runtime.test.ts": "a6c846f969b0f516029a138e5340d08fb681d60f65daa001ba957d506c3a591c",
+    "tests/workflows/provision-qa-personas.test.ts": "4cce6e4fb86add9c252d8c84a6357ceaa07a61951c7bb9de2b1d95ce66b4a5ad"
+  }
+}

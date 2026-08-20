@@ -127,6 +127,7 @@
     "payroll:timesheet-derive-contract": "node scripts/payroll-timesheet-derive-contract.mjs",
     "agent-work:hosted-shadow-proof:contract": "npm test -- --run tests/agentWorkLedgerHostedShadowProof.test.ts",
     "agent-work:hosted-advisory-canary:contract": "npm test -- --run tests/agentWorkLedgerHostedAdvisoryCanary.test.ts",
+    "agent-work:stale-edge-secret-cleanup:contract": "npm test -- --run tests/agentWorkLedgerStaleEdgeSecretCleanup.test.ts",
     "migration:new": "node scripts/migrations/new-migration-with-header.mjs",
     "validate:tenant": "npx tsx scripts/check-tenant-safety.ts",
     "perf:p2:baseline": "node scripts/perf/capture-p2-baseline.mjs",

@@ -32,6 +32,7 @@ const protectedSurfaces = [
   'docs/ai/reviews/WIN-275-hosted-advisory-canary-attestation.md',
   'docs/ai/reviews/WIN-275-stale-edge-secret-cleanup-solo-maintainer-attestation.json',
   'docs/ai/reviews/WIN-275-hosted-advisory-canary-solo-maintainer-attestation.json',
+  'docs/ai/reviews/WIN-275-solo-maintainer-attestation.json',
 ] as const;
 
 describe('persistent QA persona protected workflow', () => {
@@ -66,6 +67,7 @@ describe('persistent QA persona protected workflow', () => {
     expect(workflow).toContain(
       'WIN-275-hosted-advisory-canary-solo-maintainer-attestation.json',
     );
+    expect(workflow).toContain('WIN-275-solo-maintainer-attestation.json');
     for (const specialist of [
       'code-review-engineer',
       'security-engineer',

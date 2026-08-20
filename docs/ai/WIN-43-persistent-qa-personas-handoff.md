@@ -70,7 +70,7 @@ The diff is limited to the one-time provisioner, its owner-gated workflow, contr
 - lane: `critical`
 - change type: `CI/workflow/policy`; no application, migration, RLS, RPC, or provisioner behavior change
 - focused contracts: `37/37` passed across the three-workflow delegated policy, QA workflow/attestation, and both preserved WIN-275 hash-bound dispatch paths
-- direct workflow validation: `.github/workflows/provision-qa-personas.yaml` parsed successfully and the contract requires `checks: read`, exact-head GitHub Actions CI, sole-maintainer topology, six PASS specialists, and all 17 protected hashes
+- direct workflow validation: `.github/workflows/provision-qa-personas.yaml` parsed successfully and the contract requires `checks: read`, exact-head GitHub Actions CI, sole-maintainer topology, six PASS specialists, and all 18 protected hashes
 - standard checks: `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, `npm run validate:tenant`, and `npm run build` passed
 - route gate: `npm run test:routes:tier0` passed `250/250`
 - aggregate local check: `npm run test:ci` is non-green on this Windows CRLF checkout because the inherited `tests/scripts/provision-ci-smoke-bcba.test.ts` source-order assertion searches for an LF-only literal; the same exact current-main SHA passed Linux `unit-tests` and every required CI job

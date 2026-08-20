@@ -191,6 +191,7 @@ jobs:
             'docs/ai/reviews/WIN-275-hosted-advisory-canary-attestation.md',
             'docs/ai/reviews/WIN-275-stale-edge-secret-cleanup-solo-maintainer-attestation.json',
             'docs/ai/reviews/WIN-275-hosted-advisory-canary-solo-maintainer-attestation.json',
+            'docs/ai/reviews/WIN-275-solo-maintainer-attestation.json',
           ];
           for (const surface of surfaces) {
             const expected = attestation.protectedSurfaceHashes?.[surface];

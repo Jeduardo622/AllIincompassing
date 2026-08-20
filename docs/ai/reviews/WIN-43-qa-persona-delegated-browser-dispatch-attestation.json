@@ -42,22 +42,23 @@
     "secretValuesNeverViewed": true
   },
   "protectedSurfaceHashes": {
-    ".github/workflows/provision-qa-personas.yaml": "ac975cec988bc59b1d5ddd3d771bd090a8bebfd3f4aff32994714c2cd9da6526",
+    ".github/workflows/provision-qa-personas.yaml": "19af52ee96d4c881b8af3bc187158346ae5365e19badaf0471b0d7c9fa5af6e2",
     "scripts/provision-persistent-qa-personas.ts": "0787e8aa0e46e1d25de2a8225f4c661a992bbb20aebe82fe2a5212d115610550",
     "tests/scripts/provision-persistent-qa-personas.test.ts": "660b358a77c4351144ecccdc6de964e173f9e11faf8bbac0a7b5ee17a518e55a",
-    "tests/workflows/provision-qa-personas.test.ts": "50ff4df54ae32d29962515b6a5b179600054083446eea735348928c17347c2c8",
+    "tests/workflows/provision-qa-personas.test.ts": "4cce6e4fb86add9c252d8c84a6357ceaa07a61951c7bb9de2b1d95ce66b4a5ad",
     "tests/agentWorkLedgerDelegatedBrowserDispatchPolicy.test.ts": "dac441bc0435f288574d942275f403c55e4b44ba9669eb162b645823ea710c4c",
     "AGENTS.md": "1d85bce638c51d7807e5afd24f491fcb7e8c8962d2b336686b398295f11c737a",
     ".agents/skills/route-task/SKILL.md": "8103dd47b077bb8a4ce975354a9c0fa150c2eeca5a2f2947f3f73f1bd3d294fa",
     "docs/ai/cto-lane-contract.md": "5d0a4f0514a7dc2db450582c0d5c0f49da9dcfe651952f8934ea422236e2d7d4",
     "docs/ai/high-risk-paths.md": "e6d2b44ebb717dface3f842550d3321679c93292892bd2e615f4297480876573",
-    "docs/ai/WIN-43-persistent-qa-personas-handoff.md": "cbdbc6dcc3f11f769a1976132a1f7324ea593c4c590379a56cbf012229b4fa37",
+    "docs/ai/WIN-43-persistent-qa-personas-handoff.md": "2541c61c559465f7890f3dd9f2408fbb880bc21aeb9277cca0a61776bff58215",
     "docs/ai/WIN-43-qa-audit-credential-handoff.md": "9cdb5f828485fd2be6a3eaf1bde9068a594f8f7a504609c8fd8e553d2d1c5375",
     "docs/ai/handoffs/WIN-275-stale-edge-secret-cleanup.md": "2ca0367d40341ca2e7b8d8fe9c712e5b97fcf96c16cbefc98436c2a08742d108",
     "docs/ai/handoffs/WIN-275-hosted-advisory-canary.md": "fd435d05ded8e011ba2569f769a4ce0553a14ae0f8b80dc8aa31fc34841bc49f",
     "docs/ai/reviews/WIN-275-stale-edge-secret-cleanup-attestation.md": "0d031b18dec222d18f779feeb31e651dc8748513a69b6dcc6c589489eeef8099",
     "docs/ai/reviews/WIN-275-hosted-advisory-canary-attestation.md": "3cade3aede43b6f8e2d85851cbcf5bdd7e1b5c26417f5c498bc43b3a83b8f8a6",
     "docs/ai/reviews/WIN-275-stale-edge-secret-cleanup-solo-maintainer-attestation.json": "082c9bf551f2164630b37b9528055cacb4caaab2138d4e8e5467ce7d4c1d308a",
-    "docs/ai/reviews/WIN-275-hosted-advisory-canary-solo-maintainer-attestation.json": "854b75df8b81bface76429889af6919464cbae6fc3c41e4c085f057a72f946af"
+    "docs/ai/reviews/WIN-275-hosted-advisory-canary-solo-maintainer-attestation.json": "854b75df8b81bface76429889af6919464cbae6fc3c41e4c085f057a72f946af",
+    "docs/ai/reviews/WIN-275-solo-maintainer-attestation.json": "83ed5754943604dc71cf46449ead6e2257260825958c9950066411566f214cac"
   }
 }

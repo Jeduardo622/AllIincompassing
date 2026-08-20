@@ -1,6 +1,6 @@
 # WIN-43 Docs-Only QA Audit Credential Handoff
 
-Status: Planning/Docs only. No credential values. No runtime changes.
+Status: Docs-only provisioning retry anchor. No credential values. No runtime changes.
 
 Issue: `WIN-43`  
 Sub-slice intent: enable safe handoff for credential-dependent browser audit work without exposing secrets.
@@ -50,8 +50,28 @@ Pick that file from the local workspace when the upload control prompts for a fi
 
 ## Safe Verification Notes
 
-- Browser re-audit remains blocked until credentials are provided through approved secure channels.
+- Browser re-audit remains blocked until persistent personas are provisioned, the sanitized manifest is validated, and active `PW_*` secrets are rotated through the approved secure channel.
 - This doc unblocks coordination only; it does not satisfy the execution acceptance criteria for `WIN-43`.
+
+## Provisioning Retry Anchor (2026-08-20)
+
+This docs-only update establishes a fresh reviewed-current-main anchor for the owner-dispatched `Provision Persistent QA Personas` workflow after unrelated merges moved `main` beyond PR #978.
+
+Sanitized readiness evidence:
+
+- Run `32322146492` failed at exact acknowledgement validation before checkout or provisioning.
+- Run `32322929505` failed because the isolated bootstrap secrets were absent; no persistent persona mutation was performed.
+- All 16 expected `QA_BOOTSTRAP_*` repository secret names are now present. Values are intentionally not recorded or validated in repository content.
+- The retry must use this PR's merge commit as both current `main` and the immutable `commit_sha` input.
+- The repository owner must personally review and merge this PR, then separately dispatch the workflow with the exact acknowledgement required by the workflow.
+- Automation must not merge this PR, dispatch the protected workflow, expose secret values, or rotate active `PW_*` secrets before the sanitized provisioning manifest and hosted persona graph pass validation.
+
+Post-dispatch acceptance remains:
+
+- the protected workflow succeeds at the exact merged-current-main SHA;
+- the sanitized manifest contains all eight expected personas without credentials or PHI;
+- hosted read-only verification confirms the expected auth, profile, role, organization, therapist, and client relationships;
+- only after those checks pass are active `PW_*` repository secrets eligible for secure rotation and route-persona browser audit use.
 
 ## Stop/Go Criteria
 

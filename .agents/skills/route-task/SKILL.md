@@ -109,6 +109,16 @@ Required output:
 
 Critical work normally requires independent-human approval. A personal repository that can prove exactly one GitHub human maintainer with write-or-higher access may instead use the `solo-maintainer owner-attested critical lane` defined in `AGENTS.md` and `docs/ai/cto-lane-contract.md`. Independent-human approval remains the default; the exception still requires the complete critical specialist sequence, exact-head CI, a hash-bound review manifest, explicit owner review/merge, and a separate owner dispatch. Never infer eligibility from a user statement alone.
 
+The general prohibition on Codex merge or dispatch remains the default for all other solo-maintainer merge or dispatch actions. The only delegated browser dispatch exception is `.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`. Even there, the owner must personally inspect and merge first, then may explicitly authorize Codex in the current task to perform exactly one browser click dispatch through the owner's already-authenticated in-app GitHub browser session.
+
+Delegated browser dispatch allowlist (exactly one entry): [`.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`].
+
+That narrow exception must bind the exact workflow path, the exact acknowledgement `I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_STALE_EDGE_SECRET_CLEANUP`, the merged WIN-275 PR number, the exact current-main commit SHA, and any workflow-specific immutable inputs.
+
+Codex must recheck main, PR, required CI, owner identity, sole-maintainer topology, manifest hashes, and visible exact inputs immediately before click. The workflow must still revalidate immediately before hosted access.
+
+The authorization is one-time, consumed on click, non-transferable, and non-reusable. It is revoked by any drift, missing evidence, navigation/session ambiguity, or failed run. Any rerun needs fresh authorization. This exception is browser-only. Codex cannot merge through this exception and still must never merge the critical PR on the owner's behalf. It forbids gh/CLI/API/token dispatch, secret viewing, self-authorization, active mode, gate weakening, and extension to any other workflow.
+
 ### `blocked` (`blocked pending clarification`)
 
 Use when the task cannot be routed safely because scope, target files, expected behavior, or environment assumptions are unclear enough that implementation would be unsafe.

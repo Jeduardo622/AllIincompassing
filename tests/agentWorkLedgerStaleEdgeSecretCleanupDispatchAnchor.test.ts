@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -128,7 +127,7 @@ describe("WIN-275 stale Edge-secret cleanup dispatch anchor", () => {
     for (const surface of protectedSurfaces) {
       expect(protectedSurfaceHashes[surface]).toMatch(/^[0-9a-f]{64}$/);
       const actualHash = createHash("sha256")
-        .update(execFileSync("git", ["show", `HEAD:${surface}`]))
+        .update(readFileSync(path.resolve(surface), "utf8").replace(/\r\n/g, "\n"))
         .digest("hex");
       expect(protectedSurfaceHashes[surface]).toBe(actualHash);
     }

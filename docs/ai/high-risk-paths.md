@@ -15,6 +15,18 @@ Treat protected-path review requirements in this document and `AGENTS.md` as man
 
 Independent-human approval remains the default. Because this is a personal single-owner repository, a protected workflow may implement the `solo-maintainer owner-attested critical lane` only when live GitHub evidence proves exactly one GitHub human maintainer with write-or-higher access, the owner login and numeric account ID match the dispatcher, exact-head required CI passes, and hash-bound independent agent reviews pass. The owner must review and merge before a separate dispatch. Any second eligible human or incomplete authority evidence disables the exception.
 
+The general prohibition on Codex merge or dispatch remains in force for all other solo-maintainer merge or dispatch actions. The only delegated browser dispatch exception is `.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`, and the owner must personally inspect and merge the critical PR before authorizing anything.
+
+Delegated browser dispatch allowlist (exactly one entry): [`.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`].
+
+If the owner explicitly authorizes Codex in the current task, that authorization permits exactly one browser click dispatch through the owner's already-authenticated in-app GitHub browser session. It must bind the exact workflow path, the exact acknowledgement `I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_STALE_EDGE_SECRET_CLEANUP`, the merged WIN-275 PR number, the exact current-main commit SHA, and any workflow-specific immutable inputs.
+
+Codex must recheck main, PR, required CI, owner identity, sole-maintainer topology, manifest hashes, and visible exact inputs immediately before click. The workflow must still revalidate immediately before hosted access.
+
+The authorization is one-time, consumed on click, non-transferable, and non-reusable. It is revoked by any drift, missing evidence, navigation/session ambiguity, or failed run, and any rerun needs fresh authorization.
+
+This exception is browser-only. Codex cannot merge through this exception and still must never merge the critical PR on the owner's behalf. It forbids gh/CLI/API/token dispatch, secret viewing, self-authorization, active mode, gate weakening, and extension to any other workflow.
+
 ## `supabase/migrations/**`
 
 Why high risk:

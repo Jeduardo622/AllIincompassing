@@ -20,6 +20,8 @@ This approval is bounded to the stale residue identified by run `32281634841`. I
 
 ## Human Gates
 
-The repository owner must personally review and merge the PR. Cleanup dispatch is a later distinct owner action using `I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_STALE_EDGE_SECRET_CLEANUP` after the fail-closed solo-maintainer proof. Codex must not merge or dispatch this workflow.
+The repository owner must personally inspect and merge the PR. Cleanup dispatch is a later distinct owner-authorized action using `I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_STALE_EDGE_SECRET_CLEANUP` after the fail-closed solo-maintainer proof. Codex must not merge this workflow's critical PR. The general prohibition remains in force for all other solo-maintainer dispatch actions.
+
+Delegated browser dispatch allowlist (exactly one entry): [`.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`]. After owner merge, the owner may explicitly authorize Codex in the current task to perform exactly one browser click dispatch through the owner's already-authenticated in-app GitHub browser session. The exact workflow path, current-main SHA, merged WIN-275 PR number, acknowledgement, and immutable inputs must be visible. Codex must recheck main, PR, required CI, owner identity, sole-maintainer topology, manifest hashes, and visible exact inputs immediately before click. Authorization is consumed on click and revoked by any drift, missing evidence, session ambiguity, or failed run; reruns require fresh authorization. gh/CLI/API/token dispatch, secret viewing, self-authorization, active mode, gate weakening, and extension to any other workflow remain forbidden.
 
 After cleanup succeeds, the hosted advisory canary remains separately owner-dispatched. Active mode remains forbidden.

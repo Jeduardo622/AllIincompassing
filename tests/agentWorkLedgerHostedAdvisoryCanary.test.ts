@@ -6,6 +6,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildDropCanaryPgCronExtensionQuery,
+  buildMeasurementQuery,
   captureCanarySecretDigests,
   parseEdgeSecretListing,
   runCleanupSequence,
@@ -40,6 +42,34 @@ const handoffDoc = safeRead(handoffDocPath);
 const soloAttestation = JSON.parse(safeRead(soloAttestationPath) || "{}");
 
 describe("agent work hosted advisory canary contract", () => {
+  it("joins cron run history to cron jobs before filtering by job name", () => {
+    const query = buildMeasurementQuery();
+
+    expect(query).toContain("join cron.job as jobs on jobs.jobid = runs.jobid");
+    expect(query).toContain(
+      "jobs.jobname in ('agent-work-runner-hosted','agent-work-sweeper-hosted')",
+    );
+    expect(query).not.toMatch(
+      /from cron\.job_run_details(?:\s+as\s+\w+)?\s+where\s+(?:\w+\.)?jobname\b/,
+    );
+    expect(query).not.toContain("a.jobid=b.jobid");
+    expect(query).toContain(
+      "a.runid<b.runid and a.start_time < b.end_time and b.start_time < a.end_time",
+    );
+  });
+
+  it("builds a parameter-free pg_cron ownership guard from a validated OID", () => {
+    const query = buildDropCanaryPgCronExtensionQuery(275);
+
+    expect(query).toContain("oid = 275::oid");
+    expect(query).not.toContain("$1");
+    expect(query).toContain("canary_pg_cron_ownership_drifted");
+    expect(query).toContain("foreign_cron_job_detected");
+    expect(() => buildDropCanaryPgCronExtensionQuery(Number.NaN)).toThrow(
+      "Canary pg_cron ownership proof is missing.",
+    );
+  });
+
   it("adds the new protected workflow, script, docs, and package command", () => {
     expect(existsSync(workflowPath)).toBe(true);
     expect(existsSync(scriptPath)).toBe(true);

@@ -114,6 +114,7 @@ describe("WIN-275 pg_cron residue recovery contract", () => {
         "docs/ai/reviews/WIN-43-qa-persona-delegated-browser-dispatch-attestation.json",
         "tests/workflows/provision-qa-personas.test.ts",
         "docs/ai/reviews/WIN-275-solo-maintainer-attestation.json",
+        "scripts/agent-work-ledger-hosted-advisory-canary.mjs",
       ]),
     );
   });

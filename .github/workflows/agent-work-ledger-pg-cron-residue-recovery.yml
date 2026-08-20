@@ -145,6 +145,7 @@ jobs:
             'docs/ai/reviews/WIN-275-stale-edge-secret-cleanup-solo-maintainer-attestation.json',
             'docs/ai/reviews/WIN-43-qa-persona-delegated-browser-dispatch-attestation.json',
             'package.json',
+            'scripts/agent-work-ledger-hosted-advisory-canary.mjs',
             'scripts/agent-work-ledger-pg-cron-residue-recovery.mjs',
             'tests/agentWorkLedgerDelegatedBrowserDispatchPolicy.test.ts',
             'tests/agentWorkLedgerPgCronResidueRecovery.test.ts',

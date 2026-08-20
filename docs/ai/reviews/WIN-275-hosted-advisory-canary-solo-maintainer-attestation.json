@@ -6,23 +6,23 @@
   "createdAt": "2026-08-20T14:53:00Z",
   "specialistReviews": {
     "code-review-engineer": {
-      "agentId": "01a01fa4-fd2f-7ce0-a677-5d6cbab2565a",
+      "agentId": "01a02002-b0ca-7261-80db-83f40d7a6a83",
       "verdict": "PASS"
     },
     "security-engineer": {
-      "agentId": "01a01f74-8119-79e2-a2ac-5f6ed2886414",
+      "agentId": "01a01fff-9d25-7210-bbca-f3ca7f7436a1",
       "verdict": "PASS"
     },
     "test-engineer": {
-      "agentId": "01a01fa5-98ea-7843-a36e-88cbd401d61d",
+      "agentId": "01a01fff-9b93-76c3-9ab2-ec18e44d846e",
       "verdict": "PASS"
     },
     "software-architect": {
-      "agentId": "01a01fa3-b3d5-7530-8be6-43ab2d44c4bc",
+      "agentId": "01a02004-fb89-71e2-b099-75c1f186c630",
       "verdict": "PASS"
     },
     "supabase-reviewer": {
-      "agentId": "01a01f72-9b1a-7241-80be-5ae423a555fb",
+      "agentId": "01a01fff-9eeb-7eb0-9b27-dbbe1e80c8a5",
       "verdict": "PASS"
     },
     "performance-engineer": {
@@ -42,10 +42,11 @@
     ".github/workflows/agent-work-ledger-hosted-advisory-canary.yml": "2e524aa65242822ec2c8e79ad2c6103feea74503c711f04c30faddd870b96908",
     "scripts/agent-work-ledger-hosted-advisory-canary.mjs": "6e747c0efd7764d75deb65d181ea02e475a4e9ea51a34c43c35a7ee42a501df6",
     "tests/agentWorkLedgerHostedAdvisoryCanary.test.ts": "d41561cff01329de862ac522bff240328a2256250a72aafc14bf821ac7bdb45a",
-    "docs/ai/handoffs/WIN-275-hosted-advisory-canary.md": "fd435d05ded8e011ba2569f769a4ce0553a14ae0f8b80dc8aa31fc34841bc49f",
-    "docs/ai/reviews/WIN-275-hosted-advisory-canary-attestation.md": "3cade3aede43b6f8e2d85851cbcf5bdd7e1b5c26417f5c498bc43b3a83b8f8a6",
+    "docs/ai/handoffs/WIN-275-hosted-advisory-canary.md": "f64376bf6ff1b3a1c63850710d3f35579decbf7c181c0b0b1d486dc15bf88ea1",
+    "docs/ai/reviews/WIN-275-hosted-advisory-canary-attestation.md": "2288501396f3e3d7bcc72c22cd72b821487adc9c1719a8778a4da03d48b52289",
     ".github/workflows/agent-work-ledger-hosted-shadow-proof.yml": "eef158750da0d0f4456c00fb247149827d882a7d332bb36e57ca236c5b8dd83f",
     "scripts/agent-work-ledger-hosted-shadow-proof.mjs": "2fd78613be6dba0583019bd93566b3df73ee75d9d1f1036480fdf7f4c1350323",
     "tests/agentWorkLedgerHostedShadowProof.test.ts": "c92e0fd0f9a6bcf71e61a58d404553d85ced204ca41392f5fa3a63b810ec57ae"
-  }
+  },
+  "refreshedAt": "2026-08-20T16:45:00Z"
 }

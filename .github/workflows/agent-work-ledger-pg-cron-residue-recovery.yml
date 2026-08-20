@@ -1,0 +1,271 @@
+name: Agent Work Ledger pg_cron Residue Recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Exact approved main SHA
+        required: true
+        type: string
+      pull_request_number:
+        description: Merged reviewed WIN-275 recovery pull request
+        required: true
+        type: string
+      expected_pg_cron_oid:
+        description: Exact hosted pg_cron extension OID approved for recovery
+        required: true
+        type: string
+      approval_acknowledgement:
+        description: Exact protected recovery acknowledgement
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-work-ledger-pg-cron-residue-recovery-main
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    name: pg_cron residue recovery
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      checks: read
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Validate owner approval, exact main, CI, and review route
+        id: approval
+        env:
+          APPROVAL_ACKNOWLEDGEMENT: ${{ inputs.approval_acknowledgement }}
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          EXPECTED_PG_CRON_OID: ${{ inputs.expected_pg_cron_oid }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_ACTOR_ID: ${{ github.actor_id }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PULL_REQUEST_NUMBER: ${{ inputs.pull_request_number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { createHash } from 'node:crypto';
+          import { appendFileSync } from 'node:fs';
+
+          const commitSha = process.env.COMMIT_SHA ?? '';
+          const pullRequestNumber = process.env.PULL_REQUEST_NUMBER ?? '';
+          const expectedOid = process.env.EXPECTED_PG_CRON_OID ?? '';
+          const repository = process.env.REPOSITORY ?? '';
+          const exactAcknowledgement = 'I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_PG_CRON_RESIDUE_RECOVERY';
+          if (!/^[0-9a-f]{40}$/.test(commitSha)) throw new Error('commit_sha must be a lowercase 40-character SHA.');
+          if (expectedOid !== '457927') throw new Error('expected_pg_cron_oid must equal the approved incident OID 457927.');
+          if (process.env.APPROVAL_ACKNOWLEDGEMENT !== exactAcknowledgement) throw new Error('Exact protected pg_cron recovery acknowledgement is required.');
+          if (process.env.GITHUB_ACTOR !== process.env.GITHUB_REPOSITORY_OWNER) throw new Error('Only the repository owner may dispatch pg_cron recovery.');
+          if (process.env.GITHUB_REF !== 'refs/heads/main') throw new Error('Protected pg_cron recovery must use main.');
+          if (!/^[1-9][0-9]*$/.test(pullRequestNumber)) throw new Error('pull_request_number must be positive.');
+          if (!/^[1-9][0-9]*$/.test(process.env.GITHUB_ACTOR_ID ?? '')) throw new Error('Actor numeric identity is invalid.');
+
+          const headers = { Accept: 'application/vnd.github+json', Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, 'X-GitHub-Api-Version': '2022-11-28' };
+          const fetchJson = async (url, label) => {
+            const response = await fetch(url, { headers });
+            if (!response.ok) throw new Error(`Unable to validate ${label}: HTTP ${response.status}.`);
+            return response.json();
+          };
+          const fetchAll = async (urlForPage, label, select = (value) => value) => {
+            const values = [];
+            for (let page = 1; page <= 20; page += 1) {
+              const items = select(await fetchJson(urlForPage(page), label));
+              if (!Array.isArray(items)) throw new Error(`${label} is not an array.`);
+              values.push(...items);
+              if (items.length < 100) return values;
+            }
+            throw new Error(`${label} pagination exceeded the fail-closed limit.`);
+          };
+          const getContent = async (repositoryPath) => {
+            const encoded = repositoryPath.split('/').map(encodeURIComponent).join('/');
+            const payload = await fetchJson(`https://api.github.com/repos/${repository}/contents/${encoded}?ref=${commitSha}`, repositoryPath);
+            if (Array.isArray(payload) || payload.type !== 'file' || payload.encoding !== 'base64') throw new Error(`${repositoryPath} is not a file.`);
+            return Buffer.from(String(payload.content ?? '').replace(/\s/g, ''), 'base64');
+          };
+          const requiredCiChecks = ['policy', 'lint-typecheck', 'unit-tests', 'build', 'tier0-browser', 'auth-browser-smoke', 'ci-gate'];
+          const passingChecks = (checks, sha) => requiredCiChecks.filter((name) => !checks.some((check) => check.name === name && check.head_sha === sha && check.app?.slug === 'github-actions' && check.status === 'completed' && check.conclusion === 'success'));
+
+          const mainRef = await fetchJson(`https://api.github.com/repos/${repository}/git/ref/heads/main`, 'main ref');
+          if (mainRef.object?.sha !== commitSha) throw new Error('commit_sha must equal current main.');
+          const pull = await fetchJson(`https://api.github.com/repos/${repository}/pulls/${pullRequestNumber}`, 'pull request');
+          if (pull.state !== 'closed' || pull.merged !== true || pull.base?.ref !== 'main' || pull.head?.repo?.full_name !== repository) throw new Error('Approval pull request boundary is invalid.');
+          if (pull.merge_commit_sha !== commitSha) throw new Error('Current main is not the approval pull request merge commit.');
+          if (!/(^|[^A-Z0-9])WIN-275([^A-Z0-9]|$)/i.test(`${pull.title ?? ''}\n${pull.body ?? ''}`)) throw new Error('Approval pull request must reference WIN-275.');
+
+          const mainCheckRuns = await fetchAll((page) => `https://api.github.com/repos/${repository}/commits/${commitSha}/check-runs?per_page=100&page=${page}`, 'current main check runs', (payload) => payload.check_runs);
+          const missingMain = requiredCiChecks.filter((name) => !mainCheckRuns.some((check) => check.name === name && check.head_sha === commitSha && check.app?.slug === 'github-actions' && check.status === 'completed' && check.conclusion === 'success'));
+          if (missingMain.length) throw new Error(`Current-main required CI is missing: ${missingMain.join(', ')}.`);
+          const headCheckRuns = await fetchAll((page) => `https://api.github.com/repos/${repository}/commits/${pull.head.sha}/check-runs?per_page=100&page=${page}`, 'pull request head check runs', (payload) => payload.check_runs);
+          const missingHead = passingChecks(headCheckRuns, pull.head.sha);
+          if (missingHead.length) throw new Error(`Exact-head required CI is missing: ${missingHead.join(', ')}.`);
+
+          const repositoryDetails = await fetchJson(`https://api.github.com/repos/${repository}`, 'repository identity');
+          if (repositoryDetails.owner?.type !== 'User' || repositoryDetails.owner?.login !== process.env.GITHUB_REPOSITORY_OWNER || String(repositoryDetails.owner?.id) !== process.env.GITHUB_ACTOR_ID) throw new Error('Solo-maintainer owner identity mismatch.');
+          const collaborators = await fetchAll((page) => `https://api.github.com/repos/${repository}/collaborators?affiliation=direct&per_page=100&page=${page}`, 'collaborators');
+          const maintainers = collaborators.filter((value) => value.type === 'User' && (value.permissions?.admin || value.permissions?.maintain || value.permissions?.push));
+          if (maintainers.length !== 1 || maintainers[0]?.login !== process.env.GITHUB_REPOSITORY_OWNER || String(maintainers[0]?.id) !== process.env.GITHUB_ACTOR_ID) throw new Error('Solo-maintainer topology is unavailable.');
+
+          const attestationPath = 'docs/ai/reviews/WIN-275-pg-cron-residue-recovery-solo-maintainer-attestation.json';
+          const bytes = await getContent(attestationPath);
+          const attestation = JSON.parse(bytes.toString('utf8'));
+          const specialists = ['code-review-engineer', 'security-engineer', 'test-engineer', 'software-architect', 'supabase-reviewer', 'devops-engineer'];
+          if (attestation.schemaVersion !== 1 || attestation.issue !== 'WIN-275' || attestation.reviewMode !== 'solo-maintainer-owner-attestation' || attestation.repository !== repository || attestation.approvedIncidentPgCronOid !== Number(expectedOid)) throw new Error('Recovery attestation identity is invalid.');
+          const specialistIds = specialists.map((name) => {
+            const review = attestation.specialistReviews?.[name];
+            if (review?.verdict !== 'PASS' || !/^[0-9a-f-]{36}$/.test(review?.agentId ?? '')) throw new Error(`Passing ${name} attestation is incomplete.`);
+            return review.agentId;
+          });
+          if (new Set(specialistIds).size !== specialists.length) throw new Error('Specialist review identities must be independent.');
+          const surfaces = [
+            '.github/workflows/agent-work-ledger-pg-cron-residue-recovery.yml',
+            '.github/workflows/provision-qa-personas.yaml',
+            '.agents/skills/route-task/SKILL.md',
+            'AGENTS.md',
+            'docs/ai/WIN-43-persistent-qa-personas-handoff.md',
+            'docs/ai/WIN-43-qa-audit-credential-handoff.md',
+            'docs/ai/cto-lane-contract.md',
+            'docs/ai/handoffs/WIN-275-hosted-advisory-canary.md',
+            'docs/ai/handoffs/WIN-275-pg-cron-residue-recovery.md',
+            'docs/ai/handoffs/WIN-275-stale-edge-secret-cleanup.md',
+            'docs/ai/high-risk-paths.md',
+            'docs/ai/reviews/WIN-275-hosted-advisory-canary-attestation.md',
+            'docs/ai/reviews/WIN-275-hosted-advisory-canary-solo-maintainer-attestation.json',
+            'docs/ai/reviews/WIN-275-pg-cron-residue-recovery-attestation.md',
+            'docs/ai/reviews/WIN-275-solo-maintainer-attestation.json',
+            'docs/ai/reviews/WIN-275-stale-edge-secret-cleanup-attestation.md',
+            'docs/ai/reviews/WIN-275-stale-edge-secret-cleanup-solo-maintainer-attestation.json',
+            'docs/ai/reviews/WIN-43-qa-persona-delegated-browser-dispatch-attestation.json',
+            'package.json',
+            'scripts/agent-work-ledger-hosted-advisory-canary.mjs',
+            'scripts/agent-work-ledger-pg-cron-residue-recovery.mjs',
+            'tests/agentWorkLedgerDelegatedBrowserDispatchPolicy.test.ts',
+            'tests/agentWorkLedgerPgCronResidueRecovery.test.ts',
+            'tests/workflows/github-actions-node24-runtime.test.ts',
+            'tests/workflows/provision-qa-personas.test.ts',
+          ];
+          for (const surface of surfaces) {
+            const expected = attestation.protectedSurfaceHashes?.[surface];
+            const actual = createHash('sha256').update(await getContent(surface)).digest('hex');
+            if (!/^[0-9a-f]{64}$/.test(expected ?? '') || actual !== expected) throw new Error(`Protected surface hash drifted: ${surface}.`);
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `validated_sha=${commitSha}\nvalidated_pr_head_sha=${pull.head.sha}\nexpected_oid=${expectedOid}\nattestation_sha256=${createHash('sha256').update(bytes).digest('hex')}\n`);
+          NODE
+
+      - name: Checkout validated commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ steps.approval.outputs.validated_sha }}
+          persist-credentials: false
+
+      - name: Verify immutable checkout
+        env:
+          EXPECTED_SHA: ${{ steps.approval.outputs.validated_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51 # v1.6.0
+
+      - name: Initialize sanitized evidence directory
+        run: mkdir -p "$RUNNER_TEMP/agent-work-ledger-pg-cron-residue-recovery-public"
+
+      - name: Revalidate authority immediately before pg_cron recovery
+        env:
+          EXPECTED_SHA: ${{ steps.approval.outputs.validated_sha }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_ACTOR_ID: ${{ github.actor_id }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_HEAD_SHA: ${{ steps.approval.outputs.validated_pr_head_sha }}
+          PULL_REQUEST_NUMBER: ${{ inputs.pull_request_number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          node --input-type=module <<'NODE'
+          const headers = { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+          const fetchJson = async (url, label) => {
+            const response = await fetch(url, { headers });
+            if (!response.ok) throw new Error(`Unable to revalidate ${label}: HTTP ${response.status}.`);
+            return response.json();
+          };
+          const fetchAll = async (urlForPage, label, select = (value) => value) => {
+            const values = [];
+            for (let page = 1; page <= 20; page += 1) {
+              const items = select(await fetchJson(urlForPage(page), label));
+              if (!Array.isArray(items)) throw new Error(`${label} is not an array.`);
+              values.push(...items);
+              if (items.length < 100) return values;
+            }
+            throw new Error(`${label} pagination exceeded the fail-closed limit.`);
+          };
+          const mainRef = await fetchJson(`https://api.github.com/repos/${process.env.REPOSITORY}/git/ref/heads/main`, 'main ref');
+          if (mainRef.object?.sha !== process.env.EXPECTED_SHA) throw new Error('Current main changed before hosted recovery.');
+          if (process.env.GITHUB_ACTOR !== process.env.GITHUB_REPOSITORY_OWNER) throw new Error('Recovery actor changed before hosted access.');
+          const pull = await fetchJson(`https://api.github.com/repos/${process.env.REPOSITORY}/pulls/${process.env.PULL_REQUEST_NUMBER}`, 'pull request');
+          if (pull.merged !== true || pull.merge_commit_sha !== process.env.EXPECTED_SHA || pull.head?.sha !== process.env.PR_HEAD_SHA) throw new Error('Approval pull request changed before hosted recovery.');
+          const headChecks = await fetchAll((page) => `https://api.github.com/repos/${process.env.REPOSITORY}/commits/${process.env.PR_HEAD_SHA}/check-runs?per_page=100&page=${page}`, 'pull request head check runs', (payload) => payload.check_runs);
+          const checks = await fetchAll((page) => `https://api.github.com/repos/${process.env.REPOSITORY}/commits/${process.env.EXPECTED_SHA}/check-runs?per_page=100&page=${page}`, 'current main check runs', (payload) => payload.check_runs);
+          const required = ['policy', 'lint-typecheck', 'unit-tests', 'build', 'tier0-browser', 'auth-browser-smoke', 'ci-gate'];
+          const missingHead = required.filter((name) => !headChecks.some((check) => check.name === name && check.head_sha === process.env.PR_HEAD_SHA && check.app?.slug === 'github-actions' && check.status === 'completed' && check.conclusion === 'success'));
+          if (missingHead.length) throw new Error(`Exact-head required CI changed before hosted recovery: ${missingHead.join(', ')}.`);
+          const missing = required.filter((name) => !checks.some((check) => check.name === name && check.head_sha === process.env.EXPECTED_SHA && check.app?.slug === 'github-actions' && check.status === 'completed' && check.conclusion === 'success'));
+          if (missing.length) throw new Error(`Current-main required CI changed before hosted recovery: ${missing.join(', ')}.`);
+          const repositoryDetails = await fetchJson(`https://api.github.com/repos/${process.env.REPOSITORY}`, 'repository identity');
+          if (repositoryDetails.owner?.type !== 'User' || repositoryDetails.owner?.login !== process.env.GITHUB_REPOSITORY_OWNER || String(repositoryDetails.owner?.id) !== process.env.GITHUB_ACTOR_ID) throw new Error('Solo-maintainer identity changed before hosted recovery.');
+          const collaborators = await fetchAll((page) => `https://api.github.com/repos/${process.env.REPOSITORY}/collaborators?affiliation=direct&per_page=100&page=${page}`, 'collaborators');
+          const maintainers = collaborators.filter((value) => value.type === 'User' && (value.permissions?.admin || value.permissions?.maintain || value.permissions?.push));
+          if (maintainers.length !== 1 || maintainers[0]?.login !== process.env.GITHUB_REPOSITORY_OWNER || String(maintainers[0]?.id) !== process.env.GITHUB_ACTOR_ID) throw new Error('Solo-maintainer topology changed before hosted recovery.');
+          NODE
+
+      - name: Read-only residue preflight
+        env:
+          EXPECTED_PG_CRON_OID: ${{ steps.approval.outputs.expected_oid }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/agent-work-ledger-pg-cron-residue-recovery.mjs preflight
+
+      - name: Recover exact pg_cron residue
+        id: recovery
+        env:
+          EXPECTED_PG_CRON_OID: ${{ steps.approval.outputs.expected_oid }}
+          PG_CRON_RESIDUE_RECOVERY_ACKNOWLEDGEMENT: ${{ inputs.approval_acknowledgement }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          test -z "$(git status --porcelain)"
+          node scripts/agent-work-ledger-pg-cron-residue-recovery.mjs recover
+
+      - name: Reconcile attempted recovery
+        if: ${{ always() && (steps.recovery.outcome == 'success' || steps.recovery.outcome == 'failure' || steps.recovery.outcome == 'cancelled') }}
+        env:
+          EXPECTED_PG_CRON_OID: ${{ steps.approval.outputs.expected_oid }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/agent-work-ledger-pg-cron-residue-recovery.mjs reconcile
+
+      - name: Final disabled fallback
+        if: ${{ always() && steps.approval.outcome == 'success' }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          test -z "$(git status --porcelain)"
+          node scripts/agent-work-ledger-pg-cron-residue-recovery.mjs disabled-fallback
+
+      - name: Upload sanitized recovery artifact
+        if: ${{ always() && steps.approval.outcome == 'success' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: agent-work-ledger-pg-cron-residue-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/agent-work-ledger-pg-cron-residue-recovery-public/**
+          if-no-files-found: error
+          retention-days: 30

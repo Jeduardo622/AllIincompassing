@@ -21,12 +21,12 @@ The workflow reasserts `AGENT_WORK_LEDGER_RUNTIME_MODE=disabled` before deletion
 ## Required Sequence
 
 1. Owner reviews and merges the dedicated WIN-275 cleanup PR after exact-head required CI passes.
-2. The general prohibition on Codex merge or dispatch remains in force for all other solo-maintainer merge or dispatch actions. For `.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml` only, after the owner personally inspects and merges the critical PR, the owner may explicitly authorize Codex in the current task to perform exactly one browser click dispatch through the owner's already-authenticated in-app GitHub browser session.
-   Delegated browser dispatch allowlist (exactly one entry): [`.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`].
-3. That authorization must bind the exact workflow path, the exact acknowledgement `I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_STALE_EDGE_SECRET_CLEANUP`, the merged WIN-275 PR number, the exact current-main commit SHA, and any workflow-specific immutable inputs.
-4. Codex must recheck main, PR, required CI, owner identity, sole-maintainer topology, manifest hashes, and visible exact inputs immediately before click. The workflow must still revalidate immediately before hosted access.
+2. The general prohibition on Codex merge or dispatch remains in force for all other solo-maintainer merge or dispatch actions. The only delegated browser dispatch exceptions are `.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml` and `.github/workflows/agent-work-ledger-hosted-advisory-canary.yml`. After the owner personally inspects and merges the critical PR, the owner may explicitly authorize Codex in the current task to perform exactly one browser click dispatch through the owner's already-authenticated in-app GitHub browser session.
+   Delegated browser dispatch allowlist (exactly two literal entries): [`.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`, `.github/workflows/agent-work-ledger-hosted-advisory-canary.yml`].
+3. Cleanup authorization must bind the exact workflow path, the exact acknowledgement `I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_STALE_EDGE_SECRET_CLEANUP`, the merged WIN-275 PR number, the exact current-main commit SHA, and any workflow-specific immutable inputs. Hosted advisory canary authorization must bind the exact workflow path, the exact acknowledgement `I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_AGENT_WORK_LEDGER_HOSTED_ADVISORY_CANARY`, the merged WIN-275 PR number, the exact current-main commit SHA, and any workflow-specific immutable inputs. Authorization is separate per workflow and requires fresh current-task owner authorization per workflow.
+4. Codex must recheck main, PR, required CI, owner identity, sole-maintainer topology, manifest hashes, and visible exact inputs immediately before click. Each workflow must still revalidate immediately before hosted access.
 5. The authorization is one-time, consumed on click, non-transferable, and non-reusable. It is revoked by any drift, missing evidence, navigation/session ambiguity, or failed run. Any rerun needs fresh authorization.
-6. This exception is browser-only and forbids gh/CLI/API/token dispatch, secret viewing, self-authorization, active mode, gate weakening, and extension to any other workflow.
+6. This exception is browser-only and forbids gh/CLI/API/token dispatch, secret viewing, self-authorization, active mode, gate weakening, and extension to any other workflow. Cleanup remains zero-residue only with no provider/model calls or retention deletion. The canary remains temporary advisory only, restores disabled first on every terminal path, forbids provider/model calls and retention deletion, and must also end with zero residue. Active mode remains forbidden.
 7. Script runs a read-only hosted baseline and stops on any database, Vault, queue, Ledger, draft, lock, retention, or `pg_cron` drift.
 8. Script lists name/digest metadata only, reasserts disabled, deletes only present approved fixed names, and relists.
 9. Script proves all three fixed names absent, runtime-mode name present, unrelated name/digest metadata unchanged, and hosted baseline still clean.
@@ -40,7 +40,7 @@ The workflow reasserts `AGENT_WORK_LEDGER_RUNTIME_MODE=disabled` before deletion
 - Linear: `WIN-275`
 - no Codex merge
 - general prohibition remains for all other solo-maintainer dispatch actions
-- Codex may perform exactly one browser click dispatch only for `.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml` after explicit current-task owner authorization
+- Codex may perform exactly one browser click dispatch only for `.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml` or `.github/workflows/agent-work-ledger-hosted-advisory-canary.yml`, with separate explicit current-task owner authorization per workflow
 - no hosted mutation occurs from the PR itself
 - solo-maintainer owner acknowledgement: `I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_STALE_EDGE_SECRET_CLEANUP`
 
@@ -67,4 +67,4 @@ The workflow reasserts `AGENT_WORK_LEDGER_RUNTIME_MODE=disabled` before deletion
 - `change summary`: present
 - `verification summary`: present above
 - `reviewer`: five required specialist roles recorded in the hash-bound manifest
-- `required follow-up`: push, open PR, pass exact-head CI, owner review and merge, then only if the owner explicitly authorizes it in the current task, perform one browser-only click dispatch for `.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`; otherwise the owner dispatches manually
+- `required follow-up`: push, open PR, pass exact-head CI, owner review and merge, then only if the owner explicitly authorizes it in the current task, perform one browser-only click dispatch for `.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`; any later `.github/workflows/agent-work-ledger-hosted-advisory-canary.yml` dispatch needs its own fresh current-task owner authorization and exact canary acknowledgement; otherwise the owner dispatches manually

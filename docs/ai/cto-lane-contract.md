@@ -115,17 +115,17 @@ Independent-human approval remains the default for `critical`. A user-owned repo
 
 This is not autonomous approval. The owner must explicitly inspect and merge the candidate, then perform any protected dispatch separately with the workflow's exact solo acknowledgement. Organizational ownership, incomplete pagination or permissions, another eligible human, stale `main`, stale CI, missing agent evidence, or hash drift disables the exception and restores the independent-human requirement.
 
-For WIN-275, the only delegated browser dispatch exception is `.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`. The owner must personally inspect and merge before any authorization. The owner may then explicitly authorize Codex in the current task to perform exactly one browser click dispatch through the owner's already-authenticated in-app GitHub browser session.
+For WIN-275, the only delegated browser dispatch exceptions are `.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml` and `.github/workflows/agent-work-ledger-hosted-advisory-canary.yml`. The owner must personally inspect and merge before any authorization. The owner may then explicitly authorize Codex in the current task to perform exactly one browser click dispatch through the owner's already-authenticated in-app GitHub browser session.
 
-Delegated browser dispatch allowlist (exactly one entry): [`.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`].
+Delegated browser dispatch allowlist (exactly two literal entries): [`.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`, `.github/workflows/agent-work-ledger-hosted-advisory-canary.yml`].
 
-That exception binds the exact workflow path, the exact acknowledgement `I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_STALE_EDGE_SECRET_CLEANUP`, the merged WIN-275 PR number, the exact current-main commit SHA, and any workflow-specific immutable inputs.
+The cleanup exception binds the exact workflow path, the exact acknowledgement `I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_STALE_EDGE_SECRET_CLEANUP`, the merged WIN-275 PR number, the exact current-main commit SHA, and any workflow-specific immutable inputs. The canary exception binds the exact workflow path, the exact acknowledgement `I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_AGENT_WORK_LEDGER_HOSTED_ADVISORY_CANARY`, the merged WIN-275 PR number, the exact current-main commit SHA, and any workflow-specific immutable inputs. Authorization is separate per workflow and requires fresh current-task owner authorization per workflow.
 
-Codex must recheck main, PR, required CI, owner identity, sole-maintainer topology, manifest hashes, and visible exact inputs immediately before click, and the workflow must still revalidate immediately before hosted access.
+Codex must recheck main, PR, required CI, owner identity, sole-maintainer topology, manifest hashes, and visible exact inputs immediately before click, and each workflow must still revalidate immediately before hosted access.
 
 The authorization is one-time, consumed on click, non-transferable, and non-reusable. It is revoked by any drift, missing evidence, navigation/session ambiguity, or failed run. Any rerun needs fresh authorization.
 
-This delegated path is browser-only and preserves the general prohibition for all other solo-maintainer merge or dispatch actions. Codex cannot merge through this exception and still must never merge any critical PR on the owner's behalf. It forbids gh/CLI/API/token dispatch, secret viewing, self-authorization, active mode, gate weakening, and extension to any other workflow.
+This delegated path is browser-only and preserves the general prohibition for all other solo-maintainer merge or dispatch actions. Codex cannot merge through this exception and still must never merge any critical PR on the owner's behalf. It forbids gh/CLI/API/token dispatch, secret viewing, self-authorization, active mode, gate weakening, and extension to any other workflow. Cleanup remains zero-residue only with no provider/model calls or retention deletion. The canary remains temporary advisory only, restores disabled first on every terminal path, forbids provider/model calls and retention deletion, and must also end with zero residue. Active mode remains forbidden.
 
 ## Mandatory Verification Commands
 

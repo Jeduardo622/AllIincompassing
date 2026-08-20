@@ -231,6 +231,7 @@ jobs:
           NODE
 
       - name: Read-only residue preflight
+        id: preflight
         env:
           EXPECTED_PG_CRON_OID: ${{ steps.approval.outputs.expected_oid }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -247,7 +248,7 @@ jobs:
           node scripts/agent-work-ledger-pg-cron-residue-recovery.mjs recover
 
       - name: Reconcile attempted recovery
-        if: ${{ always() && (steps.recovery.outcome == 'success' || steps.recovery.outcome == 'failure' || steps.recovery.outcome == 'cancelled') }}
+        if: ${{ always() && steps.approval.outcome == 'success' && (steps.preflight.outcome == 'failure' || steps.recovery.outcome == 'success' || steps.recovery.outcome == 'failure' || steps.recovery.outcome == 'cancelled') }}
         env:
           EXPECTED_PG_CRON_OID: ${{ steps.approval.outputs.expected_oid }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

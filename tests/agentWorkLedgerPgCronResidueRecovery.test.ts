@@ -43,6 +43,9 @@ const packageJson = safeRead(packageJsonPath);
 
 const cleanBaseline = {
   pg_cron_oid: 457927,
+  pg_cron_owner: "postgres",
+  management_query_role: "postgres",
+  pg_cron_drop_authority: true,
   cron_job_count: 0,
   ledger_rows: 0,
   queue_depth: 0,
@@ -168,6 +171,7 @@ describe("WIN-275 pg_cron residue recovery contract", () => {
     expect(workflow).toContain(
       "node scripts/agent-work-ledger-pg-cron-residue-recovery.mjs preflight",
     );
+    expect(workflow).toContain("id: preflight");
     expect(workflow).toContain(
       "node scripts/agent-work-ledger-pg-cron-residue-recovery.mjs recover",
     );
@@ -176,6 +180,7 @@ describe("WIN-275 pg_cron residue recovery contract", () => {
     );
     expect(workflow).toContain("steps.recovery.outcome == 'failure'");
     expect(workflow).toContain("steps.recovery.outcome == 'cancelled'");
+    expect(workflow).toContain("steps.preflight.outcome == 'failure'");
     expect(workflow).toContain(
       "node scripts/agent-work-ledger-pg-cron-residue-recovery.mjs disabled-fallback",
     );
@@ -218,6 +223,9 @@ describe("WIN-275 pg_cron residue recovery contract", () => {
 
   it("keeps the script read-only outside the single recovery transaction and forbids unrelated cleanup", () => {
     expect(script).toContain("read_only: true");
+    expect(script).toContain("pg_cron_owner");
+    expect(script).toContain("management_query_role");
+    expect(script).toContain("pg_cron_drop_authority");
     expect(script).toContain("cron_job_count");
     expect(script).toContain("vault_canary_names");
     expect(script).toContain("queue_depth");
@@ -311,6 +319,43 @@ describe("WIN-275 pg_cron residue recovery contract", () => {
       ),
     ).rejects.toThrow("Hosted pg_cron residue recovery baseline drifted.");
     expect(calls).toEqual(["mode:disabled"]);
+  });
+
+  it("fails closed before mutation when the Management API role cannot drop the exact extension", async () => {
+    const calls: string[] = [];
+
+    await expect(
+      runPgCronResidueRecovery(
+        "I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_PG_CRON_RESIDUE_RECOVERY",
+        457927,
+        {
+          reassertRuntimeDisabled: async () => calls.push("mode:disabled"),
+          readHostedBaseline: async () => {
+            calls.push("baseline:read:before");
+            return {
+              ...cleanBaseline,
+              pg_cron_owner: "supabase_admin",
+              pg_cron_drop_authority: false,
+            };
+          },
+          executeRecoveryMutation: async () => {
+            calls.push("mutation");
+            return {
+              dropped_extension: true,
+              dropped_oid: 457927,
+              cron_job_count: 0,
+            };
+          },
+          readHostedPostRecovery: async () => ({
+            ...cleanBaseline,
+            pg_cron_oid: null,
+          }),
+        },
+      ),
+    ).rejects.toThrow(
+      "Management API role cannot drop exact pg_cron residue.",
+    );
+    expect(calls).toEqual(["mode:disabled", "baseline:read:before"]);
   });
 
   it("fails closed when the mutation or post-state does not prove the exact OID was removed and other baselines stayed zero", async () => {
@@ -410,6 +455,17 @@ describe("WIN-275 pg_cron residue recovery contract", () => {
     await expect(
       reconcilePgCronResidueRecovery(457927, async () => ({
         ...cleanBaseline,
+        pg_cron_owner: "supabase_admin",
+        pg_cron_drop_authority: false,
+      })),
+    ).resolves.toEqual({
+      recoveryCompleted: false,
+      remainingExtensionCount: 1,
+    });
+
+    await expect(
+      reconcilePgCronResidueRecovery(457927, async () => ({
+        ...cleanBaseline,
         pg_cron_oid: 457928,
       })),
     ).rejects.toThrow(
@@ -426,6 +482,9 @@ describe("WIN-275 pg_cron residue recovery contract", () => {
         "I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_PG_CRON_RESIDUE_RECOVERY",
       );
       expect(doc).toContain("read-only preflight");
+      expect(doc).toContain("supabase_admin");
+      expect(doc).toContain("Management API");
+      expect(doc).toContain("drop-authority");
       expect(doc).toContain("cron.job=0");
       expect(doc).toContain("DROP EXTENSION pg_cron");
       expect(doc).toContain("ACCESS EXCLUSIVE");

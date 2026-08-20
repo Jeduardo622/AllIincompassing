@@ -131,6 +131,15 @@ const countEdgeCanaryNames = async () => {
 const preflightSql = `
 select jsonb_build_object(
   'pg_cron_oid', (select oid::bigint from pg_extension where extname = 'pg_cron'),
+  'pg_cron_owner', (select pg_get_userbyid(extowner) from pg_extension where extname = 'pg_cron'),
+  'management_query_role', current_user,
+  'pg_cron_drop_authority', coalesce((
+    select e.extowner = current_user::regrole::oid
+      or (select rolsuper from pg_roles where rolname = current_user)
+      or pg_has_role(current_user, e.extowner, 'USAGE')
+    from pg_extension as e
+    where e.extname = 'pg_cron'
+  ), false),
   'cron_job_count', (select count(*)::integer from cron.job),
   'ledger_rows', (
     (select count(*) from public.agent_work_items) +
@@ -209,7 +218,7 @@ const assertZeroResidue = (summary, message) => {
   }
 };
 
-const assertPreflight = (summary, expectedOid) => {
+const assertUnchangedRecoveryState = (summary, expectedOid) => {
   assert(
     summary?.pg_cron_oid === expectedOid,
     "Hosted pg_cron residue recovery baseline drifted.",
@@ -217,6 +226,14 @@ const assertPreflight = (summary, expectedOid) => {
   assertZeroResidue(
     summary,
     "Hosted pg_cron residue recovery baseline drifted.",
+  );
+};
+
+const assertPreflight = (summary, expectedOid) => {
+  assertUnchangedRecoveryState(summary, expectedOid);
+  assert(
+    summary.pg_cron_drop_authority === true,
+    "Management API role cannot drop exact pg_cron residue.",
   );
 };
 
@@ -311,7 +328,7 @@ export const reconcilePgCronResidueRecovery = async (
     return { recoveryCompleted: true, remainingExtensionCount: 0 };
   }
   if (summary?.pg_cron_oid === oid) {
-    assertPreflight(summary, oid);
+    assertUnchangedRecoveryState(summary, oid);
     return { recoveryCompleted: false, remainingExtensionCount: 1 };
   }
   throw new Error("Hosted pg_cron residue recovery reconciliation drifted.");

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -7,6 +8,32 @@ const workflow = readFileSync(
   path.resolve(process.cwd(), '.github/workflows/provision-qa-personas.yaml'),
   'utf8',
 );
+
+const attestationPath = path.resolve(
+  process.cwd(),
+  'docs/ai/reviews/WIN-43-qa-persona-delegated-browser-dispatch-attestation.json',
+);
+
+const protectedSurfaces = [
+  '.github/workflows/provision-qa-personas.yaml',
+  'scripts/provision-persistent-qa-personas.ts',
+  'tests/scripts/provision-persistent-qa-personas.test.ts',
+  'tests/workflows/provision-qa-personas.test.ts',
+  'tests/agentWorkLedgerDelegatedBrowserDispatchPolicy.test.ts',
+  'AGENTS.md',
+  '.agents/skills/route-task/SKILL.md',
+  'docs/ai/cto-lane-contract.md',
+  'docs/ai/high-risk-paths.md',
+  'docs/ai/WIN-43-persistent-qa-personas-handoff.md',
+  'docs/ai/WIN-43-qa-audit-credential-handoff.md',
+  'docs/ai/handoffs/WIN-275-stale-edge-secret-cleanup.md',
+  'docs/ai/handoffs/WIN-275-hosted-advisory-canary.md',
+  'docs/ai/reviews/WIN-275-stale-edge-secret-cleanup-attestation.md',
+  'docs/ai/reviews/WIN-275-hosted-advisory-canary-attestation.md',
+  'docs/ai/reviews/WIN-275-stale-edge-secret-cleanup-solo-maintainer-attestation.json',
+  'docs/ai/reviews/WIN-275-hosted-advisory-canary-solo-maintainer-attestation.json',
+  'docs/ai/reviews/WIN-275-solo-maintainer-attestation.json',
+] as const;
 
 describe('persistent QA persona protected workflow', () => {
   it('is owner-only, main-only, issue-bound, and immutable-SHA-bound', () => {
@@ -18,6 +45,81 @@ describe('persistent QA persona protected workflow', () => {
     expect(workflow).toContain("mainRef.object?.sha !== commitSha");
     expect(workflow).toContain("pull.merge_commit_sha !== commitSha");
     expect(workflow).toContain('Approval pull request must reference WIN-43.');
+  });
+
+  it('requires exact-head CI, solo-maintainer topology, and hash-bound reviews', () => {
+    expect(workflow).toContain('checks: read');
+    expect(workflow).toContain(
+      "const requiredCiChecks = ['policy', 'lint-typecheck', 'unit-tests', 'build', 'tier0-browser', 'auth-browser-smoke', 'ci-gate'];",
+    );
+    expect(workflow).toContain("check.head_sha === commitSha");
+    expect(workflow).toContain("check.app?.slug === 'github-actions'");
+    expect(workflow).toContain("check.conclusion === 'success'");
+    expect(workflow).toContain('collaborators?affiliation=direct');
+    expect(workflow).toContain('maintainers.length !== 1');
+    expect(workflow).toContain(
+      'WIN-43-qa-persona-delegated-browser-dispatch-attestation.json',
+    );
+    expect(workflow).toContain('protectedSurfaceHashes');
+    expect(workflow).toContain(
+      'WIN-275-stale-edge-secret-cleanup-solo-maintainer-attestation.json',
+    );
+    expect(workflow).toContain(
+      'WIN-275-hosted-advisory-canary-solo-maintainer-attestation.json',
+    );
+    expect(workflow).toContain('WIN-275-solo-maintainer-attestation.json');
+    for (const specialist of [
+      'code-review-engineer',
+      'security-engineer',
+      'test-engineer',
+      'software-architect',
+      'supabase-reviewer',
+      'devops-engineer',
+    ]) {
+      expect(workflow).toContain(`'${specialist}'`);
+    }
+  });
+
+  it('binds passing specialist identities to every protected surface hash', () => {
+    const attestation = JSON.parse(readFileSync(attestationPath, 'utf8')) as {
+      schemaVersion?: number;
+      issue?: string;
+      reviewMode?: string;
+      repository?: string;
+      specialistReviews?: Record<string, { agentId?: string; verdict?: string }>;
+      protectedSurfaceHashes?: Record<string, string>;
+    };
+
+    expect(attestation).toMatchObject({
+      schemaVersion: 1,
+      issue: 'WIN-43',
+      reviewMode: 'solo-maintainer-owner-attestation',
+      repository: 'Jeduardo622/AllIincompassing',
+    });
+    for (const specialist of [
+      'code-review-engineer',
+      'security-engineer',
+      'test-engineer',
+      'software-architect',
+      'supabase-reviewer',
+      'devops-engineer',
+    ]) {
+      expect(attestation.specialistReviews?.[specialist]).toMatchObject({
+        verdict: 'PASS',
+      });
+      expect(attestation.specialistReviews?.[specialist]?.agentId).toMatch(
+        /^[0-9a-f-]{36}$/,
+      );
+    }
+    expect(Object.keys(attestation.protectedSurfaceHashes ?? {}).sort()).toEqual(
+      [...protectedSurfaces].sort(),
+    );
+    for (const surface of protectedSurfaces) {
+      const actual = createHash('sha256')
+        .update(readFileSync(path.resolve(process.cwd(), surface), 'utf8').replace(/\r\n/g, '\n'))
+        .digest('hex');
+      expect(attestation.protectedSurfaceHashes?.[surface]).toBe(actual);
+    }
   });
 
   it('does not accept mutable persona, role, organization, or credential inputs', () => {
@@ -45,11 +147,22 @@ describe('persistent QA persona protected workflow', () => {
     expect(workflow).not.toMatch(/uses:\s+actions\/[\w-]+@v\d+/);
   });
 
-  it('re-attests main before credentials and uploads only the sanitized manifest', () => {
-    const reattest = workflow.indexOf('Re-attest current main immediately before protected credentials');
+  it('revalidates authority before credentials and uploads only the sanitized manifest', () => {
+    const reattest = workflow.indexOf('Revalidate authority immediately before protected credentials');
     const provision = workflow.indexOf('Provision and verify persistent synthetic QA personas');
     expect(reattest).toBeGreaterThan(-1);
     expect(provision).toBeGreaterThan(reattest);
+    const revalidationStep = workflow.slice(reattest, provision);
+    expect(revalidationStep).toContain(
+      'mainRef.object?.sha !== process.env.EXPECTED_SHA',
+    );
+    expect(revalidationStep).toContain(
+      'process.env.GITHUB_ACTOR !== process.env.GITHUB_REPOSITORY_OWNER',
+    );
+    expect(revalidationStep).toContain(
+      "check.head_sha === process.env.EXPECTED_SHA",
+    );
+    expect(revalidationStep).toContain('maintainers.length !== 1');
     expect(workflow).toContain('QA_PERSONA_MANIFEST_PATH: artifacts/win-43/qa-persona-manifest.json');
     expect(workflow).toContain('retention-days: 7');
   });

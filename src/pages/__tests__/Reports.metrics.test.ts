@@ -36,4 +36,19 @@ describe("Reports metrics normalization", () => {
 
     expect(counts).toEqual({ Monday: 4 });
   });
+
+  it("preserves date-only report labels for Los Angeles month boundaries", () => {
+    const losAngelesFormatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Los_Angeles",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+
+    expect(losAngelesFormatter.format(new Date("2026-08-01"))).toBe("Jul 31, 2026");
+    expect(losAngelesFormatter.format(new Date("2026-08-31"))).toBe("Aug 30, 2026");
+
+    expect(__TESTING__.formatDateOnlyForDisplay("2026-08-01")).toBe("Aug 1, 2026");
+    expect(__TESTING__.formatDateOnlyForDisplay("2026-08-31")).toBe("Aug 31, 2026");
+  });
 });

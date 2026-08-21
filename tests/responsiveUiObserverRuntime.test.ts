@@ -227,6 +227,18 @@ Promise.all([
   document.getElementById('root').innerHTML = '<div class="shell"><h1>Settings</h1><div class="tab-bar"><button type="button" aria-current="page">Feature Flags</button></div><section class="card"><h1>Super Admin Feature Flags</h1><p>Manage global feature toggles, per-organization overrides, and plan assignments.</p></section><section class="card"><h2>Organization enrollment locked</h2><p>We are operating in single-clinic mode while we stabilise tenant rollouts.</p></section><section class="card"><h2>Global feature flags</h2><form class="grid cols-4"><div class="field"><label for="flag-key">Flag key</label><input id="flag-key" value="" placeholder="new-dashboard"></div><div class="field"><label for="flag-description">Description</label><input id="flag-description" value="" placeholder="Describe the experiment"></div><div class="field"><label for="flag-default-enabled">Enabled by default</label><input id="flag-default-enabled" type="checkbox"></div><div class="field"><button type="submit">Create flag</button><span class="helper">Flag keys cannot be changed after creation.</span></div></form><table aria-label="Global feature flags"><thead><tr><th>Flag</th><th>Description</th><th>Default</th><th>Actions</th></tr></thead><tbody><tr><td colspan="4" class="empty">${mode === 'missing-surface' ? 'No flags yet.' : 'No feature flags have been created yet.'}</td></tr></tbody></table></section><section class="card"><div style="display:flex;align-items:center;justify-content:space-between"><h2>Organization overrides</h2>${mode === 'stale-loading' ? '<span class="loading">Loading…</span>' : ''}</div><p class="empty">No organization records are available yet. All feature overrides default to the primary clinic observer-local-org.</p></section></div>';
 });
 </script></body></html>`;
+type DashboardFixtureMode =
+  | 'pass'
+  | 'correction-only-surface'
+  | 'missing-surface'
+  | 'query-drift'
+  | 'body-drift'
+  | 'analytics-body-drift'
+  | 'administration-body-drift'
+  | 'unexpected-read'
+  | 'mutation-action';
+
+let dashboardFixtureMode: DashboardFixtureMode = 'pass';
 
 const buildSyntheticClientsHtml = (mode: ClientsFixtureMode): string => `<!doctype html>
 <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -334,6 +346,93 @@ Promise.all([
 });
 </script></body></html>`;
 
+const buildSyntheticDashboardHtml = (mode: DashboardFixtureMode): string => `<!doctype html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>*{box-sizing:border-box}body{margin:0;max-width:100vw;overflow-x:hidden;font-family:ui-sans-serif,system-ui,sans-serif}.shell{display:grid;gap:16px;padding:16px}.hero{display:grid;gap:12px}.hero button{width:48px;height:48px;border:0;border-radius:12px;background:#1d4ed8;color:#fff}.metrics{display:grid;gap:12px}.metric{border:1px solid #d7deea;border-radius:16px;padding:16px;background:#fff}.queue{border:1px solid #d7deea;border-radius:16px;padding:16px;background:#fff}.queue-list{display:grid;gap:12px}.queue-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.queue-row button{min-width:48px;min-height:48px}</style>
+</head><body><main id="root" class="shell"></main><script>
+${mode === 'unexpected-read' ? "fetch('/rest/v1/profiles').catch(() => {});" : ''}
+${mode === 'mutation-action' ? "fetch('/rest/v1/clients', { method: 'DELETE' }).catch(() => {});" : ''}
+Promise.all([
+  fetch('/api/runtime-config').then((response) => response.json()),
+  fetch('/rest/v1/rpc/reconcile_supervision_session_note_requests', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  }).then((response) => response.json()),
+  fetch(${mode === 'query-drift' ? "'/api/dashboard?scope=expanded'" : "'/api/dashboard'"}).then((response) => response.json()),
+  fetch('/rest/v1/rpc/get_pending_supervision_review_packets', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: ${mode === 'body-drift' ? "JSON.stringify({ organization_id: 'observer-local-org' })" : 'JSON.stringify({})'},
+  }).then((response) => response.json()),
+  fetch('/rest/v1/rpc/get_supervision_session_note_action_count', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  }).then((response) => response.json()),
+  fetch('/api/payroll-administration', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: ${mode === 'administration-body-drift'
+      ? "JSON.stringify({ action: 'get_administration', selectedLocalDate: '2026-08-21', organizationId: 'observer-local-org' })"
+      : "JSON.stringify({ action: 'get_administration', selectedLocalDate: '2026-08-21' })"},
+  }).then((response) => response.json()),
+  fetch('/rest/v1/rpc/get_dropdown_data', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  }).then((response) => response.json()),
+  fetch('/rest/v1/rpc/get_session_metrics', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: ${mode === 'analytics-body-drift'
+      ? "JSON.stringify({ p_start_date: '2026-08-01', p_end_date: '2026-08-31', p_therapist_id: null, p_client_id: null, organization_id: 'observer-local-org' })"
+      : "JSON.stringify({ p_start_date: '2026-08-01', p_end_date: '2026-08-31', p_therapist_id: null, p_client_id: null })"},
+  }).then((response) => response.json()),
+  fetch('/rest/v1/profiles?select=id%2Cemail%2Crole%2Corganization_id%2Cfirst_name%2Clast_name%2Cfull_name%2Cphone%2Cavatar_url%2Ctime_zone%2Cpreferences%2Cis_active%2Clast_login_at%2Ccreated_at%2Cupdated_at&id=eq.observer-super-admin').then((response) => response.json()),
+  fetch('/rest/v1/user_roles?select=is_active%2Cexpires_at%2Croles%28name%29&user_id=eq.observer-super-admin').then((response) => response.json()),
+]).then(([runtimeConfig, reconcileResult, dashboard, packets, pendingCount, administration, dropdowns, metrics, profile, roleRows]) => {
+  const auth = JSON.parse(localStorage.getItem('auth-storage') || '{}');
+  const supabaseSessionKey = 'sb-' + location.hostname.split('.')[0] + '-auth-token';
+  const supabaseSession = JSON.parse(sessionStorage.getItem(supabaseSessionKey) || '{}');
+  const authIsValid = auth.user?.role === 'super_admin'
+    && auth.roleAssignments?.includes('super_admin')
+    && auth.profile?.organization_id === 'observer-local-org'
+    && typeof (auth.accessToken || auth.access_token) === 'string'
+    && typeof (auth.refreshToken || auth.refresh_token) === 'string'
+    && supabaseSession.access_token === auth.access_token
+    && supabaseSession.refresh_token === auth.refresh_token
+    && supabaseSession.expires_at === auth.expires_at;
+  const dashboardIsValid = Array.isArray(dashboard?.todaySessions)
+    && Array.isArray(dashboard?.incompleteSessions)
+    && Array.isArray(dashboard?.billingAlerts)
+    && typeof dashboard?.clientMetrics?.total === 'number'
+    && typeof dashboard?.therapistMetrics?.total === 'number';
+  const supervisionIsValid = Array.isArray(packets)
+    && packets.length === 1
+    && typeof pendingCount === 'number';
+  const runtimeIsValid = runtimeConfig.supabaseUrl === location.origin
+    && runtimeConfig.defaultOrganizationId === 'observer-local-org'
+    && reconcileResult === null;
+  const supportingReadsAreValid = administration?.state === 'ok'
+    && administration?.selectedLocalDate === '2026-08-21'
+    && Array.isArray(dropdowns?.clients)
+    && Array.isArray(dropdowns?.therapists)
+    && typeof metrics?.total_sessions === 'number';
+  const authorityReadsAreValid = profile?.role === 'super_admin'
+    && profile?.organization_id === 'observer-local-org'
+    && roleRows?.[0]?.roles?.name === 'super_admin';
+  if (!authIsValid || !dashboardIsValid || !supervisionIsValid || !runtimeIsValid || !supportingReadsAreValid || !authorityReadsAreValid) {
+    throw new Error('synthetic dashboard bootstrap failed');
+  }
+  document.getElementById('root').innerHTML = ${mode === 'missing-surface'
+    ? "'<section><h1>Wrong surface</h1></section>'"
+    : mode === 'correction-only-surface'
+      ? "'<section><h1>Dashboard</h1><h2>Corrections Required</h2></section>'"
+      : "'<section class=\"hero\"><h1>Dashboard</h1><p>Staff dashboard proof.</p><button aria-label=\"Refresh dashboard\">R</button></section><section class=\"metrics\"><article class=\"metric\"><h2>Active Clients</h2><p>12</p></article><article class=\"metric\"><h2>Staff Coverage</h2><p>4 clinicians</p></article></section><section class=\"reports\"><h2>Monthly Report Summary</h2></section><section class=\"queue\"><h2>Supervision Notes Due</h2><div class=\"queue-list\"><div class=\"queue-row\"><span>Queue item 1</span><button>Open</button></div></div></section>'"};
+});
+</script></body></html>`;
+
 const receivedRequests: string[] = [];
 
 beforeAll(async () => {
@@ -357,6 +456,11 @@ beforeAll(async () => {
     if (request.url === '/settings/feature-flags') {
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       response.end(buildSyntheticFeatureFlagsHtml(featureFlagsFixtureMode));
+      return;
+    }
+    if (request.url === '/') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(buildSyntheticDashboardHtml(dashboardFixtureMode));
       return;
     }
     if (request.url === '/observer-runtime-undersized') {
@@ -563,6 +667,68 @@ describe('responsive UI observer browser runtime', () => {
     }
   }, 60_000);
 
+  it('runs the fixed staff-dashboard scenario with only synthetic loopback reads', async () => {
+    dashboardFixtureMode = 'pass';
+    const requestStart = receivedRequests.length;
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/',
+      '--scenario=staff-dashboard',
+    ]);
+
+    expect(summary.ok).toBe(true);
+    expect(summary.results).toHaveLength(2);
+    expect(receivedRequests.slice(requestStart)).toEqual(['GET /', 'GET /']);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.result).toBe('pass');
+      expect(result.failureCodes).toEqual([]);
+      const evidence = JSON.parse(await readFile(result.evidencePath, 'utf8')) as Record<string, unknown>;
+      expect(evidence.scenarioId).toBe('staff-dashboard');
+      expect(JSON.stringify(evidence)).not.toContain('observer-local-org');
+      expect(JSON.stringify(evidence)).not.toContain('observer-local-access-token');
+    }
+  }, 60_000);
+
+  it('fails when the production staff Dashboard surface is missing', async () => {
+    dashboardFixtureMode = 'missing-surface';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/',
+      '--scenario=staff-dashboard',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('route-surface-missing');
+    }
+  }, 60_000);
+
+  it('fails when the root renders only the correction Dashboard surface', async () => {
+    dashboardFixtureMode = 'correction-only-surface';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/',
+      '--scenario=staff-dashboard',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('route-surface-missing');
+    }
+  }, 60_000);
+
   it('blocks unexpected same-origin reads in the clients-directory scenario', async () => {
     clientsFixtureMode = 'unexpected-read';
     const summary = await runResponsiveUiObserver([
@@ -571,6 +737,24 @@ describe('responsive UI observer browser runtime', () => {
       `--base-url=${baseUrl}`,
       '--route=/clients',
       '--scenario=clients-directory',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('unexpected-scenario-request');
+    }
+  }, 60_000);
+
+  it('blocks unexpected same-origin reads in the staff-dashboard scenario', async () => {
+    dashboardFixtureMode = 'unexpected-read';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/',
+      '--scenario=staff-dashboard',
     ]);
 
     expect(summary.ok).toBe(false);
@@ -599,6 +783,67 @@ describe('responsive UI observer browser runtime', () => {
     }
   }, 60_000);
 
+  it('blocks staff-dashboard query-shape drift', async () => {
+    dashboardFixtureMode = 'query-drift';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/',
+      '--scenario=staff-dashboard',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('unexpected-scenario-request');
+    }
+  }, 60_000);
+
+  it('blocks staff-dashboard supervision body drift', async () => {
+    dashboardFixtureMode = 'body-drift';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/',
+      '--scenario=staff-dashboard',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('non-read-method');
+      expect(result.failureCodes).toContain('same-origin-request-failed');
+      expect(result.failureCodes).toContain('console-error');
+    }
+  }, 60_000);
+
+  it.each([
+    'analytics-body-drift',
+    'administration-body-drift',
+  ] satisfies DashboardFixtureMode[])('blocks staff-dashboard %s', async (mode) => {
+    dashboardFixtureMode = mode;
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/',
+      '--scenario=staff-dashboard',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('non-read-method');
+      expect(result.failureCodes).toContain('same-origin-request-failed');
+      expect(result.failureCodes).toContain('console-error');
+    }
+  }, 60_000);
+
   it('blocks mutation attempts in the clients-directory scenario', async () => {
     clientsFixtureMode = 'mutation-action';
     const summary = await runResponsiveUiObserver([
@@ -614,6 +859,26 @@ describe('responsive UI observer browser runtime', () => {
       artifactPaths.add(result.screenshotPath);
       artifactPaths.add(result.evidencePath);
       expect(result.failureCodes).toContain('non-read-method');
+    }
+  }, 60_000);
+
+  it('blocks mutation attempts in the staff-dashboard scenario', async () => {
+    dashboardFixtureMode = 'mutation-action';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/',
+      '--scenario=staff-dashboard',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('non-read-method');
+      expect(result.failureCodes).toContain('same-origin-request-failed');
+      expect(result.failureCodes).toContain('console-error');
     }
   }, 60_000);
 

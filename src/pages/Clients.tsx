@@ -568,7 +568,7 @@ const Clients = () => {
                         <div className="ml-4">
                           <Link
                             to={`/clients/${client.id}`}
-                            className="text-sm font-medium text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400"
+                            className="inline-flex min-h-11 min-w-11 items-center text-sm font-medium text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400"
                           >
                             {client.full_name}
                           </Link>

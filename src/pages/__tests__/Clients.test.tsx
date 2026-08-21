@@ -252,9 +252,10 @@ describe('Clients page filtering', () => {
     expect(unitsCell?.firstElementChild).toHaveClass('whitespace-nowrap');
   });
 
-  it('keeps the mobile search and filter controls at least 44px tall', () => {
+  it('keeps visible mobile controls at least 44px tall and client links touch sized', () => {
     renderWithProviders(<Clients />);
 
+    expect(screen.getByRole('link', { name: 'Active Client' })).toHaveClass('min-h-11', 'min-w-11');
     expect(screen.getByRole('textbox', { name: 'Search clients' })).toHaveClass('min-h-11');
     expect(screen.getByRole('combobox', { name: 'Filter clients by email domain' })).toHaveClass('min-h-11');
     expect(screen.getByRole('combobox', { name: 'Filter clients by service' })).toHaveClass('min-h-11');

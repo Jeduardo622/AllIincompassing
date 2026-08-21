@@ -401,10 +401,10 @@ export const SuperAdminFeatureFlags: React.FC = () => {
       <section className="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-dark-lighter">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Organization overrides</h2>
-          {featureFlagsQuery.isLoading && <span className="text-sm text-slate-500 dark:text-slate-400">Loading…</span>}
+          {featureFlagsQuery.isPending && <span className="text-sm text-slate-500 dark:text-slate-400">Loading…</span>}
         </div>
 
-        {organizations.length === 0 ? (
+        {featureFlagsQuery.isPending ? null : organizations.length === 0 ? (
           <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">
             No organization records are available yet. All feature overrides default to the primary clinic
             {defaultOrganizationId ? (

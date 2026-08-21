@@ -1,4 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { onlineManager } from '@tanstack/react-query';
 import { renderWithProviders, screen, userEvent, waitFor } from '../../test/utils';
 import { SuperAdminFeatureFlags } from '../SuperAdminFeatureFlags';
 import * as edgeInvokeModule from '../../lib/edgeInvoke';
@@ -24,6 +25,7 @@ describe('SuperAdminFeatureFlags', () => {
   });
 
   afterEach(() => {
+    onlineManager.setOnline(true);
     invokeSpy.mockReset();
     useAuthSpy.mockReset();
   });
@@ -198,7 +200,7 @@ describe('SuperAdminFeatureFlags', () => {
     });
   });
 
-  it('shows single-clinic lock messaging for super admins', () => {
+  it('shows single-clinic lock messaging for super admins', async () => {
     useAuthSpy.mockReturnValue({
       profile: { role: 'super_admin' },
       effectiveRole: 'super_admin',
@@ -221,5 +223,56 @@ describe('SuperAdminFeatureFlags', () => {
 
     expect(screen.getByText(/Organization enrollment locked/i)).toBeInTheDocument();
     expect(screen.getByText(/single-clinic mode/i)).toBeInTheDocument();
+    expect(await screen.findByText(/No organization records are available yet/i)).toBeInTheDocument();
+  });
+
+  it('shows only the loading state while organization overrides are still pending', async () => {
+    useAuthSpy.mockReturnValue({
+      profile: { role: 'super_admin' },
+      effectiveRole: 'super_admin',
+      hasCapability: () => true,
+    } as unknown as ReturnType<typeof authContext.useAuth>);
+
+    const unresolvedList = new Promise<{
+      data: {
+        flags: never[];
+        organizations: never[];
+        organizationFlags: never[];
+        organizationPlans: never[];
+        plans: never[];
+      };
+      error: null;
+      status: 200;
+    }>(() => undefined);
+
+    invokeSpy.mockImplementation(async (_path: string, options?: { body?: Record<string, unknown> }) => {
+      if (options?.body?.action === 'list') {
+        return unresolvedList;
+      }
+
+      return { data: { ok: true }, error: null, status: 200 };
+    });
+
+    renderWithProviders(<SuperAdminFeatureFlags />);
+
+    expect(await screen.findByText('Loading…')).toBeInTheDocument();
+    expect(screen.queryByText(/No organization records are available yet/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /Plan assignment/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps terminal organization states hidden while the initial query is paused', async () => {
+    useAuthSpy.mockReturnValue({
+      profile: { role: 'super_admin' },
+      effectiveRole: 'super_admin',
+      hasCapability: () => true,
+    } as unknown as ReturnType<typeof authContext.useAuth>);
+    onlineManager.setOnline(false);
+
+    renderWithProviders(<SuperAdminFeatureFlags />);
+
+    expect(await screen.findByText('Loading…')).toBeInTheDocument();
+    expect(invokeSpy).not.toHaveBeenCalled();
+    expect(screen.queryByText(/No organization records are available yet/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /Plan assignment/i })).not.toBeInTheDocument();
   });
 });

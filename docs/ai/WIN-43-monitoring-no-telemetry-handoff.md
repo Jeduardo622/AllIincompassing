@@ -52,6 +52,7 @@ and a tenant-scoped durable system metric source was not established in this sli
   - `npm run ci:check-focused` -> pass; secret-backed database checks skipped by the command
   - `npm run typecheck` -> pass
   - `npm run lint` -> pass
+  - `npx vitest run src/pages/__tests__/MonitoringDashboard.test.tsx --maxWorkers=1 --minWorkers=1` -> pass, 8/8 after replacing fake-timer polling with synchronous assertions and correcting timer-spy teardown order
   - `npm run build` -> pass
   - `npm run responsive-harness:build` -> pass
   - `git diff --check` -> pass
@@ -67,8 +68,9 @@ and a tenant-scoped durable system metric source was not established in this sli
 - blocked checks:
   - `npm run test:ci` -> failed when the Windows Node worker exhausted its approximately 4 GB heap after broad suite progress; no failing assertion was reported
   - `npm run verify:local` -> policy, lint, and typecheck passed, then its `test:ci` stage hit the same Node heap exhaustion before coverage, build, and tier-0 stages
-- result: pass-with-blocked-checks pending authoritative exact-head PR CI
-- residual risk: deterministic empty-state layout and focused behavior pass locally; the aggregate suite requires CI's authoritative runtime, and hosted behavior remains unchanged until merge and deploy
+  - first exact-head PR CI run `32521786231` -> failed only because `MonitoringDashboard > refreshes data without reloading the page` timed out under fake-timer polling; 5,156 tests passed and the failure was repaired locally before the follow-up push
+- result: pass-with-blocked-checks pending follow-up authoritative exact-head PR CI
+- residual risk: deterministic empty-state layout and the full Monitoring test file pass locally; the aggregate suite requires a clean follow-up CI run, and hosted behavior remains unchanged until merge and deploy
 
 ## Tracking
 
@@ -90,6 +92,6 @@ and a tenant-scoped durable system metric source was not established in this sli
 - hosted mutation: none
 - protected-path changes: none
 - responsive evidence: pass at both required viewports
-- generated artifact drift: untracked harness build output is excluded from staging because command policy denied deletion
-- pr-ready: yes, pending exact staged-diff inspection and authoritative PR CI
+- generated artifact drift: none; generated responsive-harness build files were deleted and the worktree is clean outside the tracked repair
+- pr-ready: yes, pending follow-up authoritative PR CI
 - human review: required before merge

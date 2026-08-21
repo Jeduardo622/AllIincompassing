@@ -1,6 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import { vi } from 'vitest';
 import { MonitoringDashboard } from '../MonitoringDashboard';
 
@@ -246,9 +245,9 @@ describe('MonitoringDashboard', () => {
 
   afterEach(() => {
     vi.runOnlyPendingTimers();
-    vi.useRealTimers();
     setIntervalSpy.mockRestore();
     clearIntervalSpy.mockRestore();
+    vi.useRealTimers();
   });
 
   it('refreshes data without reloading the page', async () => {
@@ -266,9 +265,9 @@ describe('MonitoringDashboard', () => {
         screen.getByRole('button', { name: /open monitoring settings/i }),
       ).toBeInTheDocument();
       const cacheTab = screen.getByRole('button', { name: /cache management/i });
-      await userEvent.click(cacheTab);
+      fireEvent.click(cacheTab);
 
-      await waitFor(() => expect(getCleanupStats).toHaveBeenCalledTimes(1));
+      expect(getCleanupStats).toHaveBeenCalledTimes(1);
 
       const refreshTokenValue = () => screen.getByTestId('refresh-token-value').textContent ?? '';
       expect(refreshTokenValue()).toBe('0');
@@ -278,8 +277,8 @@ describe('MonitoringDashboard', () => {
         intervalCallbacks[0]!();
       });
 
-      await waitFor(() => expect(refreshTokenValue()).toBe('1'));
-      await waitFor(() => expect(getCleanupStats.mock.calls.length).toBeGreaterThan(1));
+      expect(refreshTokenValue()).toBe('1');
+      expect(getCleanupStats.mock.calls.length).toBeGreaterThan(1);
       expect(reloadSpy).not.toHaveBeenCalled();
     } finally {
       Object.defineProperty(window, 'location', {

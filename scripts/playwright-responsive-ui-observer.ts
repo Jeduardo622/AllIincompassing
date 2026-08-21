@@ -47,7 +47,6 @@ const SCHEDULE_SCENARIO_SHELL_PREFIXES = [
   '/src/',
 ];
 const SCHEDULE_SCENARIO_STATIC_PATH_PATTERN = /\.(?:css|gif|ico|jpe?g|js|map|mjs|png|svg|ttf|webmanifest|webp|woff2?)$/i;
-
 const SYNTHETIC_AUTH_STORAGE_KEY = 'auth-storage';
 const SYNTHETIC_AUTH_STORAGE_PAYLOAD = {
   role: 'admin_schedule',
@@ -65,6 +64,42 @@ const SYNTHETIC_AUTH_STORAGE_PAYLOAD = {
     role: 'admin_schedule',
     email: 'observer-localhost@example.test',
   },
+};
+const CLIENTS_DIRECTORY_SELECT = [
+  'id',
+  'client_id',
+  'full_name',
+  'email',
+  'date_of_birth',
+  'service_preference',
+  'availability_hours',
+  'one_to_one_units',
+  'supervision_units',
+  'parent_consult_units',
+  'assessment_units',
+  'auth_units',
+  'auth_start_date',
+  'auth_end_date',
+  'authorized_hours_per_month',
+  'therapist_id',
+  'therapist_assigned_at',
+  'created_at',
+  'created_by',
+  'updated_at',
+  'deleted_at',
+  'organization_id',
+  'status',
+].join(',');
+
+const isExactClientsDirectoryRequest = (requestUrl: URL): boolean => {
+  const expected = new Map([
+    ['select', CLIENTS_DIRECTORY_SELECT],
+    ['organization_id', 'eq.observer-local-org'],
+    ['order', 'full_name.asc'],
+  ]);
+  const entries = [...requestUrl.searchParams.entries()];
+  return entries.length === expected.size
+    && entries.every(([key, value]) => expected.get(key) === value);
 };
 
 type PayrollTimeFixtureMode = 'get_day' | 'mutation-action';
@@ -359,6 +394,14 @@ const isAllowedScenarioShellRequest = (
   parsedArgs: ObserverArgs,
   requestUrl: URL,
 ): boolean => {
+  if (parsedArgs.scenario === 'clients-directory') {
+    const { pathname } = requestUrl;
+    return pathname === parsedArgs.routes[0]
+      || pathname === '/@react-refresh'
+      || SCHEDULE_SCENARIO_SHELL_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+      || SCHEDULE_SCENARIO_STATIC_PATH_PATTERN.test(pathname);
+  }
+
   if (parsedArgs.scenario === 'payroll-time') {
     return requestUrl.pathname === parsedArgs.routes[0];
   }
@@ -438,15 +481,45 @@ const buildSyntheticDropdownPayload = () => {
   return { therapists, clients };
 };
 
+const buildSyntheticClientListPayload = () => ([
+  {
+    id: '00000000-0000-4000-8000-000000000111',
+    client_id: 'SYN-CLIENT-001',
+    full_name: 'Synthetic Layout Client',
+    email: 'synthetic.client@example.test',
+    date_of_birth: '2015-01-15',
+    service_preference: ['ABA Therapy', 'Parent Consult'],
+    availability_hours: null,
+    one_to_one_units: 12,
+    supervision_units: 4,
+    parent_consult_units: 3,
+    assessment_units: 2,
+    auth_units: 21,
+    auth_start_date: '2026-08-01',
+    auth_end_date: '2026-08-31',
+    authorized_hours_per_month: 84,
+    therapist_id: '00000000-0000-4000-8000-000000000211',
+    therapist_assigned_at: '2026-08-01T08:00:00.000Z',
+    created_at: '2026-08-01T08:00:00.000Z',
+    created_by: '00000000-0000-4000-8000-000000000311',
+    updated_at: '2026-08-10T18:00:00.000Z',
+    deleted_at: null,
+    organization_id: 'observer-local-org',
+    status: 'active',
+  },
+]);
+
 const maybeEnableScenarioContext = async (
   context: BrowserContext,
   scenario: ObserverScenario | undefined,
 ): Promise<void> => {
-  if (scenario !== 'schedule-overlap') {
+  if (scenario !== 'schedule-overlap' && scenario !== 'clients-directory') {
     return;
   }
 
-  await context.clock.install({ time: getSyntheticScheduleNow() });
+  if (scenario === 'schedule-overlap') {
+    await context.clock.install({ time: getSyntheticScheduleNow() });
+  }
   await context.addInitScript(([storageKey, storageValue]) => {
     window.localStorage.setItem(storageKey, storageValue);
   }, [
@@ -460,6 +533,87 @@ const maybeFulfillScenarioRequest = async (
   routeHandler: Parameters<BrowserContext['route']>[1] extends (arg: infer T) => unknown ? T : never,
 ): Promise<boolean> => {
   if (parsedArgs.scenario !== 'schedule-overlap') {
+    if (parsedArgs.scenario === 'clients-directory') {
+      const request = routeHandler.request();
+      const requestUrl = new URL(request.url());
+      if (requestUrl.origin !== new URL(parsedArgs.baseUrl).origin) {
+        return false;
+      }
+
+      if (request.method().toUpperCase() === 'GET' && requestUrl.pathname === '/api/runtime-config') {
+        await routeHandler.fulfill({
+          status: 200,
+          contentType: 'application/json; charset=utf-8',
+          body: JSON.stringify(buildSyntheticRuntimeConfig(requestUrl.origin)),
+        });
+        return true;
+      }
+
+      if (
+        request.method().toUpperCase() === 'GET'
+        && requestUrl.pathname === '/rest/v1/message_thread_participants'
+      ) {
+        await routeHandler.fulfill({
+          status: 200,
+          contentType: 'application/json; charset=utf-8',
+          body: '[]',
+        });
+        return true;
+      }
+
+      if (
+        request.method().toUpperCase() === 'GET'
+        && requestUrl.pathname === '/rest/v1/clients'
+        && isExactClientsDirectoryRequest(requestUrl)
+      ) {
+        await routeHandler.fulfill({
+          status: 200,
+          contentType: 'application/json; charset=utf-8',
+          body: JSON.stringify(buildSyntheticClientListPayload()),
+        });
+        return true;
+      }
+
+      if (
+        request.method().toUpperCase() === 'POST'
+        && requestUrl.pathname === '/api/payroll-time-events'
+      ) {
+        if (!parsePayrollTimeReadBody(request.postData())) {
+          return false;
+        }
+
+        await routeHandler.fulfill({
+          status: 200,
+          contentType: 'application/json; charset=utf-8',
+          body: JSON.stringify({
+            state: 'feature_disabled',
+          }),
+        });
+        return true;
+      }
+
+      if (
+        request.method().toUpperCase() === 'POST'
+        && requestUrl.pathname === '/api/payroll-approvals'
+      ) {
+        const parsedBody = parsePayrollApprovalReadBody(request.postData());
+        if (!parsedBody || parsedBody.action !== 'review_queue') {
+          return false;
+        }
+
+        await routeHandler.fulfill({
+          status: 200,
+          contentType: 'application/json; charset=utf-8',
+          body: JSON.stringify({
+            state: 'feature_disabled',
+          }),
+        });
+        return true;
+      }
+
+      return false;
+    }
+
     if (parsedArgs.scenario !== 'payroll-time') {
       return false;
     }

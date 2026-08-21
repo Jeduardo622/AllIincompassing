@@ -56,6 +56,52 @@ type ScheduleFixtureMode =
 
 let scheduleFixtureMode: ScheduleFixtureMode = 'pass';
 
+type ClientsFixtureMode = 'pass' | 'query-drift' | 'unexpected-read' | 'mutation-action';
+
+let clientsFixtureMode: ClientsFixtureMode = 'pass';
+
+const buildSyntheticClientsHtml = (mode: ClientsFixtureMode): string => `<!doctype html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>*{box-sizing:border-box}body{margin:0;max-width:100vw;overflow-x:hidden}button,a{min-width:48px;min-height:48px}.table-wrap{max-width:100%;overflow-x:auto}table{min-width:720px}</style>
+</head><body><main id="root"></main><script>
+${mode === 'unexpected-read' ? "fetch('/rest/v1/profiles').catch(() => {});" : ''}
+${mode === 'mutation-action' ? "fetch('/rest/v1/clients', { method: 'DELETE' }).catch(() => {});" : ''}
+Promise.all([
+  fetch('/api/runtime-config').then((response) => response.json()),
+  fetch('/rest/v1/message_thread_participants').then((response) => response.json()),
+  fetch('/api/payroll-time-events', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'get_day', localDate: '2026-08-21' }),
+  }).then((response) => response.json()),
+  fetch('/api/payroll-approvals', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'review_queue', selectedLocalDate: '2026-08-21' }),
+  }).then((response) => response.json()),
+  fetch(${mode === 'query-drift'
+    ? "'/rest/v1/clients?select=*&organization_id=eq.observer-local-org&order=full_name.asc'"
+    : "'/rest/v1/clients?select=id%2Cclient_id%2Cfull_name%2Cemail%2Cdate_of_birth%2Cservice_preference%2Cavailability_hours%2Cone_to_one_units%2Csupervision_units%2Cparent_consult_units%2Cassessment_units%2Cauth_units%2Cauth_start_date%2Cauth_end_date%2Cauthorized_hours_per_month%2Ctherapist_id%2Ctherapist_assigned_at%2Ccreated_at%2Ccreated_by%2Cupdated_at%2Cdeleted_at%2Corganization_id%2Cstatus&organization_id=eq.observer-local-org&order=full_name.asc'"}).then((response) => response.json()),
+]).then(([runtimeConfig, messageParticipants, payrollDay, payrollApprovals, clients]) => {
+  const auth = JSON.parse(localStorage.getItem('auth-storage') || '{}');
+  const authIsValid = auth.user?.role === 'admin_schedule'
+    && auth.roleAssignments?.includes('admin_schedule')
+    && typeof (auth.accessToken || auth.access_token) === 'string'
+    && typeof (auth.refreshToken || auth.refresh_token) === 'string';
+  const bootstrapIsValid = runtimeConfig.supabaseUrl === location.origin
+    && runtimeConfig.defaultOrganizationId === 'observer-local-org'
+    && Array.isArray(messageParticipants)
+    && payrollDay?.state === 'feature_disabled'
+    && payrollApprovals?.state === 'feature_disabled'
+    && Array.isArray(clients)
+    && clients.length === 1;
+  if (!authIsValid || !bootstrapIsValid) {
+    throw new Error('synthetic clients bootstrap failed');
+  }
+  document.getElementById('root').innerHTML = '<h1>Clients</h1><div class="table-wrap"><table aria-label="Clients"><thead><tr><th>Client</th><th>Units</th><th>Actions</th></tr></thead><tbody><tr><td>Synthetic Layout Client</td><td>3 parent consult units</td><td><button>Open</button></td></tr></tbody></table></div>';
+});
+</script></body></html>`;
+
 const buildSyntheticScheduleHtml = (mode: ScheduleFixtureMode): string => `<!doctype html>
 <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>*{box-sizing:border-box}body{margin:0;max-width:100vw;overflow-x:hidden}button{min-width:48px;min-height:48px}</style>
@@ -128,6 +174,11 @@ beforeAll(async () => {
     if (request.url === '/schedule') {
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       response.end(buildSyntheticScheduleHtml(scheduleFixtureMode));
+      return;
+    }
+    if (request.url === '/clients') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(buildSyntheticClientsHtml(clientsFixtureMode));
       return;
     }
     if (request.url === '/observer-runtime-undersized') {
@@ -305,6 +356,86 @@ describe('responsive UI observer browser runtime', () => {
       const evidence = JSON.parse(await readFile(result.evidencePath, 'utf8')) as Record<string, unknown>;
       expect(evidence.scenarioId).toBe('schedule-overlap');
       expect(evidence.metricsSummary).toMatchObject({ visibleTouchTargetCount: 1 });
+    }
+  }, 60_000);
+
+  it('runs the fixed clients-directory scenario with only synthetic loopback reads', async () => {
+    clientsFixtureMode = 'pass';
+    const requestStart = receivedRequests.length;
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/clients',
+      '--scenario=clients-directory',
+    ]);
+
+    expect(summary.ok).toBe(true);
+    expect(summary.results).toHaveLength(2);
+    expect(receivedRequests.slice(requestStart)).toEqual(['GET /clients', 'GET /clients']);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.result).toBe('pass');
+      expect(result.failureCodes).toEqual([]);
+      const evidence = JSON.parse(await readFile(result.evidencePath, 'utf8')) as Record<string, unknown>;
+      expect(evidence.scenarioId).toBe('clients-directory');
+      expect(JSON.stringify(evidence)).not.toContain('Synthetic Layout Client');
+      expect(JSON.stringify(evidence)).not.toContain('observer-local-access-token');
+    }
+  }, 60_000);
+
+  it('blocks unexpected same-origin reads in the clients-directory scenario', async () => {
+    clientsFixtureMode = 'unexpected-read';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/clients',
+      '--scenario=clients-directory',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('unexpected-scenario-request');
+    }
+  }, 60_000);
+
+  it('blocks clients-directory query-shape drift', async () => {
+    clientsFixtureMode = 'query-drift';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/clients',
+      '--scenario=clients-directory',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('unexpected-scenario-request');
+    }
+  }, 60_000);
+
+  it('blocks mutation attempts in the clients-directory scenario', async () => {
+    clientsFixtureMode = 'mutation-action';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/clients',
+      '--scenario=clients-directory',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('non-read-method');
     }
   }, 60_000);
 

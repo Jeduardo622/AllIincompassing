@@ -99,9 +99,13 @@ export const loginAndAssertSession = async (
   baseUrl: string,
   email: string,
   password: string,
+  options?: { expectedOrigin?: string },
 ): Promise<void> => {
   await page.goto(`${baseUrl}/login`, { waitUntil: "domcontentloaded", timeout: 60000 });
   await page.waitForLoadState("networkidle").catch(() => undefined);
+  if (options?.expectedOrigin && new URL(page.url()).origin !== options.expectedOrigin) {
+    throw new Error("Login navigation left the approved origin.");
+  }
   const currentPath = new URL(page.url()).pathname.toLowerCase();
   if (!/\/login(?:\/|$)/i.test(currentPath) && (await hasSupabaseAuthToken(page))) {
     return;
@@ -148,6 +152,9 @@ export const loginAndAssertSession = async (
   let authenticated = false;
   while (Date.now() < waitUntil) {
     const currentUrl = page.url();
+    if (options?.expectedOrigin && new URL(currentUrl).origin !== options.expectedOrigin) {
+      throw new Error("Authentication navigation left the approved origin.");
+    }
     const pathname = new URL(currentUrl).pathname.toLowerCase();
     const offLoginPath = !/\/login(\?|$)/i.test(pathname);
     const unauthorizedPath = pathname.includes("/unauthorized");

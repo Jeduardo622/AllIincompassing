@@ -72,6 +72,7 @@ Stop conditions:
   - GREEN: `npx vitest run tests/responsiveUiObserver.test.ts tests/responsiveUiObserverRuntime.test.ts` (`61 passed` before the final two focused regression additions; the affected final paths were rerun above).
   - LIVE: `staff-dashboard-root-proof-7` rendered `/` at desktop `1440x900` and mobile `390x844`; both had no overflow, clipped-control, touch-target, network-policy, or route-surface failures.
   - LIVE: both viewports failed only with `console-error`, traced to the production reconcile query resolving `undefined`.
+  - LIVE: after the bounded reconcile result repair, `staff-dashboard-reconcile-proof-2` passed both fixed viewports with no failure codes.
   - GREEN: `npm run ci:check-focused`.
   - GREEN: `npm run lint` after final review fixes.
   - GREEN: `npm run typecheck`.
@@ -81,10 +82,9 @@ Stop conditions:
   - GREEN: isolated Schedule aggregate failure rerun (`1 passed`).
   - FAIL: isolated provisioning suite (`21 passed`, `1 failed`) confirms the deterministic unchanged baseline failure.
 - blocked checks:
-  - passing responsive evidence is blocked by the separately routed production React Query `undefined` defect.
   - aggregate `test:ci` and `verify:local` are blocked by the unchanged deterministic provisioning test; the wrapper also surfaced one worker timeout and one isolated-pass Schedule test.
-- result: `fail`; targeted scenario verification passes, but required aggregate and responsive gates remain red.
-- residual risk: the scenario is fail-closed and reviewable, but it must remain draft until the production console defect and inherited aggregate baseline are resolved and the real Dashboard observer is rerun.
+- result: `fail`; targeted scenario and responsive verification pass, but required aggregate gates remain red.
+- residual risk: the scenario and bounded query repair are fail-closed and code-reviewed, but the stack must remain draft until the inherited aggregate baseline is resolved.
 
 ## Specialist Reviews
 
@@ -106,10 +106,62 @@ Stop conditions:
 - verification summary: `present`, with required failures preserved
 - pr handoff: `draft-only`
 - reviewer: `completed`; code and test rereviews approved with no findings
-- required follow-up: repair the production query result, rerun both responsive viewports, resolve or rebase past the aggregate baseline failure, and rerun PR hygiene.
+- required follow-up: resolve or rebase past the aggregate baseline failure and rerun PR hygiene.
 
 ## Stack
 
 - base prerequisite: PR #995, `codex/add-clients-responsive-scenario`
-- current branch: `codex/add-dashboard-responsive-scenario`
+- observer prerequisite: PR #998, `codex/add-dashboard-responsive-scenario`
+- current branch: `codex/fix-dashboard-reconcile-query-result`
 - dependent UI repair: draft PR #997
+
+## Dashboard Reconcile Query Slice
+
+- classification: `low-risk autonomous`
+- lane: `standard`
+- files touched:
+  - `src/lib/supervision-session-notes.ts`
+  - `src/lib/__tests__/supervision-session-notes.test.ts`
+  - `docs/ai/WIN-43-staff-dashboard-responsive-scenario-handoff.md`
+- bounded scope:
+  - require `reconcilePendingSupervisionSessionNoteRequests` to resolve the semantic sentinel `{ reconciled: true }` on success
+  - preserve the existing missing-organization guard and RPC error throw behavior
+  - keep all production Dashboard, auth, server/API, Supabase, runtime config, workflow, and browser-scenario code unchanged
+- RED evidence:
+  - `npx vitest run src/lib/__tests__/supervision-session-notes.test.ts -t "reconciles pending supervision requests through a separate tenant-checked RPC"` failed with `expected undefined to deeply equal { reconciled: true }`
+- GREEN evidence:
+  - `npx vitest run src/lib/__tests__/supervision-session-notes.test.ts` passed (`14 passed`), covering the defined success sentinel, missing-organization rejection, and unchanged RPC-error propagation
+- executed checks:
+  - GREEN: `npm run ci:check-focused`
+  - GREEN: `npm run lint`
+  - GREEN: `npm run typecheck`
+  - GREEN: `npm run build`
+  - GREEN: `staff-dashboard-reconcile-proof-2` passed at desktop `1440x900` and mobile `390x844` with no failure codes
+  - GREEN: the real observer executes the production Dashboard `useQuery` boundary, so the two-viewpoint pass proves React Query accepted the defined reconcile result without the prior console error
+  - WARM-UP: `staff-dashboard-reconcile-proof-1` passed mobile, while the first cold Vite desktop load captured a blank page and reported `route-surface-missing`; the immediate warm rerun passed both viewports
+  - FAIL: `NODE_OPTIONS=--max-old-space-size=6144 npm run test:ci` (`573` files and `5168` tests passed; only unchanged `tests/scripts/provision-ci-smoke-bcba.test.ts` failed `1/22`, plus one Vitest worker timeout)
+- FAIL: `NODE_OPTIONS=--max-old-space-size=6144 npm run verify:local` stopped at embedded `test:ci` (`572` files and `5169` tests passed; the unchanged provisioning assertion and one ProgramsGoals interaction failed, plus one worker timeout)
+- GREEN: `npx vitest run src/components/__tests__/ProgramsGoalsTab.test.tsx -t "uses trusted effectiveRole bcba for progression mutation visibility"` passed in isolation (`1 passed`)
+- result: `fail`; focused, static, build, and responsive proof pass, while required aggregate gates remain red on the unchanged provisioning assertion and aggregate-only instability
+- residual risk: no regression is visible in the bounded helper contract or real Dashboard observer; aggregate closure still depends on rebasing past or separately repairing the unchanged provisioning test
+
+### Dashboard Reconcile Specialist Review
+
+- `code-review-engineer`: approved the scoped code after the completed `verify:local` evidence; aggregate/PR readiness remains blocked
+- `test-engineer`: approved the scoped code after the missing-organization and RPC-error tests and real React Query observer proof; aggregate/PR readiness remains blocked
+
+### Dashboard Reconcile PR Hygiene
+
+- pr-ready: `no`
+- lane: `standard`
+- branch-ready: `yes`
+- linear-ready: `yes` (`WIN-43`)
+- single-purpose: `yes`
+- unrelated changes: `none`
+- generated artifact drift: `none` (local responsive artifacts remain untracked)
+- protected-path drift: `none`
+- change summary: `present`
+- verification summary: `present`, with aggregate failures preserved
+- pr handoff: `draft-only`
+- reviewer: `completed`; code and test rereviews found no functional defect
+- required follow-up: rebase past or separately repair the inherited provisioning baseline, rerun aggregate verification, and rerun PR hygiene

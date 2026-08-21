@@ -395,10 +395,26 @@ describe('supervision session note data access', () => {
   it('reconciles pending supervision requests through a separate tenant-checked RPC', async () => {
     rpcMock.mockResolvedValue({ data: 1, error: null });
 
-    await reconcilePendingSupervisionSessionNoteRequests('org-1');
+    const result = await reconcilePendingSupervisionSessionNoteRequests('org-1');
 
     expect(rpcMock).toHaveBeenCalledWith('reconcile_supervision_session_note_requests', {});
     expect(fromMock).not.toHaveBeenCalled();
+    expect(result).toEqual({ reconciled: true });
+  });
+
+  it('rejects reconciliation without organization context before calling the RPC', async () => {
+    await expect(reconcilePendingSupervisionSessionNoteRequests('')).rejects.toThrow(
+      'Organization context is required to reconcile supervision note requests.',
+    );
+
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves reconciliation RPC errors', async () => {
+    const rpcError = new Error('reconcile failed');
+    rpcMock.mockResolvedValue({ data: null, error: rpcError });
+
+    await expect(reconcilePendingSupervisionSessionNoteRequests('org-1')).rejects.toBe(rpcError);
   });
 
   it('completes structured responses through the tenant-checked RPC', async () => {

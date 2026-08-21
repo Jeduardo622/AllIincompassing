@@ -380,7 +380,7 @@ export const fetchPendingSupervisionSessionNoteRequests = async (
 
 export const reconcilePendingSupervisionSessionNoteRequests = async (
   organizationId: string,
-): Promise<void> => {
+): Promise<{ reconciled: true }> => {
   if (!organizationId) {
     throw new Error('Organization context is required to reconcile supervision note requests.');
   }
@@ -389,6 +389,8 @@ export const reconcilePendingSupervisionSessionNoteRequests = async (
   if (reconcileResult.error) {
     throw reconcileResult.error;
   }
+
+  return { reconciled: true };
 };
 
 export type ReturnSupervisionRequestToBtInput = {

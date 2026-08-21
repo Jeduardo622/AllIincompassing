@@ -8,7 +8,7 @@
 - Tracking issue: `WIN-43`
 - PR: pending
 - Verification result: `pass-with-blocked-checks`
-- PR ready: no, pending stacked `/reports` responsive evidence and final hygiene review
+- PR ready: yes for human review; exact-head CI remains the aggregate authority
 
 ## Routing
 
@@ -58,18 +58,36 @@ Executed checks:
 - `npm run typecheck`: pass.
 - `npm run build`: pass.
 - `npm run test:ci`: fail outside this slice; 573 files and 5,153 tests passed, while the unchanged `tests/scripts/provision-ci-smoke-bcba.test.ts` canonical-mapping order assertion failed and Vitest reported one worker timeout.
+- `npm run test:ui:responsive -- --base-url=http://127.0.0.1:4178 --route=/reports --scenario=staff-reports --artifact-run-id=reports-production-fix-final`: pass.
+  - desktop `1440x900`: pass with no failure codes.
+  - mobile `390x844`: pass with no failure codes.
+  - Vite was started with the app-owned `VITE_DEV_DIAGNOSTICS=0` switch so the development-only Boot Diagnostics overlay was not measured as production UI.
+  - sanitized evidence: `artifacts/responsive-ui-observer/reports-production-fix-final/`.
 
 Blocked or pending checks:
 
-- `npm run test:ui:responsive -- --base-url=http://127.0.0.1:<port> --route=/reports --scenario=staff-reports`: pending the separate local-only observer scenario branch.
-- `npm run verify:local`: pending; the embedded aggregate suite is expected to retain the same unrelated provisioning failure until that baseline is repaired.
-- `verify-change`: pending final responsive evidence.
-- `pr-hygiene`: pending final responsive evidence and reviewer re-check.
+- `NODE_OPTIONS=--max-old-space-size=6144 npm run verify:local`: blocked in `test:ci`.
+  - 572 test files and 5,185 tests passed.
+  - the unchanged `tests/scripts/provision-ci-smoke-bcba.test.ts` canonical-mapping assertion failed.
+  - one Vitest worker timed out.
+  - the aggregate also hit local port contention because a temporary preview occupied the responsive harness port; after stopping all temporary servers, `npx vitest run tests/responsiveHarness.contract.test.ts` passed `3/3`.
+  - coverage verification and tier-0 did not run because the chained command stopped at `test:ci`; build passed independently.
 
 Reviewer status:
 
-- Production/test diff approved for correctness, scope, and protected-path containment.
-- Initial handoff review requested evidence updates; this section records the completed checks and remaining blockers.
+- Final production/test diff approved with no findings for correctness, accessibility, scope, and protected-path containment.
+- Test engineering confirmed high confidence in the slice evidence and exact-head CI as the final aggregate authority.
+
+Verify-change card:
+
+- Classification: `low-risk autonomous`.
+- Lane: `standard`.
+- Change type: visible UI/page behavior plus focused regression coverage.
+- Required checks: `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, focused Reports test, `npm run build`, `/reports` responsive observer, and `npm run verify:local`.
+- Executed checks: every required command ran; all slice-specific checks passed.
+- Blocked checks: `npm run verify:local` could not complete past `test:ci` because of the unchanged BCBA assertion and worker timeout; exact-head CI is required.
+- Result: `pass-with-blocked-checks`.
+- Residual risk: low feature risk; aggregate confidence depends on final pushed-head CI.
 
 PR hygiene status:
 
@@ -79,7 +97,12 @@ PR hygiene status:
 - Protected-path drift: none.
 - Unrelated changes: none.
 - Generated artifact drift: none.
-- Final `pr-ready`: pending.
+- Change summary: present.
+- Verification summary: present.
+- Reviewer: completed with no findings.
+- PR handoff: ready for the stacked production PR.
+- Required follow-up: push the final head, open the PR against `codex/add-reports-responsive-scenario`, and wait for exact-head required CI.
+- Final `pr-ready`: yes.
 
 ## Residual Risk
 

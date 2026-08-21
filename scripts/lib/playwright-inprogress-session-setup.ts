@@ -650,9 +650,42 @@ const toDatetimeLocal = (date: Date): string => {
 const VISIBLE_SCHEDULE_START_HOURS = [8, 10, 12, 14, 16] as const;
 export const BOOKING_ATTEMPTS_PER_TARGET_PAIR = 12;
 const MAX_BOOKING_CONFLICTS_PER_TARGET_PAIR = 5;
+const NO_SESSION_TARGET_ERROR = "Could not find therapist/client/program/goal combination for in-progress session setup.";
 
-export const shouldRotateBookingTargetPair = (status: number, conflictCount: number): boolean =>
-  status === 409 && conflictCount >= MAX_BOOKING_CONFLICTS_PER_TARGET_PAIR;
+export const shouldRotateBookingTargetPair = (
+  status: number,
+  conflictCount: number,
+  alternativeTarget: unknown | null,
+): boolean =>
+  status === 409 &&
+  conflictCount >= MAX_BOOKING_CONFLICTS_PER_TARGET_PAIR &&
+  alternativeTarget !== null;
+
+export const shouldProbeAlternativeBookingTarget = (
+  status: number,
+  conflictCount: number,
+  probeCompleted: boolean,
+): boolean =>
+  status === 409 &&
+  conflictCount >= MAX_BOOKING_CONFLICTS_PER_TARGET_PAIR &&
+  !probeCompleted;
+
+export async function selectAlternativeBookingTarget<T>(
+  currentPairKey: string,
+  excludedPairKeys: Set<string>,
+  chooseTarget: (excludedPairKeys: Set<string>) => Promise<T>,
+): Promise<T | null> {
+  const probeExcludedPairKeys = new Set(excludedPairKeys);
+  probeExcludedPairKeys.add(currentPairKey);
+  try {
+    return await chooseTarget(probeExcludedPairKeys);
+  } catch (error) {
+    if (error instanceof Error && error.message === NO_SESSION_TARGET_ERROR) {
+      return null;
+    }
+    throw error;
+  }
+}
 
 const addCalendarDays = (localDate: string, days: number): string => {
   const [year, month, day] = localDate.split("-").map(Number);
@@ -844,18 +877,23 @@ async function chooseSessionTargets(
     candidatePairCount: candidatePairs.length,
   });
 
-  for (const { therapistId, clientId } of candidatePairs) {
+  const eligibleCandidatePairs = candidatePairs.filter(({ therapistId, clientId }) => {
     const pairKey = `${therapistId}:${clientId}`;
     if (options?.excludedPairKeys?.has(pairKey)) {
-      continue;
+      return false;
     }
     if (
       options?.allowedTherapistIds &&
       options.allowedTherapistIds.size > 0 &&
       !options.allowedTherapistIds.has(therapistId)
     ) {
-      continue;
+      return false;
     }
+    return true;
+  });
+
+  for (const { therapistId, clientId } of eligibleCandidatePairs) {
+    const pairKey = `${therapistId}:${clientId}`;
     await page.selectOption("#therapist-select", therapistId);
     await page.selectOption("#client-select", "");
     const seeded = await ensureProgramAndGoalForPair(therapistId, clientId);
@@ -875,7 +913,7 @@ async function chooseSessionTargets(
     await archiveCreatedProgramGoalFixtures(seeded);
   }
 
-  throw new Error("Could not find therapist/client/program/goal combination for in-progress session setup.");
+  throw new Error(NO_SESSION_TARGET_ERROR);
 }
 
 export type BookSessionOptions = {
@@ -929,6 +967,7 @@ export async function bookSession(
   const timeZone = await resolveBrowserScheduleTimeZone(page);
   const start = buildInProgressSessionBookingBaseStart(new Date(), undefined, timeZone);
   const excludedPairKeys = new Set<string>();
+  let queuedSelected: Awaited<ReturnType<typeof chooseSessionTargets>> | null = null;
   let lastFailure: {
     selected: Awaited<ReturnType<typeof chooseSessionTargets>>;
     finalStartIso: string;
@@ -940,13 +979,18 @@ export async function bookSession(
   while (true) {
     console.log("[in-progress-setup] book-session choose-targets");
     let selected: Awaited<ReturnType<typeof chooseSessionTargets>>;
-    try {
-      selected = await chooseSessionTargets(page, { allowedTherapistIds, excludedPairKeys });
-    } catch (error) {
-      if (lastFailure) {
-        break;
+    if (queuedSelected) {
+      selected = queuedSelected;
+      queuedSelected = null;
+    } else {
+      try {
+        selected = await chooseSessionTargets(page, { allowedTherapistIds, excludedPairKeys });
+      } catch (error) {
+        if (lastFailure) {
+          break;
+        }
+        throw error;
       }
-      throw error;
     }
     console.log("[in-progress-setup] book-session selected-target", { pairKey: selected.pairKey });
 
@@ -955,6 +999,8 @@ export async function bookSession(
     let payload: BrowserFetchResult<Record<string, unknown>> | null = null;
     let payloadBody: { success?: boolean; data?: { session?: { id?: string } } } | null = null;
     let bookingConflictCount = 0;
+    let alternativeProbeCompleted = false;
+    let alternativeSelected: Awaited<ReturnType<typeof chooseSessionTargets>> | null = null;
 
     for (let attempt = 0; attempt < BOOKING_ATTEMPTS_PER_TARGET_PAIR; attempt += 1) {
       const attemptStart = buildInProgressSessionBookingAttemptStart(start, attempt, timeZone);
@@ -1030,7 +1076,16 @@ export async function bookSession(
       }
       if (payload.status === 409) {
         bookingConflictCount += 1;
-        if (shouldRotateBookingTargetPair(payload.status, bookingConflictCount)) {
+        if (shouldProbeAlternativeBookingTarget(payload.status, bookingConflictCount, alternativeProbeCompleted)) {
+          alternativeProbeCompleted = true;
+          alternativeSelected = await selectAlternativeBookingTarget(
+            selected.pairKey,
+            excludedPairKeys,
+            (probeExcludedPairKeys) =>
+              chooseSessionTargets(page, { allowedTherapistIds, excludedPairKeys: probeExcludedPairKeys }),
+          );
+        }
+        if (shouldRotateBookingTargetPair(payload.status, bookingConflictCount, alternativeSelected)) {
           console.warn("[in-progress-setup] booking conflict budget reached; trying next therapist-client pair", {
             pairKey: selected.pairKey,
             bookingConflictCount,
@@ -1051,6 +1106,17 @@ export async function bookSession(
     }
 
     lastFailure = { selected, finalStartIso, finalEndIso, payload, payloadBody };
+    if (alternativeSelected) {
+      try {
+        await archiveCreatedProgramGoalFixtures(selected);
+      } catch (error) {
+        await archiveCreatedProgramGoalFixtures(alternativeSelected);
+        throw error;
+      }
+      excludedPairKeys.add(selected.pairKey);
+      queuedSelected = alternativeSelected;
+      continue;
+    }
     if (payload?.status === 409) {
       console.warn("[in-progress-setup] booking conflict exhausted candidate starts; trying next therapist-client pair", {
         pairKey: selected.pairKey,

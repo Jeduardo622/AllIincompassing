@@ -6,6 +6,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AutoScheduleModal } from "../../../../src/components/AutoScheduleModal";
 import { ProgramsGoalsTab } from "../../../../src/components/ClientDetails/ProgramsGoalsTab";
 import { DashboardView } from "../../../../src/pages/Dashboard";
+import { MonitoringDashboard } from "../../../../src/pages/MonitoringDashboard";
 import { Payroll } from "../../../../src/pages/Payroll";
 import { TimeReview } from "../../../../src/pages/TimeReview";
 import type { BtCorrectionTask } from "../../../../src/lib/supervision-session-notes";
@@ -186,6 +187,8 @@ const PayrollHarnessRoute = () => <Payroll />;
 
 const TimeReviewHarnessRoute = () => <TimeReview />;
 
+const MonitoringHarnessRoute = () => <MonitoringDashboard />;
+
 export function HarnessApp() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -195,6 +198,7 @@ export function HarnessApp() {
           <Route path="/clients/test-client" element={<ClientDetailsHarnessRoute />} />
           <Route path="/schedule" element={<ScheduleHarnessRoute />} />
           <Route path="/dashboard" element={<DashboardHarnessRoute />} />
+          <Route path="/monitoring" element={<MonitoringHarnessRoute />} />
           <Route path="/payroll" element={<PayrollHarnessRoute />} />
           <Route path="/time/review" element={<TimeReviewHarnessRoute />} />
         </Routes>

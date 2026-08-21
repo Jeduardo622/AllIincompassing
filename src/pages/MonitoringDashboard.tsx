@@ -76,6 +76,7 @@ export function MonitoringDashboard() {
   } = useRealtimePerformanceMonitoring({ enabled: monitoringEnabled });
 
   const { analytics, analyzePerformance } = usePerformanceAnalytics();
+  const hasPerformanceSamples = metrics.length > 0;
 
   // Cache cleanup and query performance tracking
   const {
@@ -219,20 +220,39 @@ export function MonitoringDashboard() {
   const HealthScore = () => (
     <div className="flex items-center space-x-2">
       <div className="flex items-center space-x-1">
-        {analytics.healthScore >= 80 ? (
+        {!hasPerformanceSamples ? (
+          <Activity className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+        ) : analytics.healthScore >= 80 ? (
           <CheckCircle className="w-4 h-4 text-green-600" />
         ) : analytics.healthScore >= 60 ? (
           <AlertTriangle className="w-4 h-4 text-yellow-600" />
         ) : (
           <AlertTriangle className="w-4 h-4 text-red-600" />
         )}
-        <span className="text-sm font-medium">Health Score: {analytics.healthScore}%</span>
+        <span className="text-sm font-medium">
+          Health Score: {hasPerformanceSamples ? `${analytics.healthScore}%` : 'Not available'}
+        </span>
       </div>
     </div>
   );
 
   const OverviewTab = () => (
     <div className="space-y-6">
+      {!hasPerformanceSamples && (
+        <div
+          role="status"
+          className="flex items-start gap-3 rounded-lg border border-slate-300 bg-slate-50 p-4 text-slate-800 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-100"
+        >
+          <Activity className="mt-0.5 h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400" />
+          <div>
+            <p className="font-medium">Performance samples unavailable</p>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+              No performance samples have been received. Connection status only confirms that the live monitoring channel is available.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* System Health Overview */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white dark:bg-dark-lighter p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
@@ -240,10 +260,12 @@ export function MonitoringDashboard() {
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">System Health</p>
               <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {analytics.healthScore}%
+                {hasPerformanceSamples ? `${analytics.healthScore}%` : 'Not available'}
               </p>
             </div>
-            {analytics.healthScore >= 80 ? (
+            {!hasPerformanceSamples ? (
+              <Activity className="w-8 h-8 text-gray-400" />
+            ) : analytics.healthScore >= 80 ? (
               <CheckCircle className="w-8 h-8 text-green-600" />
             ) : (
               <AlertTriangle className="w-8 h-8 text-yellow-600" />
@@ -268,19 +290,21 @@ export function MonitoringDashboard() {
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">AI Response Time</p>
               <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {Math.round(analytics.trends.aiResponseTime.current)}ms
+                {hasPerformanceSamples ? `${Math.round(analytics.trends.aiResponseTime.current)}ms` : 'Not available'}
               </p>
             </div>
-            <div className="flex items-center">
-              {analytics.trends.aiResponseTime.change > 0 ? (
-                <TrendingUp className="w-5 h-5 text-red-500" />
-              ) : (
-                <TrendingDown className="w-5 h-5 text-green-500" />
-              )}
-              <span className={`text-sm ml-1 ${analytics.trends.aiResponseTime.change > 0 ? 'text-red-500' : 'text-green-500'}`}>
-                {Math.abs(analytics.trends.aiResponseTime.change).toFixed(1)}%
-              </span>
-            </div>
+            {hasPerformanceSamples && (
+              <div className="flex items-center">
+                {analytics.trends.aiResponseTime.change > 0 ? (
+                  <TrendingUp className="w-5 h-5 text-red-500" />
+                ) : (
+                  <TrendingDown className="w-5 h-5 text-green-500" />
+                )}
+                <span className={`text-sm ml-1 ${analytics.trends.aiResponseTime.change > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                  {Math.abs(analytics.trends.aiResponseTime.change).toFixed(1)}%
+                </span>
+              </div>
+            )}
           </div>
         </div>
         
@@ -289,25 +313,27 @@ export function MonitoringDashboard() {
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Cache Hit Rate</p>
               <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {Math.round(analytics.trends.cacheHitRate.current)}%
+                {hasPerformanceSamples ? `${Math.round(analytics.trends.cacheHitRate.current)}%` : 'Not available'}
               </p>
             </div>
-            <div className="flex items-center">
-              {analytics.trends.cacheHitRate.change > 0 ? (
-                <TrendingUp className="w-5 h-5 text-green-500" />
-              ) : (
-                <TrendingDown className="w-5 h-5 text-red-500" />
-              )}
-              <span className={`text-sm ml-1 ${analytics.trends.cacheHitRate.change > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                {Math.abs(analytics.trends.cacheHitRate.change).toFixed(1)}%
-              </span>
-            </div>
+            {hasPerformanceSamples && (
+              <div className="flex items-center">
+                {analytics.trends.cacheHitRate.change > 0 ? (
+                  <TrendingUp className="w-5 h-5 text-green-500" />
+                ) : (
+                  <TrendingDown className="w-5 h-5 text-red-500" />
+                )}
+                <span className={`text-sm ml-1 ${analytics.trends.cacheHitRate.change > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {Math.abs(analytics.trends.cacheHitRate.change).toFixed(1)}%
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       {/* Performance Bottlenecks */}
-      {analytics.bottlenecks.length > 0 && (
+      {hasPerformanceSamples && analytics.bottlenecks.length > 0 && (
         <div className="bg-white dark:bg-dark-lighter p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
           <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance Bottlenecks</h3>
           <div className="space-y-3">
@@ -1035,7 +1061,7 @@ export function MonitoringDashboard() {
           </div>
           <div className="flex flex-wrap items-center gap-4">
             <span className="text-sm text-gray-600 dark:text-gray-400">
-              {metrics.length} metrics tracked
+              {hasPerformanceSamples ? `${metrics.length} metrics tracked` : 'No performance samples received'}
             </span>
             <span className="text-sm text-gray-600 dark:text-gray-400">
               {alerts.filter(a => !a.resolved).length} active alerts

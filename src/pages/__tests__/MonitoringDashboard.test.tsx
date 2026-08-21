@@ -28,6 +28,20 @@ vi.mock('../../components/monitoring/SystemPerformance', () => ({
 
 const analyzePerformance = vi.fn();
 const manualCleanup = vi.fn();
+let realtimeMetrics: Array<{ id: string }> = [{ id: 'metric-1' }];
+let realtimeAlerts: Array<{
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  alert_type: string;
+  message: string;
+  created_at: string;
+  resolved: boolean;
+}> = [];
+let performanceBottlenecks: Array<{
+  component: string;
+  metric: string;
+  impact: 'high' | 'medium' | 'low';
+  recommendation: string;
+}> = [];
 let cleanupCallCount = 0;
 const getCleanupStats = vi.fn(() => {
   cleanupCallCount += 1;
@@ -81,15 +95,15 @@ vi.mock('../../lib/performance', () => ({
   useRealtimePerformanceMonitoring: () => ({
     isConnected: true,
     connectionStatus: 'connected',
-    metrics: [{ id: 'metric-1' }],
-    alerts: [],
+    metrics: realtimeMetrics,
+    alerts: realtimeAlerts,
     clearMetrics: vi.fn(),
     clearAlerts: vi.fn(),
   }),
   usePerformanceAnalytics: () => ({
     analytics: {
       healthScore: 90,
-      bottlenecks: [],
+      bottlenecks: performanceBottlenecks,
       trends: {
         aiResponseTime: {
           current: 100,
@@ -141,6 +155,9 @@ describe('MonitoringDashboard', () => {
     agentTraceMocks.fetchAgentTraceReport.mockReset();
     agentTraceMocks.fetchAgentWorkOperations.mockReset();
     cleanupCallCount = 0;
+    realtimeMetrics = [{ id: 'metric-1' }];
+    realtimeAlerts = [];
+    performanceBottlenecks = [];
     authState = {
       loading: false,
       isAdmin: () => true,
@@ -155,6 +172,76 @@ describe('MonitoringDashboard', () => {
       return 1 as unknown as ReturnType<typeof setInterval>;
     }) as typeof setInterval);
     clearIntervalSpy = vi.spyOn(global, 'clearInterval').mockImplementation(() => {});
+  });
+
+  it('distinguishes a connected channel from unavailable telemetry', () => {
+    realtimeMetrics = [];
+
+    render(<MonitoringDashboard />);
+
+    expect(screen.getByText('Connected')).toBeInTheDocument();
+    expect(screen.getByText('Health Score: Not available')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Performance samples unavailable');
+    expect(
+      screen.getByText(/no performance samples have been received/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText('No performance samples received')).toBeInTheDocument();
+    expect(screen.getByText('System Health').parentElement).toHaveTextContent('Not available');
+    expect(screen.getByText('AI Response Time').parentElement).toHaveTextContent('Not available');
+    expect(screen.getByText('Cache Hit Rate').parentElement).toHaveTextContent('Not available');
+    expect(screen.queryByText('Health Score: 0%')).not.toBeInTheDocument();
+    expect(screen.queryByText('0ms')).not.toBeInTheDocument();
+  });
+
+  it('preserves measured overview values when telemetry exists', () => {
+    render(<MonitoringDashboard />);
+
+    expect(screen.getByText('Health Score: 90%')).toBeInTheDocument();
+    expect(screen.getByText('1 metrics tracked')).toBeInTheDocument();
+    expect(screen.getByText('System Health').parentElement).toHaveTextContent('90%');
+    expect(screen.getByText('AI Response Time').parentElement).toHaveTextContent('100ms');
+    expect(screen.getByText('Cache Hit Rate').parentElement).toHaveTextContent('97%');
+    expect(screen.queryByText('Performance samples unavailable')).not.toBeInTheDocument();
+  });
+
+  it('hides stale analysis when telemetry is cleared', () => {
+    performanceBottlenecks = [{
+      component: 'Database',
+      metric: 'Latency',
+      impact: 'high',
+      recommendation: 'Inspect the query path.',
+    }];
+
+    const { rerender } = render(<MonitoringDashboard />);
+
+    expect(screen.getByText('Performance Bottlenecks')).toBeInTheDocument();
+    expect(screen.getByText('Database - Latency')).toBeInTheDocument();
+
+    realtimeMetrics = [];
+    rerender(<MonitoringDashboard />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('Performance samples unavailable');
+    expect(screen.queryByText('Performance Bottlenecks')).not.toBeInTheDocument();
+    expect(screen.queryByText('Database - Latency')).not.toBeInTheDocument();
+  });
+
+  it('keeps active alerts visible when performance samples are unavailable', () => {
+    realtimeMetrics = [];
+    realtimeAlerts = [{
+      severity: 'high',
+      alert_type: 'Queue delay',
+      message: 'A synthetic alert remains active.',
+      created_at: '2026-08-21T12:00:00.000Z',
+      resolved: false,
+    }];
+
+    render(<MonitoringDashboard />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('Performance samples unavailable');
+    expect(screen.getByText('No performance samples received')).toBeInTheDocument();
+    expect(screen.getByText('1 active alerts')).toBeInTheDocument();
+    expect(screen.getByText('Recent Alerts')).toBeInTheDocument();
+    expect(screen.getByText('Queue delay')).toBeInTheDocument();
   });
 
   afterEach(() => {

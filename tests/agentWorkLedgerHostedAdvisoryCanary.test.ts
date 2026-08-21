@@ -6,9 +6,12 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  assertPreflight,
   buildDropCanaryPgCronExtensionQuery,
   buildMeasurementQuery,
+  buildPreflightQuery,
   captureCanarySecretDigests,
+  extractMeasurementSummary,
   parseEdgeSecretListing,
   runCleanupSequence,
   writePhaseFailureArtifact,
@@ -42,6 +45,93 @@ const handoffDoc = safeRead(handoffDocPath);
 const soloAttestation = JSON.parse(safeRead(soloAttestationPath) || "{}");
 
 describe("agent work hosted advisory canary contract", () => {
+  it("extracts measurement summaries from resolved management results", () => {
+    expect(
+      extractMeasurementSummary({
+        result: [{ measurements: { cron_jobs: 2, http_successes: 4 } }],
+      }),
+    ).toEqual({
+      cron_jobs: 2,
+      http_successes: 4,
+    });
+    expect(
+      extractMeasurementSummary([
+        { measurements: { cron_jobs: 1, http_failures: 0 } },
+      ]),
+    ).toEqual({
+      cron_jobs: 1,
+      http_failures: 0,
+    });
+  });
+
+  it("requires read-only cleanup authority proof before hosted mutation", () => {
+    const query = buildPreflightQuery();
+
+    expect(query).toContain("'current_role_is_superuser'");
+    expect(query).toContain("'current_role_is_supabase_admin'");
+    expect(query).toContain("'current_role_can_act_as_supabase_admin'");
+    expect(query).toContain("'cleanup_authority_proven'");
+    expect(query).not.toContain(
+      "pg_has_role(current_user, 'supabase_admin', 'SET')",
+    );
+    expect(script.match(/await assertMutationAuthorityPreflight\(\)/g)).toHaveLength(
+      1,
+    );
+
+    const baselineSummary = {
+      runtime_mode_secret_present: true,
+      pg_cron: false,
+      pg_net: true,
+      vault: true,
+      cron_jobs: 0,
+      vault_names: 0,
+      queue_depth: 0,
+      archive_depth: 0,
+      ledger_rows: 0,
+      draft_packets: 0,
+      active_retention_policies: 0,
+      retention_decisions: 3,
+      cleanup_authority_proven: true,
+      current_role_is_superuser: false,
+      current_role_is_supabase_admin: true,
+      current_role_can_act_as_supabase_admin: false,
+    };
+
+    expect(() => assertPreflight(baselineSummary)).not.toThrow();
+    expect(() =>
+      assertPreflight({
+        ...baselineSummary,
+        cleanup_authority_proven: false,
+        current_role_is_supabase_admin: false,
+      }),
+    ).toThrow("Management API cleanup authority over pg_cron is unavailable.");
+  });
+
+  it("rechecks authority only before pg_cron installation and never gates cleanup", () => {
+    const setupMeasureStart = script.indexOf("const setupMeasurePhase");
+    const cleanupVerifyStart = script.indexOf("const cleanupVerifyPhase");
+    const setupMeasureSource = script.slice(
+      setupMeasureStart,
+      cleanupVerifyStart,
+    );
+    const cleanupVerifySource = script.slice(cleanupVerifyStart);
+
+    expect(setupMeasureStart).toBeGreaterThan(0);
+    expect(cleanupVerifyStart).toBeGreaterThan(setupMeasureStart);
+    expect(setupMeasureSource).toContain(
+      "await assertMutationAuthorityPreflight();",
+    );
+    expect(setupMeasureSource.indexOf("assertMutationAuthorityPreflight")).toBeLessThan(
+      setupMeasureSource.indexOf("installCanaryPgCronExtension"),
+    );
+    expect(cleanupVerifySource).not.toContain(
+      "assertMutationAuthorityPreflight",
+    );
+    expect(workflow).toMatch(
+      /Cleanup and verify zero residue\s+if: always\(\)/,
+    );
+  });
+
   it("joins cron run history to cron jobs before filtering by job name", () => {
     const query = buildMeasurementQuery();
 

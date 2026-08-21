@@ -432,7 +432,7 @@ const Clients = () => {
                 aria-label="Search clients"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full sm:min-w-[16rem] xl:min-w-[20rem] 2xl:min-w-[24rem] pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-dark dark:text-gray-200"
+                className="min-h-11 w-full sm:min-w-[16rem] xl:min-w-[20rem] 2xl:min-w-[24rem] pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-dark dark:text-gray-200"
               />
             </div>
               <div className="flex flex-wrap gap-2">
@@ -443,7 +443,7 @@ const Clients = () => {
                   value={filterEmail}
                   onChange={(e) => setFilterEmail(e.target.value)}
                   aria-label="Filter clients by email domain"
-                  className="border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
+                  className="min-h-11 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
                 >
                   <option value="all">All Emails</option>
                   {emailDomains.map(domain => (
@@ -458,7 +458,7 @@ const Clients = () => {
                   value={filterService}
                   onChange={(e) => setFilterService(e.target.value)}
                   aria-label="Filter clients by service"
-                  className="border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
+                  className="min-h-11 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
                 >
                   <option value="all">All Services</option>
                   {serviceTypes.map(service => (
@@ -473,7 +473,7 @@ const Clients = () => {
                   value={filterUnits}
                   onChange={(e) => setFilterUnits(e.target.value)}
                   aria-label="Filter clients by units"
-                  className="border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
+                  className="min-h-11 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
                 >
                   <option value="all">All Units</option>
                   <option value="high">High (&gt;20)</option>
@@ -488,7 +488,7 @@ const Clients = () => {
                   value={archivedFilter}
                   onChange={(e) => setArchivedFilter(e.target.value as 'all' | 'active' | 'archived')}
                   aria-label="Filter clients by archive status"
-                  className="border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
+                  className="min-h-11 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200 py-2 px-3"
                 >
                   <option value="active">Active</option>
                   <option value="archived">Archived</option>
@@ -504,7 +504,7 @@ const Clients = () => {
         </p>
         <div className="overflow-x-auto">
           <table
-            className="min-w-full divide-y divide-gray-200 dark:divide-gray-700"
+            className="min-w-[72rem] divide-y divide-gray-200 dark:divide-gray-700"
             aria-label="Clients"
             aria-busy={isLoading}
           >
@@ -612,8 +612,8 @@ const Clients = () => {
                         ))}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="space-y-2">
+                    <td className="min-w-[15rem] px-6 py-4">
+                      <div className="space-y-2 whitespace-nowrap">
                         <div className="flex items-center">
                           <Star className="w-4 h-4 text-blue-500 mr-2" />
                           <span className="text-sm text-gray-900 dark:text-gray-200">

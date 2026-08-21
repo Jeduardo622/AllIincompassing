@@ -20,6 +20,8 @@ Owner-dispatched run `32219271670` stopped before hosted mutation because CLI-re
 
 Specialist review identities and protected-surface hashes are recorded in `WIN-275-hosted-advisory-canary-solo-maintainer-attestation.json`.
 
+Owner-authorized run `32433035394` exposed two additional fail-closed requirements. Measurement extraction must use the resolved `firstRow` object without Promise chaining. Before any `pg_cron` installation, read-only preflight and an immediate pre-install recheck must prove that Management API SQL runs as a superuser, as `supabase_admin`, or with immediately usable `supabase_admin` authority. A missing capability must stop before installation, while cleanup remains disabled-first and must not be gated by that failed capability. Review must reject `SET`-only authority because the mutation does not execute `SET ROLE`, any weakened exact-hash check, any OID-specific hardcoding in the generic canary, or any hosted replay in this repair slice.
+
 ## Human gates
 
 The repository owner must personally inspect and merge the PR. Codex must never merge this critical PR. The general prohibition remains in force for all other solo-maintainer dispatch actions.
@@ -28,6 +30,6 @@ Delegated browser dispatch allowlist (exactly four literal entries): [`.github/w
 
 After owner merge, the owner may explicitly authorize Codex in the current task to perform exactly one browser click dispatch for an allowlisted workflow through the owner's already-authenticated in-app GitHub browser session. Canary uses `I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_AGENT_WORK_LEDGER_HOSTED_ADVISORY_CANARY`; cleanup uses `I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_STALE_EDGE_SECRET_CLEANUP`; QA persona provisioning uses `I_APPROVE_WIN_43_QA_PERSONA_PROVISIONING`. The exact workflow path, current-main SHA, applicable merged PR number, acknowledgement, and immutable inputs must be visible, and authorization remains separate per workflow.
 
-Recovery dispatch remains separate and requires `I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_PG_CRON_RESIDUE_RECOVERY` with immutable `expected_pg_cron_oid=457927`.
+The historical recovery workflow acknowledgement `I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_PG_CRON_RESIDUE_RECOVERY` is still bound to OID `457927` and is invalid for current hosted OID `458106`. No recovery dispatch is authorized by this repair. A future recovery must be separately reviewed and bound to the exact live OID.
 
 Codex must recheck main, PR, required CI, owner identity, sole-maintainer topology, manifest hashes, and visible exact inputs immediately before click. Each workflow must still revalidate immediately before hosted access. Authorization is one-time, consumed on click, and revoked by any drift, missing evidence, session ambiguity, or failed run; reruns require fresh current-task owner authorization per workflow. gh/CLI/API/token dispatch, secret viewing, self-authorization, active mode, gate weakening, and extension to any other workflow remain forbidden.

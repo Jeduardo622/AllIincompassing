@@ -3,30 +3,26 @@
   "issue": "WIN-275",
   "reviewMode": "solo-maintainer-owner-attestation",
   "repository": "Jeduardo622/AllIincompassing",
-  "createdAt": "2026-08-20T14:53:00Z",
+  "createdAt": "2026-08-21T01:30:59Z",
   "specialistReviews": {
     "code-review-engineer": {
-      "agentId": "01a02002-b0ca-7261-80db-83f40d7a6a83",
+      "agentId": "01a021ec-5a6a-7001-be54-3d04d16a2285",
       "verdict": "PASS"
     },
     "security-engineer": {
-      "agentId": "01a01fff-9d25-7210-bbca-f3ca7f7436a1",
+      "agentId": "01a021ec-5cf5-7842-be18-fdd1ac62de7f",
       "verdict": "PASS"
     },
     "test-engineer": {
-      "agentId": "01a01fff-9b93-76c3-9ab2-ec18e44d846e",
+      "agentId": "01a021ec-5b9e-7761-bb25-1862e8469ff5",
       "verdict": "PASS"
     },
     "software-architect": {
-      "agentId": "01a02004-fb89-71e2-b099-75c1f186c630",
+      "agentId": "01a021e2-4dd4-7012-90fb-bf5ac30d9d35",
       "verdict": "PASS"
     },
     "supabase-reviewer": {
-      "agentId": "01a01fff-9eeb-7eb0-9b27-dbbe1e80c8a5",
-      "verdict": "PASS"
-    },
-    "performance-engineer": {
-      "agentId": "01a01fa8-74bf-7310-9a34-9551cdec5c74",
+      "agentId": "01a021ec-5e59-7220-a740-5c72572cf61c",
       "verdict": "PASS"
     }
   },
@@ -40,13 +36,13 @@
   },
   "protectedSurfaceHashes": {
     ".github/workflows/agent-work-ledger-hosted-advisory-canary.yml": "2e524aa65242822ec2c8e79ad2c6103feea74503c711f04c30faddd870b96908",
-    "scripts/agent-work-ledger-hosted-advisory-canary.mjs": "6e747c0efd7764d75deb65d181ea02e475a4e9ea51a34c43c35a7ee42a501df6",
-    "tests/agentWorkLedgerHostedAdvisoryCanary.test.ts": "d41561cff01329de862ac522bff240328a2256250a72aafc14bf821ac7bdb45a",
-    "docs/ai/handoffs/WIN-275-hosted-advisory-canary.md": "f64376bf6ff1b3a1c63850710d3f35579decbf7c181c0b0b1d486dc15bf88ea1",
-    "docs/ai/reviews/WIN-275-hosted-advisory-canary-attestation.md": "2288501396f3e3d7bcc72c22cd72b821487adc9c1719a8778a4da03d48b52289",
+    "scripts/agent-work-ledger-hosted-advisory-canary.mjs": "e29f189723d57aad77c2fddef2783efe89832c48ca060cc6b0d7bf081a7953a9",
+    "tests/agentWorkLedgerHostedAdvisoryCanary.test.ts": "cc8f439c084e4bcb70ae150d1db097e5e3548b0443df9df138f478bb0cc320f9",
+    "docs/ai/handoffs/WIN-275-hosted-advisory-canary.md": "ad006b251c5422d1ff7d1745480c93ec6d6fb5faed4b385075d79719feb883af",
+    "docs/ai/reviews/WIN-275-hosted-advisory-canary-attestation.md": "1da4faddd0df1bf9b579b8d0f7f5712fad9f5a011ef1c90d53663c768773a31d",
     ".github/workflows/agent-work-ledger-hosted-shadow-proof.yml": "eef158750da0d0f4456c00fb247149827d882a7d332bb36e57ca236c5b8dd83f",
     "scripts/agent-work-ledger-hosted-shadow-proof.mjs": "2fd78613be6dba0583019bd93566b3df73ee75d9d1f1036480fdf7f4c1350323",
     "tests/agentWorkLedgerHostedShadowProof.test.ts": "c92e0fd0f9a6bcf71e61a58d404553d85ced204ca41392f5fa3a63b810ec57ae"
   },
-  "refreshedAt": "2026-08-20T16:45:00Z"
+  "refreshedAt": "2026-08-21T02:14:09Z"
 }

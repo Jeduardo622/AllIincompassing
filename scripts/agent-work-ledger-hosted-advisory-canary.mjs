@@ -64,6 +64,8 @@ const firstRow = (result) =>
   Array.isArray(result)
     ? (result[0] ?? {})
     : (result?.result?.[0] ?? result ?? {});
+export const extractMeasurementSummary = (result) =>
+  firstRow(result)?.measurements ?? {};
 
 const runDatabaseQuery = async (query, parameters = [], readOnly = false) => {
   const response = await fetch(MANAGEMENT_API_URL, {
@@ -204,11 +206,19 @@ const unsetEdgeSecrets = async (names) => {
   if (names.length > 0) await runManagementSecretsRequest("DELETE", names);
 };
 
-const preflightSql = `
+export const buildPreflightQuery = () => `
 select jsonb_build_object(
   'pg_cron', exists(select 1 from pg_extension where extname = 'pg_cron'),
   'pg_net', exists(select 1 from pg_extension where extname = 'pg_net'),
   'vault', exists(select 1 from pg_extension where extname = 'supabase_vault'),
+  'current_role_is_superuser', coalesce((select rolsuper from pg_roles where rolname = current_user), false),
+  'current_role_is_supabase_admin', current_user = 'supabase_admin',
+  'current_role_can_act_as_supabase_admin', pg_has_role(current_user, 'supabase_admin', 'USAGE'),
+  'cleanup_authority_proven', (
+    coalesce((select rolsuper from pg_roles where rolname = current_user), false)
+    or current_user = 'supabase_admin'
+    or pg_has_role(current_user, 'supabase_admin', 'USAGE')
+  ),
   'cron_jobs', 0,
   'vault_names', (select count(*)::integer from vault.secrets where name in
     ('agent_work_hosted_project_ref','agent_work_hosted_publishable_key','agent_work_hosted_runner_secret','agent_work_hosted_sweeper_secret')),
@@ -225,13 +235,20 @@ select jsonb_build_object(
 ) as summary`;
 
 const readPreflight = async () =>
-  firstRow(await managementRead(preflightSql)).summary;
-const assertPreflight = (summary) => {
+  firstRow(await managementRead(buildPreflightQuery())).summary;
+const assertCleanupAuthorityProof = (summary) => {
+  assert(
+    summary.cleanup_authority_proven === true,
+    "Management API cleanup authority over pg_cron is unavailable.",
+  );
+};
+export const assertPreflight = (summary) => {
   assert(
     summary.runtime_mode_secret_present === true,
     "Runtime mode secret is unavailable.",
   );
   assert(summary.pg_cron === false, "pg_cron baseline drifted.");
+  assertCleanupAuthorityProof(summary);
   assert(
     summary.pg_net === true && summary.vault === true,
     "Required preexisting extensions are unavailable.",
@@ -382,7 +399,7 @@ select jsonb_build_object(
 ) as measurements`;
 
 const readMeasurements = async (baseline) =>
-  firstRow(
+  extractMeasurementSummary(
     await managementRead(
       buildMeasurementQuery(),
       [
@@ -391,7 +408,12 @@ const readMeasurements = async (baseline) =>
         baseline.httpResponseBaseline,
       ],
     ),
-  ).then((row) => row.measurements);
+  );
+
+const assertMutationAuthorityPreflight = async () =>
+  assertCleanupAuthorityProof(
+    firstRow(await managementRead(buildPreflightQuery())).summary,
+  );
 
 const writeState = async (state) => {
   await mkdir(privateDir, { recursive: true });
@@ -603,6 +625,7 @@ const preflightPhase = async () => {
 
 const setupMeasurePhase = async () => {
   const state = await readState();
+  await assertMutationAuthorityPreflight();
   state.pgCronExtensionOid = await installCanaryPgCronExtension();
   state.pgCronInstalledByCanary = true;
   await writeState(state);

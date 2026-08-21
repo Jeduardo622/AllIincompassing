@@ -17,7 +17,10 @@ const attestationPath = path.resolve(
 const protectedSurfaces = [
   '.github/workflows/provision-qa-personas.yaml',
   'scripts/provision-persistent-qa-personas.ts',
+  'scripts/playwright-qa-persona-readiness.ts',
+  'scripts/lib/playwright-smoke.ts',
   'tests/scripts/provision-persistent-qa-personas.test.ts',
+  'tests/scripts/playwright-qa-persona-readiness.test.ts',
   'tests/workflows/provision-qa-personas.test.ts',
   'tests/agentWorkLedgerDelegatedBrowserDispatchPolicy.test.ts',
   'AGENTS.md',
@@ -122,11 +125,15 @@ describe('persistent QA persona protected workflow', () => {
     }
   });
 
-  it('does not accept mutable persona, role, organization, or credential inputs', () => {
+  it('accepts only immutable review inputs and the two bounded operation choices', () => {
     const inputBlock = workflow.slice(workflow.indexOf('inputs:'), workflow.indexOf('permissions:'));
     expect(inputBlock).toContain('commit_sha:');
     expect(inputBlock).toContain('pull_request_number:');
     expect(inputBlock).toContain('approval_acknowledgement:');
+    expect(inputBlock).toContain('operation:');
+    expect(inputBlock).toContain('default: verify-readiness');
+    expect(inputBlock).toContain('- verify-readiness');
+    expect(inputBlock).toContain('- provision-empty-namespace');
     expect(inputBlock).not.toMatch(/organization|persona|role|email|password/i);
   });
 
@@ -165,5 +172,18 @@ describe('persistent QA persona protected workflow', () => {
     expect(revalidationStep).toContain('maintainers.length !== 1');
     expect(workflow).toContain('QA_PERSONA_MANIFEST_PATH: artifacts/win-43/qa-persona-manifest.json');
     expect(workflow).toContain('retention-days: 7');
+  });
+
+  it('keeps readiness inside the existing protected dispatch and exports no auth identifiers', () => {
+    expect(workflow).toContain('timeout-minutes: 30');
+    expect(workflow).toContain("if: inputs.operation == 'provision-empty-namespace'");
+    expect(workflow).toContain("if: inputs.operation == 'verify-readiness'");
+    expect(workflow).toContain('npx tsx scripts/provision-persistent-qa-personas.ts --verify');
+    expect(workflow).toContain('npx tsx scripts/playwright-qa-persona-readiness.ts');
+    expect(workflow).toContain('QA_PERSONA_MANIFEST_PATH: ${{ runner.temp }}/qa-persona-preverify-manifest.json');
+    expect(workflow).toContain('artifacts/win-43/qa-persona-readiness-manifest.json');
+    expect(workflow).not.toContain('artifacts/win-43/qa-persona-preverify-manifest.json');
+    expect(workflow).toContain('if-no-files-found: warn');
+    expect(workflow).not.toContain('.png');
   });
 });

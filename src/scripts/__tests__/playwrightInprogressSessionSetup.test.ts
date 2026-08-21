@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { formatInTimeZone } from "date-fns-tz";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 import {
   BOOKING_ATTEMPTS_PER_TARGET_PAIR,
+  shouldRotateBookingTargetPair,
   buildInProgressSessionBookingAttemptStart,
   buildCurrentDayVisibleScheduleBookingBaseStart,
   buildInProgressSessionBookingBaseStart,
@@ -16,6 +19,26 @@ import {
 const VISIBLE_HOURS = [8, 10, 12, 14, 16] as const;
 
 describe("playwright in-progress session setup", () => {
+  it("rotates away from a shared pair after five distinct-day booking conflicts", () => {
+    expect(shouldRotateBookingTargetPair(409, 4)).toBe(false);
+    expect(shouldRotateBookingTargetPair(409, 5)).toBe(true);
+    expect(shouldRotateBookingTargetPair(502, 5)).toBe(false);
+  });
+
+  it("wires the conflict budget to break the attempt loop and exclude the stale pair", () => {
+    const source = readFileSync(
+      path.resolve(process.cwd(), "scripts/lib/playwright-inprogress-session-setup.ts"),
+      "utf8",
+    );
+
+    expect(source).toMatch(
+      /if \(shouldRotateBookingTargetPair\(payload\.status, bookingConflictCount\)\)[\s\S]{0,400}?break;/,
+    );
+    expect(source).toMatch(
+      /if \(payload\?\.status === 409\)[\s\S]{0,500}?excludedPairKeys\.add\(selected\.pairKey\);/,
+    );
+  });
+
   it("restricts organization therapists to the authenticated actor's links", () => {
     expect(restrictTherapistIdsToActorLinks(
       new Set(["org-linked", "org-unlinked"]),

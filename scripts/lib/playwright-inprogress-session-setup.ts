@@ -649,6 +649,10 @@ const toDatetimeLocal = (date: Date): string => {
 
 const VISIBLE_SCHEDULE_START_HOURS = [8, 10, 12, 14, 16] as const;
 export const BOOKING_ATTEMPTS_PER_TARGET_PAIR = 12;
+const MAX_BOOKING_CONFLICTS_PER_TARGET_PAIR = 5;
+
+export const shouldRotateBookingTargetPair = (status: number, conflictCount: number): boolean =>
+  status === 409 && conflictCount >= MAX_BOOKING_CONFLICTS_PER_TARGET_PAIR;
 
 const addCalendarDays = (localDate: string, days: number): string => {
   const [year, month, day] = localDate.split("-").map(Number);
@@ -950,6 +954,7 @@ export async function bookSession(
     let finalEndIso = "";
     let payload: BrowserFetchResult<Record<string, unknown>> | null = null;
     let payloadBody: { success?: boolean; data?: { session?: { id?: string } } } | null = null;
+    let bookingConflictCount = 0;
 
     for (let attempt = 0; attempt < BOOKING_ATTEMPTS_PER_TARGET_PAIR; attempt += 1) {
       const attemptStart = buildInProgressSessionBookingAttemptStart(start, attempt, timeZone);
@@ -1022,6 +1027,16 @@ export async function bookSession(
           createdProgramId: selected.createdProgramId,
           createdGoalId: selected.createdGoalId,
         };
+      }
+      if (payload.status === 409) {
+        bookingConflictCount += 1;
+        if (shouldRotateBookingTargetPair(payload.status, bookingConflictCount)) {
+          console.warn("[in-progress-setup] booking conflict budget reached; trying next therapist-client pair", {
+            pairKey: selected.pairKey,
+            bookingConflictCount,
+          });
+          break;
+        }
       }
       if (payload.status === 0 || payload.status === 409 || [500, 502, 503, 504].includes(payload.status)) {
         console.log("[in-progress-setup] book-session retryable-response", {

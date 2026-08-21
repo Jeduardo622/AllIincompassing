@@ -15,6 +15,14 @@ on:
         description: Exact owner approval acknowledgement
         required: true
         type: string
+      operation:
+        description: Bounded protected operation
+        required: true
+        default: verify-readiness
+        type: choice
+        options:
+          - verify-readiness
+          - provision-empty-namespace
 
 permissions:
   contents: read
@@ -33,7 +41,7 @@ jobs:
       github.event.repository.owner.login == github.repository_owner &&
       github.event.repository.owner.id == 129695080
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       checks: read
       contents: read
@@ -49,6 +57,7 @@ jobs:
           GITHUB_REF: ${{ github.ref }}
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
           GITHUB_TOKEN: ${{ github.token }}
+          OPERATION: ${{ inputs.operation }}
           PULL_REQUEST_NUMBER: ${{ inputs.pull_request_number }}
           REPOSITORY: ${{ github.repository }}
         run: |
@@ -59,11 +68,15 @@ jobs:
           const expectedAcknowledgement = 'I_APPROVE_WIN_43_QA_PERSONA_PROVISIONING';
           const acknowledgement = process.env.APPROVAL_ACKNOWLEDGEMENT ?? '';
           const commitSha = process.env.COMMIT_SHA ?? '';
+          const operation = process.env.OPERATION ?? '';
           const pullRequestNumber = process.env.PULL_REQUEST_NUMBER ?? '';
           const repository = process.env.REPOSITORY ?? '';
 
           if (acknowledgement !== expectedAcknowledgement) {
             throw new Error('Exact WIN-43 protected execution acknowledgement is required.');
+          }
+          if (!['verify-readiness', 'provision-empty-namespace'].includes(operation)) {
+            throw new Error('Unsupported QA persona operation.');
           }
           if (!/^[0-9a-f]{40}$/.test(commitSha)) {
             throw new Error('commit_sha must be exactly 40 lowercase hexadecimal characters.');
@@ -176,7 +189,10 @@ jobs:
           const surfaces = [
             '.github/workflows/provision-qa-personas.yaml',
             'scripts/provision-persistent-qa-personas.ts',
+            'scripts/playwright-qa-persona-readiness.ts',
+            'scripts/lib/playwright-smoke.ts',
             'tests/scripts/provision-persistent-qa-personas.test.ts',
+            'tests/scripts/playwright-qa-persona-readiness.test.ts',
             'tests/workflows/provision-qa-personas.test.ts',
             'tests/agentWorkLedgerDelegatedBrowserDispatchPolicy.test.ts',
             'AGENTS.md',
@@ -259,6 +275,7 @@ jobs:
           NODE
 
       - name: Provision and verify persistent synthetic QA personas
+        if: inputs.operation == 'provision-empty-namespace'
         env:
           PW_ADMIN_EMAIL: ${{ secrets.QA_BOOTSTRAP_ADMIN_EMAIL }}
           PW_ADMIN_PASSWORD: ${{ secrets.QA_BOOTSTRAP_ADMIN_PASSWORD }}
@@ -282,11 +299,73 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         run: npx tsx scripts/provision-persistent-qa-personas.ts --provision
 
+      - name: Verify current bootstrap credentials and tenant graph
+        if: inputs.operation == 'verify-readiness'
+        env:
+          PW_ADMIN_EMAIL: ${{ secrets.QA_BOOTSTRAP_ADMIN_EMAIL }}
+          PW_ADMIN_PASSWORD: ${{ secrets.QA_BOOTSTRAP_ADMIN_PASSWORD }}
+          PW_ADMIN_SCHEDULE_EMAIL: ${{ secrets.QA_BOOTSTRAP_ADMIN_SCHEDULE_EMAIL }}
+          PW_ADMIN_SCHEDULE_PASSWORD: ${{ secrets.QA_BOOTSTRAP_ADMIN_SCHEDULE_PASSWORD }}
+          PW_BCBA_EMAIL: ${{ secrets.QA_BOOTSTRAP_BCBA_EMAIL }}
+          PW_BCBA_PASSWORD: ${{ secrets.QA_BOOTSTRAP_BCBA_PASSWORD }}
+          PW_BT_EMAIL: ${{ secrets.QA_BOOTSTRAP_BT_EMAIL }}
+          PW_BT_PASSWORD: ${{ secrets.QA_BOOTSTRAP_BT_PASSWORD }}
+          PW_CLIENT_EMAIL: ${{ secrets.QA_BOOTSTRAP_CLIENT_EMAIL }}
+          PW_CLIENT_PASSWORD: ${{ secrets.QA_BOOTSTRAP_CLIENT_PASSWORD }}
+          PW_MIDTIER_EMAIL: ${{ secrets.QA_BOOTSTRAP_MIDTIER_EMAIL }}
+          PW_MIDTIER_PASSWORD: ${{ secrets.QA_BOOTSTRAP_MIDTIER_PASSWORD }}
+          PW_SUPERADMIN_EMAIL: ${{ secrets.QA_BOOTSTRAP_SUPERADMIN_EMAIL }}
+          PW_SUPERADMIN_PASSWORD: ${{ secrets.QA_BOOTSTRAP_SUPERADMIN_PASSWORD }}
+          PW_THERAPIST_EMAIL: ${{ secrets.QA_BOOTSTRAP_THERAPIST_EMAIL }}
+          PW_THERAPIST_PASSWORD: ${{ secrets.QA_BOOTSTRAP_THERAPIST_PASSWORD }}
+          QA_PERSONA_MANIFEST_PATH: ${{ runner.temp }}/qa-persona-preverify-manifest.json
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: npx tsx scripts/provision-persistent-qa-personas.ts --verify
+
+      - name: Install Playwright Chromium for readiness
+        if: inputs.operation == 'verify-readiness'
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify route-entry readiness across eight persistent QA personas
+        if: inputs.operation == 'verify-readiness'
+        env:
+          PW_ADMIN_EMAIL: ${{ secrets.QA_BOOTSTRAP_ADMIN_EMAIL }}
+          PW_ADMIN_PASSWORD: ${{ secrets.QA_BOOTSTRAP_ADMIN_PASSWORD }}
+          PW_ADMIN_SCHEDULE_EMAIL: ${{ secrets.QA_BOOTSTRAP_ADMIN_SCHEDULE_EMAIL }}
+          PW_ADMIN_SCHEDULE_PASSWORD: ${{ secrets.QA_BOOTSTRAP_ADMIN_SCHEDULE_PASSWORD }}
+          PW_BASE_URL: ${{ secrets.PW_BASE_URL }}
+          PW_BCBA_EMAIL: ${{ secrets.QA_BOOTSTRAP_BCBA_EMAIL }}
+          PW_BCBA_PASSWORD: ${{ secrets.QA_BOOTSTRAP_BCBA_PASSWORD }}
+          PW_BT_EMAIL: ${{ secrets.QA_BOOTSTRAP_BT_EMAIL }}
+          PW_BT_PASSWORD: ${{ secrets.QA_BOOTSTRAP_BT_PASSWORD }}
+          PW_CLIENT_EMAIL: ${{ secrets.QA_BOOTSTRAP_CLIENT_EMAIL }}
+          PW_CLIENT_PASSWORD: ${{ secrets.QA_BOOTSTRAP_CLIENT_PASSWORD }}
+          PW_MIDTIER_EMAIL: ${{ secrets.QA_BOOTSTRAP_MIDTIER_EMAIL }}
+          PW_MIDTIER_PASSWORD: ${{ secrets.QA_BOOTSTRAP_MIDTIER_PASSWORD }}
+          PW_SUPERADMIN_EMAIL: ${{ secrets.QA_BOOTSTRAP_SUPERADMIN_EMAIL }}
+          PW_SUPERADMIN_PASSWORD: ${{ secrets.QA_BOOTSTRAP_SUPERADMIN_PASSWORD }}
+          PW_THERAPIST_EMAIL: ${{ secrets.QA_BOOTSTRAP_THERAPIST_EMAIL }}
+          PW_THERAPIST_PASSWORD: ${{ secrets.QA_BOOTSTRAP_THERAPIST_PASSWORD }}
+          QA_PERSONA_READINESS_MANIFEST_PATH: artifacts/win-43/qa-persona-readiness-manifest.json
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: npx tsx scripts/playwright-qa-persona-readiness.ts
+
       - name: Upload sanitized provisioning manifest
-        if: always()
+        if: inputs.operation == 'provision-empty-namespace' && always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: win-43-qa-persona-manifest
           path: artifacts/win-43/qa-persona-manifest.json
-          if-no-files-found: error
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload sanitized readiness manifest
+        if: inputs.operation == 'verify-readiness' && always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: win-43-qa-persona-readiness-manifest
+          path: artifacts/win-43/qa-persona-readiness-manifest.json
+          if-no-files-found: warn
           retention-days: 7

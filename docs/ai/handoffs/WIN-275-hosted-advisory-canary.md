@@ -49,7 +49,7 @@ Approve sustained cadence only after the canary public artifact shows at least t
 - classification: `high-risk human-reviewed`
 - lane: `critical`
 - change type: hosted Supabase Management API script boundary, critical dispatch policy contract, and protected review evidence
-- files touched: canary script, contract test, handoff/review attestations, canary hash-bound review manifest, the stale-secret cleanup manifest that independently pins the shared canary script, and the delegated QA-persona manifest that pins the shared WIN-275 evidence chain
+- files touched: canary script, contract test, handoff/review attestations, canary hash-bound review manifest, the stale-secret cleanup manifest that independently pins the shared canary script, the delegated QA-persona manifest that pins the shared WIN-275 evidence chain, and the pg_cron recovery manifest that pins all delegated-policy surfaces
 - required agents: specification, implementation, code review, test, software architecture, security, and Supabase review
 - required checks: script syntax; focused canary, dependent dispatch-anchor, delegated-policy, and shadow-proof contracts; `npm run ci:check-focused`; `npm run lint`; `npm run typecheck`; `npm run test:ci`; `npm run validate:tenant`; `npm run build`; `npm run verify:local`; exact-head PR CI; and current-main CI after owner merge
 - executed checks: script syntax pass; canary contract `23/23` pass before the final evidence hash refresh; stale-secret dispatch anchor `3/3` pass; delegated browser policy `8/8` pass; shadow-proof contract `38/38` pass; `ci:check-focused` pass with secret-backed database checks explicitly skipped; lint pass; typecheck pass; tenant validation pass; build pass; live read-only ownership and zero-job diagnosis pass

@@ -183,6 +183,7 @@ describe("openScheduleSessionModalFromCalendar", () => {
     });
     expect(events).toEqual(["week-click", "summary-click", "client-select", "next-click", "card-click"]);
     expect(card.waitFor).toHaveBeenCalledTimes(2);
+    expect(page.waitForLoadState).not.toHaveBeenCalled();
   });
 
   it("fails after the bounded period budget with controlled diagnostics", async () => {

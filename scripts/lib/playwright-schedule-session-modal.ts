@@ -146,7 +146,6 @@ const normalizeWeekView = async (page: Page): Promise<void> => {
   }
   if ((await weekButton.getAttribute("aria-pressed")) !== "true") {
     await weekButton.click();
-    await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
     for (let readinessAttempt = 0; readinessAttempt < 40; readinessAttempt += 1) {
       if ((await weekButton.getAttribute("aria-pressed")) === "true") return;
       await page.waitForTimeout(250);
@@ -193,7 +192,6 @@ export const openScheduleSessionModalFromCalendar = async (
   });
   const selectedClient = await selectExactScheduleFilter(page, "#client-filter", target.clientId);
   if (selectedTherapist || selectedClient) {
-    await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
     // Schedule applies exact-pair filters after a 300 ms debounce.
     await page.waitForTimeout(750);
   }
@@ -235,7 +233,6 @@ export const openScheduleSessionModalFromCalendar = async (
       break;
     }
     await nextPeriodButton.click();
-    await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
     await page.waitForTimeout(500 + periodAttempt * 250);
   }
 

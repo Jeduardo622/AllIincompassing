@@ -60,6 +60,39 @@ type ClientsFixtureMode = 'pass' | 'query-drift' | 'unexpected-read' | 'mutation
 
 let clientsFixtureMode: ClientsFixtureMode = 'pass';
 
+type AccountFixtureMode = 'pass' | 'missing-surface' | 'enabled-save' | 'unexpected-read' | 'mutation-action';
+
+let accountFixtureMode: AccountFixtureMode = 'pass';
+
+const buildSyntheticAccountHtml = (mode: AccountFixtureMode): string => `<!doctype html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>*{box-sizing:border-box}body{margin:0;max-width:100vw;overflow-x:hidden}input,button{min-height:48px}</style>
+</head><body><main id="root"></main><script>
+${mode === 'unexpected-read' ? "fetch('/rest/v1/profiles').catch(() => {});" : ''}
+${mode === 'mutation-action' ? "fetch('/auth/v1/user', { method: 'PUT' }).catch(() => {});" : ''}
+fetch('/api/runtime-config').then((response) => response.json()).then((runtimeConfig) => {
+  const auth = JSON.parse(localStorage.getItem('auth-storage') || '{}');
+  const authIsValid = auth.user?.role === 'client'
+    && auth.roleAssignments?.includes('client')
+    && typeof (auth.accessToken || auth.access_token) === 'string'
+    && typeof (auth.refreshToken || auth.refresh_token) === 'string';
+  if (!authIsValid || runtimeConfig.supabaseUrl !== location.origin) {
+    throw new Error('synthetic account bootstrap failed');
+  }
+  document.getElementById('root').innerHTML = '<h1>My Account</h1>'
+    + '<h2>Personal Settings</h2><h3>Profile Information</h3>'
+    + '<label for="first_name">First Name</label><input id="first_name">'
+    + '<label for="last_name">Last Name</label><input id="last_name">'
+    + '<label for="title">Title</label><input id="title">'
+    + '<label for="email">Email</label><input id="email">'
+    + '<h3>Password</h3>'
+    + '${mode === 'missing-surface' ? '' : '<button type="button">Change password</button>'}'
+    + '${mode === 'enabled-save'
+      ? '<button type="submit">Save Changes</button>'
+      : '<button type="submit" disabled>Save Changes</button>'}';
+});
+</script></body></html>`;
+
 const buildSyntheticClientsHtml = (mode: ClientsFixtureMode): string => `<!doctype html>
 <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>*{box-sizing:border-box}body{margin:0;max-width:100vw;overflow-x:hidden}button,a{min-width:48px;min-height:48px}.table-wrap{max-width:100%;overflow-x:auto}table{min-width:720px}</style>
@@ -179,6 +212,11 @@ beforeAll(async () => {
     if (request.url === '/clients') {
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       response.end(buildSyntheticClientsHtml(clientsFixtureMode));
+      return;
+    }
+    if (request.url === '/account') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(buildSyntheticAccountHtml(accountFixtureMode));
       return;
     }
     if (request.url === '/observer-runtime-undersized') {
@@ -429,6 +467,104 @@ describe('responsive UI observer browser runtime', () => {
       `--base-url=${baseUrl}`,
       '--route=/clients',
       '--scenario=clients-directory',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('non-read-method');
+    }
+  }, 60_000);
+
+  it('runs the fixed account-settings scenario with only synthetic loopback reads', async () => {
+    accountFixtureMode = 'pass';
+    const requestStart = receivedRequests.length;
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/account',
+      '--scenario=account-settings',
+    ]);
+
+    expect(summary.ok).toBe(true);
+    expect(summary.results).toHaveLength(2);
+    expect(receivedRequests.slice(requestStart)).toEqual(['GET /account', 'GET /account']);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.result).toBe('pass');
+      expect(result.failureCodes).toEqual([]);
+      const evidence = JSON.parse(await readFile(result.evidencePath, 'utf8')) as Record<string, unknown>;
+      expect(evidence.scenarioId).toBe('account-settings');
+      expect(JSON.stringify(evidence)).not.toContain('observer-account@example.test');
+      expect(JSON.stringify(evidence)).not.toContain('observer-account-access-token');
+    }
+  }, 60_000);
+
+  it('fails when the account-settings route surface is incomplete', async () => {
+    accountFixtureMode = 'missing-surface';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/account',
+      '--scenario=account-settings',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('route-surface-missing');
+    }
+  }, 60_000);
+
+  it('fails when the account-settings save action is enabled before edits', async () => {
+    accountFixtureMode = 'enabled-save';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/account',
+      '--scenario=account-settings',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('route-surface-missing');
+    }
+  }, 60_000);
+
+  it('blocks unexpected same-origin reads in the account-settings scenario', async () => {
+    accountFixtureMode = 'unexpected-read';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/account',
+      '--scenario=account-settings',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('unexpected-scenario-request');
+    }
+  }, 60_000);
+
+  it('blocks mutation attempts in the account-settings scenario', async () => {
+    accountFixtureMode = 'mutation-action';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/account',
+      '--scenario=account-settings',
     ]);
 
     expect(summary.ok).toBe(false);

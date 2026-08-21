@@ -18,6 +18,7 @@ export type ObserverArgs = {
 export type ObserverScenario =
   | 'schedule-overlap'
   | 'clients-directory'
+  | 'account-settings'
   | 'payroll-time'
   | 'payroll-time-review';
 
@@ -64,6 +65,7 @@ export const OBSERVER_POLICY: ObserverPolicy = {
 
 const SCHEDULE_OVERLAP_SCENARIO: ObserverScenario = 'schedule-overlap';
 const CLIENTS_DIRECTORY_SCENARIO: ObserverScenario = 'clients-directory';
+const ACCOUNT_SETTINGS_SCENARIO: ObserverScenario = 'account-settings';
 const PAYROLL_TIME_SCENARIO: ObserverScenario = 'payroll-time';
 const PAYROLL_TIME_REVIEW_SCENARIO: ObserverScenario = 'payroll-time-review';
 
@@ -195,6 +197,7 @@ export const parseObserverArgs = (argv: string[]): ObserverArgs => {
       if (
         candidate !== SCHEDULE_OVERLAP_SCENARIO
         && candidate !== CLIENTS_DIRECTORY_SCENARIO
+        && candidate !== ACCOUNT_SETTINGS_SCENARIO
         && candidate !== PAYROLL_TIME_SCENARIO
         && candidate !== PAYROLL_TIME_REVIEW_SCENARIO
       ) {
@@ -231,6 +234,11 @@ export const parseObserverArgs = (argv: string[]): ObserverArgs => {
   if (scenario === CLIENTS_DIRECTORY_SCENARIO) {
     if (routes.length !== 1 || routes[0] !== '/clients') {
       throw new Error('The clients-directory scenario requires exactly one --route=/clients.');
+    }
+  }
+  if (scenario === ACCOUNT_SETTINGS_SCENARIO) {
+    if (routes.length !== 1 || routes[0] !== '/account') {
+      throw new Error('The account-settings scenario requires exactly one --route=/account.');
     }
   }
   if (scenario === PAYROLL_TIME_SCENARIO) {

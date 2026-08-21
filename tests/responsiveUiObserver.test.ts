@@ -243,6 +243,33 @@ describe('responsive-ui-observer contract', () => {
       }
     });
 
+    it('accepts only the fixed synthetic account-settings scenario on /account', () => {
+      expect(parseObserverArgs([
+        'node',
+        'scripts/playwright-responsive-ui-observer.ts',
+        `--base-url=${baseUrl}`,
+        '--route=/account',
+        '--scenario=account-settings',
+      ])).toEqual({
+        baseUrl,
+        routes: ['/account'],
+        scenario: 'account-settings',
+      });
+
+      for (const invalidArgs of [
+        ['--route=/settings', '--scenario=account-settings'],
+        ['--route=/account', '--route=/settings', '--scenario=account-settings'],
+        ['--route=/account', '--scenario=account-settings', '--scenario=account-settings'],
+      ]) {
+        expect(() => parseObserverArgs([
+          'node',
+          'scripts/playwright-responsive-ui-observer.ts',
+          `--base-url=${baseUrl}`,
+          ...invalidArgs,
+        ])).toThrow();
+      }
+    });
+
     it('accepts only the fixed synthetic payroll-time scenario on /time', () => {
       expect(parseObserverArgs([
         'node',
@@ -514,6 +541,27 @@ describe('responsive-ui-observer contract', () => {
   });
 
   describe('buildEvidenceCard', () => {
+    it('records account-settings provenance without exposing synthetic identity data', () => {
+      const evidenceCard = buildEvidenceCard({
+        route: '/account',
+        viewportName: 'mobile',
+        result: 'pass',
+        failures: [],
+        metrics: {
+          horizontalOverflow: false,
+          clippedFixedControls: [],
+          visibleTouchTargets: [{ width: 44, height: 44 }],
+        },
+        screenshotHash: `sha256:${'1'.repeat(64)}`,
+        evidenceHash: `sha256:${'2'.repeat(64)}`,
+        scenario: 'account-settings',
+      });
+
+      expect(evidenceCard).toMatchObject({ scenarioId: 'account-settings' });
+      expect(JSON.stringify(evidenceCard)).not.toContain('observer-account@example.test');
+      expect(JSON.stringify(evidenceCard)).not.toContain('observer-account-access-token');
+    });
+
     it('records fixed synthetic scenario provenance without exposing fixture data', () => {
       const evidenceCard = buildEvidenceCard({
         route: '/schedule',

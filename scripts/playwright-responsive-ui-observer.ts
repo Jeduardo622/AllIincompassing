@@ -90,6 +90,7 @@ const SYNTHETIC_STAFF_DASHBOARD_AUTH_STORAGE_PAYLOAD = buildSyntheticAuthStorage
   'super_admin',
   'observer-local-org',
 );
+const SYNTHETIC_STAFF_REPORTS_AUTH_STORAGE_PAYLOAD = SYNTHETIC_STAFF_DASHBOARD_AUTH_STORAGE_PAYLOAD;
 const SYNTHETIC_STAFF_DASHBOARD_SUPABASE_SESSION_PAYLOAD = {
   access_token: SYNTHETIC_STAFF_DASHBOARD_AUTH_STORAGE_PAYLOAD.access_token,
   refresh_token: SYNTHETIC_STAFF_DASHBOARD_AUTH_STORAGE_PAYLOAD.refresh_token,
@@ -129,6 +130,7 @@ const SYNTHETIC_FEATURE_FLAGS_AUTH_STORAGE_PAYLOAD = {
     email: 'observer-feature-flags@example.test',
   },
 };
+const SYNTHETIC_STAFF_REPORTS_SUPABASE_SESSION_PAYLOAD = SYNTHETIC_STAFF_DASHBOARD_SUPABASE_SESSION_PAYLOAD;
 const CLIENTS_DIRECTORY_SELECT = [
   'id',
   'client_id',
@@ -244,7 +246,7 @@ const hasExactDashboardSearchParams = (
     && expectedEntries.every(([key, value]) => requestUrl.searchParams.get(key) === value);
 };
 
-const isExactStaffDashboardProfileRequest = (requestUrl: URL): boolean => (
+export const isExactStaffDashboardProfileRequest = (requestUrl: URL): boolean => (
   requestUrl.pathname === '/rest/v1/profiles'
   && hasExactDashboardSearchParams(requestUrl, [
     ['select', STAFF_DASHBOARD_PROFILE_SELECT],
@@ -252,13 +254,71 @@ const isExactStaffDashboardProfileRequest = (requestUrl: URL): boolean => (
   ])
 );
 
-const isExactStaffDashboardRoleRequest = (requestUrl: URL): boolean => (
+export const isExactStaffDashboardRoleRequest = (requestUrl: URL): boolean => (
   requestUrl.pathname === '/rest/v1/user_roles'
   && hasExactDashboardSearchParams(requestUrl, [
     ['select', 'is_active,expires_at,roles(name)'],
     ['user_id', 'eq.observer-super-admin'],
   ])
 );
+
+const STAFF_SIDEBAR_MESSAGE_PARTICIPANTS_SELECT = [
+  'thread_id',
+  'last_read_at',
+  'archived_at',
+  'muted_at',
+  'joined_at',
+  'organization_id',
+  'user_id',
+].join(',');
+
+const isExactStaffSidebarMessageParticipantsRequest = (requestUrl: URL): boolean => (
+  requestUrl.pathname === '/rest/v1/message_thread_participants'
+  && hasExactSearchParams(requestUrl, [
+    ['select', STAFF_SIDEBAR_MESSAGE_PARTICIPANTS_SELECT],
+    ['user_id', 'eq.observer-super-admin'],
+    ['organization_id', 'eq.observer-local-org'],
+    ['archived_at', 'is.null'],
+  ])
+);
+
+const REPORTS_SESSIONS_SELECT = [
+  'id',
+  'start_time',
+  'status',
+  'therapist:therapists(id,full_name)',
+  'client:clients(id,full_name)',
+].join(',');
+
+const isExactStaffReportsDropdownRequest = (requestUrl: URL): boolean => (
+  requestUrl.pathname === '/rest/v1/rpc/get_dropdown_data'
+  && [...requestUrl.searchParams.keys()].length === 0
+);
+
+const isExactStaffReportsSessionMetricsRequest = (requestUrl: URL): boolean => (
+  requestUrl.pathname === '/rest/v1/rpc/get_session_metrics'
+  && hasExactSearchParams(requestUrl, [
+    ['p_start_date', '2026-08-01'],
+    ['p_end_date', '2026-08-31'],
+    ['p_therapist_id', 'is.null'],
+    ['p_client_id', 'is.null'],
+  ])
+);
+
+const isExactStaffReportsSessionsRequest = (requestUrl: URL): boolean => {
+  if (requestUrl.pathname !== '/rest/v1/sessions') {
+    return false;
+  }
+
+  const entries = [...requestUrl.searchParams.entries()];
+  return entries.length === 3
+    && entries[0]?.[0] === 'select'
+    && entries[0]?.[1] === REPORTS_SESSIONS_SELECT
+    && entries[1]?.[0] === 'start_time'
+    && entries[1]?.[1] === 'gte.2026-08-01T00:00:00'
+    && entries[2]?.[0] === 'start_time'
+    && entries[2]?.[1] === 'lte.2026-08-31T23:59:59';
+};
 
 const parseExactEmptyObjectBody = (requestBody: string | null): Record<string, never> | null => {
   if (typeof requestBody !== 'string') {
@@ -496,6 +556,99 @@ const buildSyntheticDashboardSessionMetrics = () => ({
   sessions_by_client: { 'Observer Client': 12 },
   sessions_by_day: { Monday: 3, Tuesday: 3, Wednesday: 2, Thursday: 2, Friday: 2 },
 });
+
+const buildSyntheticStaffProfile = () => ({
+  id: 'observer-super-admin',
+  email: 'super_admin@observer.local',
+  role: 'super_admin',
+  organization_id: 'observer-local-org',
+  first_name: 'Observer',
+  last_name: 'Dashboard',
+  full_name: 'Observer Dashboard',
+  phone: null,
+  avatar_url: null,
+  time_zone: 'America/Los_Angeles',
+  preferences: {},
+  is_active: true,
+  last_login_at: null,
+  created_at: '2026-08-21T00:00:00.000Z',
+  updated_at: '2026-08-21T00:00:00.000Z',
+});
+
+const buildSyntheticStaffRoleRows = () => ([{
+  is_active: true,
+  expires_at: null,
+  roles: { name: 'super_admin' },
+}]);
+
+const buildSyntheticReportsDropdownPayload = () => ({
+  therapists: [
+    {
+      id: 'observer-report-therapist-1',
+      full_name: 'Observer Reports Therapist',
+    },
+  ],
+  clients: [
+    {
+      id: 'observer-report-client-1',
+      full_name: 'Observer Reports Client',
+    },
+  ],
+});
+
+const buildSyntheticReportsSessionMetrics = () => ({
+  total_sessions: 3,
+  completed_sessions: 2,
+  cancelled_sessions: 1,
+  no_show_sessions: 0,
+  sessions_by_therapist: { 'Observer Reports Therapist': 3 },
+  sessions_by_client: { 'Observer Reports Client': 3 },
+  sessions_by_day: { Monday: 1, Tuesday: 1, Wednesday: 1 },
+});
+
+const buildSyntheticReportsSessionsPayload = () => ([
+  {
+    id: 'observer-report-session-1',
+    start_time: '2026-08-05T17:00:00.000Z',
+    status: 'completed',
+    therapist: {
+      id: 'observer-report-therapist-1',
+      full_name: 'Observer Reports Therapist',
+    },
+    client: {
+      id: 'observer-report-client-1',
+      full_name: 'Observer Reports Client',
+    },
+  },
+  {
+    id: 'observer-report-session-2',
+    start_time: '2026-08-12T17:00:00.000Z',
+    status: 'completed',
+    therapist: {
+      id: 'observer-report-therapist-1',
+      full_name: 'Observer Reports Therapist',
+    },
+    client: {
+      id: 'observer-report-client-1',
+      full_name: 'Observer Reports Client',
+    },
+  },
+  {
+    id: 'observer-report-session-3',
+    start_time: '2026-08-19T17:00:00.000Z',
+    status: 'cancelled',
+    therapist: {
+      id: 'observer-report-therapist-1',
+      full_name: 'Observer Reports Therapist',
+    },
+    client: {
+      id: 'observer-report-client-1',
+      full_name: 'Observer Reports Client',
+    },
+  },
+]);
+
+const STAFF_REPORTS_LOCAL_DATE = '2026-08-12';
 
 const buildSyntheticPendingSupervisionReviewPackets = () => ([
   {
@@ -801,6 +954,14 @@ const isAllowedScenarioShellRequest = (
       || SCHEDULE_SCENARIO_STATIC_PATH_PATTERN.test(pathname);
   }
 
+  if (parsedArgs.scenario === 'staff-reports') {
+    const { pathname } = requestUrl;
+    return pathname === parsedArgs.routes[0]
+      || pathname === '/@react-refresh'
+      || SCHEDULE_SCENARIO_SHELL_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+      || SCHEDULE_SCENARIO_STATIC_PATH_PATTERN.test(pathname);
+  }
+
   if (parsedArgs.scenario !== 'schedule-overlap') {
     return true;
   }
@@ -929,6 +1090,8 @@ const hasExactFeatureFlagsJsonReadHeaders = (
 
 export const getSyntheticScheduleNow = (): Date => new Date(2026, 7, 10, 9, 0, 0, 0);
 
+export const getSyntheticStaffReportsNow = (): Date => new Date('2026-08-12T16:00:00.000Z');
+
 const buildSyntheticScheduleEntities = (): {
   sessions: Array<Record<string, string>>;
   therapists: Array<Record<string, string>>;
@@ -1016,27 +1179,32 @@ const maybeEnableScenarioContext = async (
     && scenario !== 'account-settings'
     && scenario !== 'feature-flags'
     && scenario !== 'staff-dashboard'
+    && scenario !== 'staff-reports'
   ) {
     return;
   }
 
   if (scenario === 'schedule-overlap') {
     await context.clock.install({ time: getSyntheticScheduleNow() });
+  } else if (scenario === 'staff-reports') {
+    await context.clock.setFixedTime(getSyntheticStaffReportsNow());
   }
   const storagePayload = scenario === 'account-settings'
     ? SYNTHETIC_ACCOUNT_AUTH_STORAGE_PAYLOAD
     : scenario === 'feature-flags'
       ? SYNTHETIC_FEATURE_FLAGS_AUTH_STORAGE_PAYLOAD
-      : scenario === 'staff-dashboard'
-        ? SYNTHETIC_STAFF_DASHBOARD_AUTH_STORAGE_PAYLOAD
+      : scenario === 'staff-dashboard' || scenario === 'staff-reports'
+        ? SYNTHETIC_STAFF_REPORTS_AUTH_STORAGE_PAYLOAD
         : SYNTHETIC_AUTH_STORAGE_PAYLOAD;
-  const supabaseStorageKey = scenario === 'feature-flags' || scenario === 'staff-dashboard'
+  const supabaseStorageKey = scenario === 'feature-flags'
+    || scenario === 'staff-dashboard'
+    || scenario === 'staff-reports'
     ? buildSyntheticSupabaseStorageKey(baseUrl)
     : null;
   const supabaseSessionValue = scenario === 'feature-flags'
     ? JSON.stringify(buildSyntheticSupabaseSessionPayload(SYNTHETIC_FEATURE_FLAGS_AUTH_STORAGE_PAYLOAD))
-    : scenario === 'staff-dashboard'
-      ? JSON.stringify(SYNTHETIC_STAFF_DASHBOARD_SUPABASE_SESSION_PAYLOAD)
+    : scenario === 'staff-dashboard' || scenario === 'staff-reports'
+      ? JSON.stringify(SYNTHETIC_STAFF_REPORTS_SUPABASE_SESSION_PAYLOAD)
       : null;
   await context.addInitScript(([storageKey, storageValue, clearStorage, sessionStorageKey, sessionStorageValue]) => {
     if (clearStorage) {
@@ -1050,10 +1218,68 @@ const maybeEnableScenarioContext = async (
   }, [
     SYNTHETIC_AUTH_STORAGE_KEY,
     JSON.stringify(storagePayload),
-    scenario === 'account-settings' || scenario === 'feature-flags' || scenario === 'staff-dashboard',
+    scenario === 'account-settings'
+      || scenario === 'feature-flags'
+      || scenario === 'staff-dashboard'
+      || scenario === 'staff-reports',
     supabaseStorageKey,
     supabaseSessionValue,
   ]);
+  if (scenario === 'staff-reports') {
+    await context.addInitScript(() => {
+      const nativeFetch = window.fetch.bind(window);
+      window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = input instanceof Request
+          ? input
+          : new Request(input, init);
+        const requestUrl = new URL(request.url, window.location.href);
+        const method = request.method.toUpperCase();
+
+        if (requestUrl.origin !== window.location.origin || method !== 'POST') {
+          return nativeFetch(input, init);
+        }
+
+        if (requestUrl.pathname === '/rest/v1/rpc/get_dropdown_data') {
+          const bodyText = await request.clone().text();
+          if (bodyText === '{}') {
+            return nativeFetch(requestUrl.toString(), {
+              method: 'GET',
+              headers: request.headers,
+            });
+          }
+        }
+
+        if (requestUrl.pathname === '/rest/v1/rpc/get_session_metrics') {
+          const bodyText = await request.clone().text();
+          try {
+            const parsed = JSON.parse(bodyText) as Record<string, unknown>;
+            if (
+              Object.keys(parsed).length === 4
+              && parsed.p_start_date === '2026-08-01'
+              && parsed.p_end_date === '2026-08-31'
+              && parsed.p_therapist_id === null
+              && parsed.p_client_id === null
+            ) {
+              requestUrl.search = new URLSearchParams([
+                ['p_start_date', '2026-08-01'],
+                ['p_end_date', '2026-08-31'],
+                ['p_therapist_id', 'is.null'],
+                ['p_client_id', 'is.null'],
+              ]).toString();
+              return nativeFetch(requestUrl.toString(), {
+                method: 'GET',
+                headers: request.headers,
+              });
+            }
+          } catch {
+            return nativeFetch(input, init);
+          }
+        }
+
+        return nativeFetch(input, init);
+      };
+    });
+  }
 };
 
 const maybeFulfillScenarioRequest = async (
@@ -1388,23 +1614,7 @@ const maybeFulfillScenarioRequest = async (
         await routeHandler.fulfill({
           status: 200,
           contentType: 'application/json; charset=utf-8',
-          body: JSON.stringify({
-            id: 'observer-super-admin',
-            email: 'super_admin@observer.local',
-            role: 'super_admin',
-            organization_id: 'observer-local-org',
-            first_name: 'Observer',
-            last_name: 'Dashboard',
-            full_name: 'Observer Dashboard',
-            phone: null,
-            avatar_url: null,
-            time_zone: 'America/Los_Angeles',
-            preferences: {},
-            is_active: true,
-            last_login_at: null,
-            created_at: '2026-08-21T00:00:00.000Z',
-            updated_at: '2026-08-21T00:00:00.000Z',
-          }),
+          body: JSON.stringify(buildSyntheticStaffProfile()),
         });
         return true;
       }
@@ -1416,11 +1626,7 @@ const maybeFulfillScenarioRequest = async (
         await routeHandler.fulfill({
           status: 200,
           contentType: 'application/json; charset=utf-8',
-          body: JSON.stringify([{
-            is_active: true,
-            expires_at: null,
-            roles: { name: 'super_admin' },
-          }]),
+          body: JSON.stringify(buildSyntheticStaffRoleRows()),
         });
         return true;
       }
@@ -1567,6 +1773,151 @@ const maybeFulfillScenarioRequest = async (
           status: 200,
           contentType: 'application/json; charset=utf-8',
           body: JSON.stringify(buildSyntheticDashboardSessionMetrics()),
+        });
+        return true;
+      }
+
+      return false;
+    }
+
+    if (parsedArgs.scenario === 'staff-reports') {
+      const request = routeHandler.request();
+      const requestUrl = new URL(request.url());
+      const method = request.method().toUpperCase();
+      if (requestUrl.origin !== new URL(parsedArgs.baseUrl).origin) {
+        return false;
+      }
+
+      if (method === 'GET' && requestUrl.pathname === '/api/runtime-config') {
+        await routeHandler.fulfill({
+          status: 200,
+          contentType: 'application/json; charset=utf-8',
+          body: JSON.stringify(buildSyntheticRuntimeConfig(requestUrl.origin)),
+        });
+        return true;
+      }
+
+      if (method === 'GET' && isExactStaffDashboardProfileRequest(requestUrl)) {
+        await routeHandler.fulfill({
+          status: 200,
+          contentType: 'application/json; charset=utf-8',
+          body: JSON.stringify(buildSyntheticStaffProfile()),
+        });
+        return true;
+      }
+
+      if (method === 'GET' && isExactStaffDashboardRoleRequest(requestUrl)) {
+        await routeHandler.fulfill({
+          status: 200,
+          contentType: 'application/json; charset=utf-8',
+          body: JSON.stringify(buildSyntheticStaffRoleRows()),
+        });
+        return true;
+      }
+
+      if (method === 'GET' && isExactStaffSidebarMessageParticipantsRequest(requestUrl)) {
+        await routeHandler.fulfill({
+          status: 200,
+          contentType: 'application/json; charset=utf-8',
+          body: '[]',
+        });
+        return true;
+      }
+
+      if (
+        method === 'POST'
+        && requestUrl.pathname === '/api/payroll-time-events'
+      ) {
+        const parsedBody = parsePayrollTimeReadBody(request.postData());
+        if (!parsedBody || parsedBody.localDate !== STAFF_REPORTS_LOCAL_DATE) {
+          return false;
+        }
+
+        await routeHandler.fulfill({
+          status: 200,
+          contentType: 'application/json; charset=utf-8',
+          body: JSON.stringify({ state: 'feature_disabled' }),
+        });
+        return true;
+      }
+
+      if (
+        method === 'POST'
+        && requestUrl.pathname === '/api/payroll-approvals'
+      ) {
+        const parsedBody = parsePayrollApprovalReadBody(request.postData());
+        if (
+          !parsedBody
+          || parsedBody.action !== 'review_queue'
+          || parsedBody.selectedLocalDate !== STAFF_REPORTS_LOCAL_DATE
+        ) {
+          return false;
+        }
+
+        await routeHandler.fulfill({
+          status: 200,
+          contentType: 'application/json; charset=utf-8',
+          body: JSON.stringify({ state: 'feature_disabled' }),
+        });
+        return true;
+      }
+
+      if (
+        method === 'POST'
+        && requestUrl.pathname === '/api/payroll-administration'
+      ) {
+        const parsedBody = parseDashboardAdministrationReadBody(request.postData());
+        if (!parsedBody || parsedBody.selectedLocalDate !== STAFF_REPORTS_LOCAL_DATE) {
+          return false;
+        }
+
+        await routeHandler.fulfill({
+          status: 200,
+          contentType: 'application/json; charset=utf-8',
+          body: JSON.stringify(buildSyntheticPayrollAdministrationPayload(STAFF_REPORTS_LOCAL_DATE)),
+        });
+        return true;
+      }
+
+      if (
+        method === 'POST'
+        && requestUrl.pathname === '/rest/v1/rpc/get_supervision_session_note_action_count'
+      ) {
+        if (!parseExactEmptyObjectBody(request.postData())) {
+          return false;
+        }
+
+        await routeHandler.fulfill({
+          status: 200,
+          contentType: 'application/json; charset=utf-8',
+          body: '1',
+        });
+        return true;
+      }
+
+      if (method === 'GET' && isExactStaffReportsDropdownRequest(requestUrl)) {
+        await routeHandler.fulfill({
+          status: 200,
+          contentType: 'application/json; charset=utf-8',
+          body: JSON.stringify(buildSyntheticReportsDropdownPayload()),
+        });
+        return true;
+      }
+
+      if (method === 'GET' && isExactStaffReportsSessionMetricsRequest(requestUrl)) {
+        await routeHandler.fulfill({
+          status: 200,
+          contentType: 'application/json; charset=utf-8',
+          body: JSON.stringify(buildSyntheticReportsSessionMetrics()),
+        });
+        return true;
+      }
+
+      if (method === 'GET' && isExactStaffReportsSessionsRequest(requestUrl)) {
+        await routeHandler.fulfill({
+          status: 200,
+          contentType: 'application/json; charset=utf-8',
+          body: JSON.stringify(buildSyntheticReportsSessionsPayload()),
         });
         return true;
       }
@@ -1762,6 +2113,26 @@ const maybeOpenScenarioDialog = async (
             timeout: SETTLE_TIMEOUT_MS,
           }),
         ]);
+      } catch {
+        return { failure: 'route-surface-missing' };
+      }
+    }
+    if (scenario === 'staff-reports') {
+      try {
+        await page.getByRole('heading', { name: 'Reports', exact: true }).waitFor({
+          state: 'visible',
+          timeout: SETTLE_TIMEOUT_MS,
+        });
+        const trigger = page.getByRole('button', { name: 'Generate Report', exact: true });
+        await trigger.waitFor({
+          state: 'visible',
+          timeout: SETTLE_TIMEOUT_MS,
+        });
+        await trigger.click();
+        await page.getByRole('heading', { name: 'Sessions Report', exact: true }).waitFor({
+          state: 'visible',
+          timeout: SETTLE_TIMEOUT_MS,
+        });
       } catch {
         return { failure: 'route-surface-missing' };
       }

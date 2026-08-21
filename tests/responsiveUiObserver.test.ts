@@ -13,6 +13,8 @@ import {
   sanitizeObserverFailures,
 } from '../scripts/lib/responsive-ui-observer';
 import {
+  isExactStaffDashboardProfileRequest,
+  isExactStaffDashboardRoleRequest,
   parsePayrollApprovalReadBody,
   parsePayrollReviewDetailsFixtureResponse,
   parsePayrollReviewQueueFixtureResponse,
@@ -28,6 +30,25 @@ const readOnlyPolicy = {
 } as const;
 
 describe('responsive-ui-observer contract', () => {
+  it('accepts only the exact staff auth bootstrap reads reused by staff-reports', () => {
+    const profileUrl = new URL(
+      '/rest/v1/profiles?select=id%2Cemail%2Crole%2Corganization_id%2Cfirst_name%2Clast_name%2Cfull_name%2Cphone%2Cavatar_url%2Ctime_zone%2Cpreferences%2Cis_active%2Clast_login_at%2Ccreated_at%2Cupdated_at&id=eq.observer-super-admin',
+      baseUrl,
+    );
+    const roleUrl = new URL(
+      '/rest/v1/user_roles?select=is_active%2Cexpires_at%2Croles%28name%29&user_id=eq.observer-super-admin',
+      baseUrl,
+    );
+
+    expect(isExactStaffDashboardProfileRequest(profileUrl)).toBe(true);
+    expect(isExactStaffDashboardRoleRequest(roleUrl)).toBe(true);
+
+    profileUrl.searchParams.set('id', 'eq.observer-other-admin');
+    roleUrl.searchParams.append('organization_id', 'eq.observer-local-org');
+    expect(isExactStaffDashboardProfileRequest(profileUrl)).toBe(false);
+    expect(isExactStaffDashboardRoleRequest(roleUrl)).toBe(false);
+  });
+
   it('accepts only the exact production payroll review read request shapes', () => {
     expect(parsePayrollApprovalReadBody(JSON.stringify({
       action: 'review_queue',
@@ -369,6 +390,34 @@ describe('responsive-ui-observer contract', () => {
         ['--route=/clients', '--scenario=staff-dashboard'],
         ['--route=/', '--route=/schedule', '--scenario=staff-dashboard'],
         ['--route=/', '--scenario=staff-dashboard', '--scenario=staff-dashboard'],
+      ]) {
+        expect(() => parseObserverArgs([
+          'node',
+          'scripts/playwright-responsive-ui-observer.ts',
+          `--base-url=${baseUrl}`,
+          ...invalidArgs,
+        ])).toThrow();
+      }
+    });
+
+    it('accepts only the fixed synthetic staff-reports scenario on the production reports route', () => {
+      expect(parseObserverArgs([
+        'node',
+        'scripts/playwright-responsive-ui-observer.ts',
+        `--base-url=${baseUrl}`,
+        '--route=/reports',
+        '--scenario=staff-reports',
+      ])).toEqual({
+        baseUrl,
+        routes: ['/reports'],
+        scenario: 'staff-reports',
+      });
+
+      for (const invalidArgs of [
+        ['--route=/', '--scenario=staff-reports'],
+        ['--route=/dashboard', '--scenario=staff-reports'],
+        ['--route=/reports', '--route=/schedule', '--scenario=staff-reports'],
+        ['--route=/reports', '--scenario=staff-reports', '--scenario=staff-reports'],
       ]) {
         expect(() => parseObserverArgs([
           'node',
@@ -721,6 +770,28 @@ describe('responsive-ui-observer contract', () => {
       expect(JSON.stringify(evidenceCard)).not.toContain('observer-local-org');
       expect(JSON.stringify(evidenceCard)).not.toContain('supervision_template_id');
       expect(JSON.stringify(evidenceCard)).not.toContain('observer-local-access-token');
+    });
+
+    it('records fixed staff-reports provenance without exposing report payload details', () => {
+      const evidenceCard = buildEvidenceCard({
+        route: '/reports',
+        viewportName: 'desktop',
+        result: 'pass',
+        failures: [],
+        metrics: {
+          horizontalOverflow: false,
+          clippedFixedControls: [],
+          visibleTouchTargets: [{ width: 48, height: 48 }],
+        },
+        screenshotHash: `sha256:${'9'.repeat(64)}`,
+        evidenceHash: `sha256:${'a'.repeat(64)}`,
+        scenario: 'staff-reports',
+      } as any);
+
+      expect(evidenceCard).toMatchObject({ scenarioId: 'staff-reports' });
+      expect(JSON.stringify(evidenceCard)).not.toContain('observer-report-therapist-1');
+      expect(JSON.stringify(evidenceCard)).not.toContain('observer-report-session-1');
+      expect(JSON.stringify(evidenceCard)).not.toContain('observer-dashboard-access-token');
     });
 
     it('derives deterministic route slugs and paths while excluding raw payloads', () => {

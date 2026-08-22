@@ -15,13 +15,14 @@
 - observed defect: after a hard reload the contradictory cached loading/empty state was gone, but the current bundle remained indefinitely on `Loading...`
 - backend evidence: current hosted Edge logs recorded two `OPTIONS` requests to `feature-flags-v2` version 63 ending in `504` after approximately 150 seconds, with no following `POST`
 - deployed-entrypoint evidence: hosted function metadata identifies `supabase/functions/feature-flags-v2/index.ts` as the active entrypoint
+- preview-deployment evidence: the first PR preview retained production-cloned function version 63 because `feature-flags-v2` was absent from `supabase/config.toml`; branch-action logs showed only explicitly registered functions being deployed
 - evidence handling: sanitized status, duration, function slug, version, and contract evidence only; no identity, credential, token, PHI, or raw request payload retained
 
 ## Scope
 
 - task intent: keep the deployed entrypoint dependency-light so allowed and denied CORS preflights return before the heavy application/auth module graph is evaluated
-- files touched: `supabase/functions/feature-flags-v2/index.ts`, `supabase/functions/feature-flags-v2/preflight.ts`, `supabase/functions/feature-flags-v2/runtime.ts`, `supabase/functions/feature-flags-v2/index.test.ts`, and this handoff
-- non-goals: feature-flag behavior, auth capability, tenant scope, database schema, migrations, RLS, grants, shared CORS policy, frontend rendering, workflows, credentials, deployment, or hosted mutation
+- files touched: `supabase/functions/feature-flags-v2/index.ts`, `supabase/functions/feature-flags-v2/preflight.ts`, `supabase/functions/feature-flags-v2/runtime.ts`, `supabase/functions/feature-flags-v2/index.test.ts`, `supabase/config.toml`, `src/tests/security/edgeFunctionConfig.test.ts`, and this handoff
+- non-goals: feature-flag behavior, auth capability, tenant scope, database schema, migrations, RLS, grants, shared CORS policy, frontend rendering, workflows, credentials, production deployment, or hosted mutation
 - stop condition: stop before merge or deployment pending human review; re-route if containment requires any non-goal surface
 - single-purpose diff: yes
 
@@ -30,12 +31,13 @@
 - `index.ts` handles `OPTIONS` before the literal dynamic import of `runtime.ts`
 - `preflight.ts` preserves the function's existing narrow origin allowlist, requested-header behavior, and disallowed-origin `403`
 - `runtime.ts` preserves the prior non-`OPTIONS` GET/POST, request-scoped auth, protected-admin wrapper, and single-organization guards
+- `supabase/config.toml` registers `feature-flags-v2` with `verify_jwt = true` so Supabase PR previews deploy the reviewed branch function instead of retaining the production-cloned version
 - no migration, RLS, grant, shared auth, shared CORS, workflow, or secret surface changed
 
 ## Required Agents
 
-- required sequence: `specification-engineer` -> `software-architect` -> `implementation-engineer` -> `code-review-engineer` -> `test-engineer` -> `security-engineer` -> `performance-engineer` -> `supabase-reviewer`
-- agents used: specification, architecture, implementation, code review, test planning, security, performance, and Supabase review
+- required sequence: `specification-engineer` -> `software-architect` -> `implementation-engineer` -> `code-review-engineer` -> `test-engineer` -> `security-engineer` -> `performance-engineer` -> `supabase-reviewer` -> `devops-engineer`
+- agents used: specification, architecture, implementation, code review, test planning, security, performance, Supabase, and DevOps review
 - reviewer: completed; final re-review passed with no remaining file or line findings
 
 ## Verification Card
@@ -47,6 +49,7 @@
   - `npm run lint`
   - `npm run typecheck`
   - focused Vitest coverage for Feature Flags and route guards
+  - focused preview-deployment configuration contract
   - `npm run test:ci`
   - `npm run ci:verify-coverage`
   - `npm run validate:tenant`
@@ -64,6 +67,9 @@
   - `npm run typecheck`: pass
   - focused Vitest for `SuperAdminFeatureFlags.test.tsx`, `Settings.test.tsx`, and `guards.test.ts`: pass, 32 tests
   - focused Vitest for `src/tests/security/edgeFunctionConfig.test.ts`: pass
+  - preview-deployment config contract before registration: fail as expected because `[functions.feature-flags-v2]` was absent
+  - preview-deployment config contract after registration: pass, 2 tests
+  - widened-diff security, Supabase, DevOps, and code reviews: pass with no findings
   - `npm run test:ci`: fail at the default 4 GB heap with Node out-of-memory after no observed assertion failure
   - `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci`: fail, 5184 passed and 101 skipped with one deterministic failure in `tests/scripts/provision-ci-smoke-bcba.test.ts`
   - isolated rerun of `tests/scripts/provision-ci-smoke-bcba.test.ts`: fail, 1 failed and 21 passed; both the test and subject file match `origin/main`, whose exact-main Linux CI passed
@@ -75,7 +81,8 @@
 - blocked checks:
   - `npm run ci:playwright`: protected hosted persona credentials are not available to this process; no `.env*` file was read
   - `npm run verify:local`: aggregate cannot be green locally because its `test:ci` stage contains the unchanged Windows CRLF-sensitive BCBA provisioning assertion above; exact-head Linux CI remains required
-  - hosted `OPTIONS`, authenticated `GET`/`POST`, wrong-org denial, and Edge log readback: require a human-reviewed merge and deployment of this critical-path change
+  - preview deployed `OPTIONS` and function metadata readback: pending the new exact-head Supabase Preview deployment with the registration stanza
+  - production authenticated `GET`/`POST`, wrong-org denial, and Edge log readback: require a human-reviewed merge and explicit production deployment of this critical-path change
 - result: `pass-with-blocked-checks`
 - residual risk: source, focused tests, Deno graph checks, and the production Edge Runtime bundler support the lazy startup boundary, but only post-deploy hosted preflight latency and authenticated readback can prove the production timeout is resolved
 

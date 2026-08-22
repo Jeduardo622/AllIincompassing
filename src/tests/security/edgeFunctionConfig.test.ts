@@ -5,6 +5,12 @@ import { describe, expect, it } from 'vitest';
 const readToml = (relativePath: string): string => readFileSync(join(process.cwd(), relativePath), 'utf-8');
 
 describe('edge function config', () => {
+  it('registers feature-flags-v2 for preview deployment with JWT verification', () => {
+    const config = readToml(join('supabase', 'config.toml')).replace(/\r\n/g, '\n');
+
+    expect(config).toContain('[functions.feature-flags-v2]\nverify_jwt = true');
+  });
+
   it('enforces platform JWT or explicit project-bound service auth for every edge function', () => {
     const publicNoJwtFunctions = new Set([
       // Public pre-auth endpoints

@@ -3,7 +3,7 @@
 Date: 2026-08-22
 Issue: `WIN-43`
 Status: `incomplete - persistent-persona proof, migration drift, and global cleanup remain`
-Observed production `main`: [`96e349ee2f6e2f121cf6ce1222245e88638a9380`](https://github.com/Jeduardo622/AllIincompassing/commit/96e349ee2f6e2f121cf6ce1222245e88638a9380)
+Observed production `main`: [`242870ce712372997cb69673a9c09229bd3476ff`](https://github.com/Jeduardo622/AllIincompassing/commit/242870ce712372997cb69673a9c09229bd3476ff)
 
 ## Purpose
 
@@ -29,15 +29,15 @@ This handoff records what the evidence-first QA campaign has and has not proven.
 
 | Surface | Status | Evidence |
 | --- | --- | --- |
-| GitHub `main` | Proven | `96e349ee2f6e2f121cf6ce1222245e88638a9380`, produced by owner-merged [PR #1007](https://github.com/Jeduardo622/AllIincompassing/pull/1007) |
-| Required aggregate CI | Proven | [Run 32577951521](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32577951521) succeeded at the observed `main` SHA |
-| Standalone tenant safety | Proven | [Run 32577951688](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32577951688) succeeded at the observed `main` SHA without the former false watchdog termination |
-| Hosted auth and session smoke | Proven | The aggregate run passed auth, session lifecycle, BCBA acceptance, evidence upload, and synthetic-actor cleanup at the observed `main` SHA |
-| Hosted auth verification | Proven | [Run 32577951532](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32577951532) succeeded at the observed `main` SHA |
-| Hosted database checks | Proven | [Run 32577951564](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32577951564) succeeded at the observed `main` SHA |
+| GitHub `main` | Proven | `242870ce712372997cb69673a9c09229bd3476ff`, produced by owner-merged docs-only [PR #1009](https://github.com/Jeduardo622/AllIincompassing/pull/1009) on top of the #1007 repair |
+| Required aggregate CI | Proven | Docs-only [run 32580531617](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32580531617) passed change scope, docs guard, and `ci-gate` at the observed `main` SHA; code gates skipped by policy |
+| Standalone tenant safety | Proven at last code-bearing `main` | [Run 32577951688](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32577951688) succeeded at #1007 merge `96e349ee2f6e2f121cf6ce1222245e88638a9380`; #1009 changed documentation only |
+| Hosted auth and session smoke | Proven at last code-bearing `main` | The #1007 aggregate run passed auth, session lifecycle, BCBA acceptance, evidence upload, and synthetic-actor cleanup; #1009 changed documentation only |
+| Hosted auth verification | Proven | [Run 32580531596](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32580531596) succeeded at the observed `main` SHA |
+| Hosted database checks | Proven | [Run 32580531595](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32580531595) succeeded at the observed `main` SHA |
 | Production availability | Partial | `https://app.allincompassing.ai` returned HTTP 200 on 2026-08-22 after the merge; exact Netlify deploy-to-commit attribution is unavailable because the deploy-list API now returns HTTP 401 |
 | Production Feature Flags preflight | Proven | After explicit owner authorization, only `feature-flags-v2` was deployed from merge `96e349ee2f6e2f121cf6ce1222245e88638a9380` with `verify_jwt=true`. Active version `64` (`ezbr_sha256=af63733901f8c9d0fd8128397f77ef2f6d81a1099e0e5974b52fc2c6d5f4758c`) contains all 13 authorized files with no readback mismatch. Allowed GET and POST preflights returned `204` in 1.38 and 0.88 seconds, denied-origin preflight returned `403` in 0.94 seconds, and unauthenticated GET and POST remained fail-closed at `401` in 0.84 and 0.83 seconds. Sanitized version-64 Edge logs confirmed the new execution path. |
-| Supabase Preview external check | Unresolved | Check run `97043030519` failed because remote migration versions were not found in the local migrations directory; this remains migration-drift risk even though the strict GitHub Actions gates passed |
+| Supabase Preview external check | Unresolved | Check run `97049150499` failed because remote migration versions were not found in the local migrations directory; this remains migration-drift risk even though the strict GitHub Actions gates passed |
 
 ## Owner-Gated Repair Chain
 
@@ -114,6 +114,7 @@ The local responsive observer contains scenarios for schedule overlap, clients d
 | [#1006](https://github.com/Jeduardo622/AllIincompassing/pull/1006) | Merged: Feature Flags responsive scenario |
 | [#1007](https://github.com/Jeduardo622/AllIincompassing/pull/1007) | Owner-merged and explicitly deployed critical repair: Feature Flags preflight startup; exact-main checks and bounded production proof passed at version 64 |
 | [#1008](https://github.com/Jeduardo622/AllIincompassing/pull/1008) | Owner-merged critical repair: tenant-safety watchdog observability; exact-main checks green |
+| [#1009](https://github.com/Jeduardo622/AllIincompassing/pull/1009) | Owner-merged evidence-only matrix at current `main`; post-deployment proof is retained in the follow-up documentation PR |
 
 ## Cleanup Evidence
 

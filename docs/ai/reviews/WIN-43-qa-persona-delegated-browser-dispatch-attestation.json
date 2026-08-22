@@ -3,37 +3,39 @@
   "issue": "WIN-43",
   "reviewMode": "solo-maintainer-owner-attestation",
   "repository": "Jeduardo622/AllIincompassing",
-  "createdAt": "2026-08-22T15:44:57Z",
+  "createdAt": "2026-08-22T17:54:25Z",
   "specialistReviews": {
     "code-review-engineer": {
-      "agentId": "01a02a1f-cfbd-79a1-af45-a7c658c1da2a",
+      "agentId": "01a02a95-85ad-7cb0-b01c-3086f103361c",
       "verdict": "PASS"
     },
     "security-engineer": {
-      "agentId": "01a02a1f-d52c-7bf3-9721-5268b89dd0ea",
+      "agentId": "01a02a8a-7146-7a72-926b-dd79c40b1136",
       "verdict": "PASS"
     },
     "test-engineer": {
-      "agentId": "01a02a1f-d235-79e3-93d9-62edd617ab9b",
+      "agentId": "01a02a8a-72e5-76f2-bff0-41c19a060550",
       "verdict": "PASS"
     },
     "software-architect": {
-      "agentId": "01a02a12-3dd3-7362-80af-20d189998b0a",
+      "agentId": "01a02a8a-6fa2-73c3-a35e-0dc29b583d1e",
       "verdict": "PASS"
     },
     "supabase-reviewer": {
-      "agentId": "01a02a23-64fc-7ff0-a359-a8759c09b8ce",
+      "agentId": "01a02a95-86f4-7460-9a21-218f26da19c1",
       "verdict": "PASS"
     },
     "devops-engineer": {
-      "agentId": "01a02a23-672e-7e12-a74d-67ce2d4eba05",
+      "agentId": "01a02a9a-d4ae-7ac2-b472-46feab2bcd33",
       "verdict": "PASS"
     }
   },
   "invariants": {
-    "browserPluginOnly": true,
+    "ownerSessionDispatchChannels": true,
+    "purposeBuiltConnectorFailClosed": true,
+    "directCliRawApiTokenDispatchForbidden": true,
     "freshOwnerAuthorizationRequired": true,
-    "singleConsumedDispatchClick": true,
+    "singleConsumedDispatchSubmission": true,
     "exactCurrentMainRequired": true,
     "exactHeadCiRequired": true,
     "soleMaintainerTopologyRequired": true,
@@ -51,20 +53,20 @@
     "scripts/lib/playwright-smoke.ts": "72a4ab39ab26e9d569f9f98618f3111c7b55950023861267e69645e7431d4b8d",
     "tests/scripts/provision-persistent-qa-personas.test.ts": "660b358a77c4351144ecccdc6de964e173f9e11faf8bbac0a7b5ee17a518e55a",
     "tests/scripts/playwright-qa-persona-readiness.test.ts": "b57c6f447aab7136f514f20bcc366b88cdbc8c632ff8166826361fc2a35447cb",
-    "tests/workflows/provision-qa-personas.test.ts": "a8d0015b582c8a2bb25bb5864aaa39097f1fcbf4a478a76abbe9e8f329eb71e2",
-    "tests/agentWorkLedgerDelegatedBrowserDispatchPolicy.test.ts": "d654a579fac01a71148d0f9783c5bd58e46d4ddaf40345a061ed6e48855b38bb",
-    "AGENTS.md": "cf4deb9ecb4147707d7ab99162767906edc11bd5c239935c3a4a3b38197a8522",
-    ".agents/skills/route-task/SKILL.md": "e3c25983e67178ec9f80e2547657170200c38d72327b7de0e17c7cdcce8556ab",
-    "docs/ai/cto-lane-contract.md": "1d5ec4ceaca735808a5c9ed7d6a37e455dd048bc13a7195cfd35e1a332fdd072",
-    "docs/ai/high-risk-paths.md": "9fb049bc197d2a1dad5cf80529d79570ee8750fe533a3c3dd584c5660f67020a",
-    "docs/ai/WIN-43-persistent-qa-personas-handoff.md": "b8f339b10c3ab3701710267b2d53441a0004c87cae94d9c5146951f7beb28f0b",
-    "docs/ai/WIN-43-qa-audit-credential-handoff.md": "eb83ea36f44c4c12c0d20cb5e2f32654e855a1328a57538963e32241f32380ee",
+    "tests/workflows/provision-qa-personas.test.ts": "eed7080caa32ab2f3d87d22dc25200875a6449130b5d81476a4a2dad9f970548",
+    "tests/agentWorkLedgerDelegatedBrowserDispatchPolicy.test.ts": "4bad590601be35cbdff8cd7e5b5e46f541006304de20c5e022f1cb1cefbc9fe6",
+    "AGENTS.md": "a81f6ef3efbea76d100314f83446ca29efc5d870b3f4c742962182a3281b9e60",
+    ".agents/skills/route-task/SKILL.md": "f67e91144e4b324961ccea00c435be3e4a61270cb360b2aab237b06a87aa9d54",
+    "docs/ai/cto-lane-contract.md": "544798a4d26c3106eb5dfd4f1b0f26444a84abc55e8c99826777ce27b33c9aaf",
+    "docs/ai/high-risk-paths.md": "068a9c7a2ed41be4f48d77ebbfae83fd6ffca3d312fef16da419cf254f831ff8",
+    "docs/ai/WIN-43-persistent-qa-personas-handoff.md": "3ad23b64fcdb9aa7649e7166b8bf4fea10a43732e08fd6cedb238f1f1e2b9a22",
+    "docs/ai/WIN-43-qa-audit-credential-handoff.md": "8351fce6558239840697baa33506dfe096b0959645e70fefcc52f7af7ee5f7e1",
     "docs/ai/handoffs/WIN-275-stale-edge-secret-cleanup.md": "1d7a864a5a5186eaf0146f8ae1b82e7162baa8e18f2d37c2f84365af294a26d1",
     "docs/ai/handoffs/WIN-275-hosted-advisory-canary.md": "ad006b251c5422d1ff7d1745480c93ec6d6fb5faed4b385075d79719feb883af",
     "docs/ai/reviews/WIN-275-stale-edge-secret-cleanup-attestation.md": "edbe87fd312deedca0dee53097a3c55e1be7793a39ebc1e25abc34a205cdcef2",
     "docs/ai/reviews/WIN-275-hosted-advisory-canary-attestation.md": "1da4faddd0df1bf9b579b8d0f7f5712fad9f5a011ef1c90d53663c768773a31d",
     "docs/ai/reviews/WIN-275-stale-edge-secret-cleanup-solo-maintainer-attestation.json": "e7cdc7f10ee48b9a70f226231451c5ad7a5f9d251db51bc3c939000b02b5306d",
     "docs/ai/reviews/WIN-275-hosted-advisory-canary-solo-maintainer-attestation.json": "e73072441d1998eb731a982e76a8c0c3db47e35a090feeea30ac95dd6a7cc5ce",
-    "docs/ai/reviews/WIN-275-solo-maintainer-attestation.json": "894e38199cedd9c6bb905ac2482e17b8e9175370c31e2f26656141bfe5783810"
+    "docs/ai/reviews/WIN-275-solo-maintainer-attestation.json": "5282de4468216fa53e84d272c3a7c6b2bcbe550c167b81b550b4d253f19f9f21"
   }
 }

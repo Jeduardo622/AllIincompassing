@@ -122,25 +122,25 @@ Autonomous merge is allowed only when live branch protection and required checks
 
 If approval or protection rules require a human, Codex must stop at review-ready closure and report the exact blocker.
 
-Codex must never merge through the solo-maintainer exception and must not dispatch through it except under the narrow delegated browser exceptions below. The repository owner must personally inspect and merge the PR, and any later protected dispatch remains a distinct action using the exact acknowledgement required by the workflow.
+Codex must never merge through the solo-maintainer exception and must not dispatch through it except under the narrow delegated owner-session exceptions below. The repository owner must personally inspect and merge the PR, and any later protected dispatch remains a distinct action using the exact acknowledgement required by the workflow.
 
-### Delegated Browser Dispatch Exceptions
+### Delegated Owner-Session Dispatch Exceptions
 
 The general prohibition above remains the default for all other solo-maintainer merge or dispatch actions.
 
-Delegated browser dispatch allowlist (exactly four literal entries): [`.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`, `.github/workflows/agent-work-ledger-hosted-advisory-canary.yml`, `.github/workflows/agent-work-ledger-pg-cron-residue-recovery.yml`, `.github/workflows/provision-qa-personas.yaml`].
+Delegated owner-session dispatch allowlist (exactly four literal entries): [`.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`, `.github/workflows/agent-work-ledger-hosted-advisory-canary.yml`, `.github/workflows/agent-work-ledger-pg-cron-residue-recovery.yml`, `.github/workflows/provision-qa-personas.yaml`].
 
-The only narrow exceptions are the four exact workflow paths in the allowlist above. After the owner personally inspects and merges the critical PR, the owner may explicitly authorize Codex in the current task to perform exactly one browser click dispatch through the owner's already-authenticated in-app GitHub browser session. Authorization is separate per workflow and requires fresh current-task owner authorization per workflow.
+The only narrow exceptions are the four exact workflow paths in the allowlist above. After the owner personally inspects and merges the critical PR, the owner may explicitly authorize Codex in the current task to perform exactly one dispatch submission through either an owner-authenticated GitHub UI controlled through Browser or Computer Use, including a GitHub Actions page opened from GitHub Desktop, or a purpose-built GitHub connector workflow-dispatch action when that exact capability is available and preserves the owner actor. Authorization is separate per workflow and requires fresh current-task owner authorization per workflow.
 
 The cleanup authorization must bind the exact workflow path, the exact acknowledgement `I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_STALE_EDGE_SECRET_CLEANUP`, the merged WIN-275 PR number, the exact current-main commit SHA, and any workflow-specific immutable inputs. The canary authorization must bind the exact workflow path, the exact acknowledgement `I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_AGENT_WORK_LEDGER_HOSTED_ADVISORY_CANARY`, the merged WIN-275 PR number, the exact current-main commit SHA, and any workflow-specific immutable inputs. The recovery authorization must bind the exact workflow path, acknowledgement `I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_PG_CRON_RESIDUE_RECOVERY`, merged WIN-275 PR number, exact current-main commit SHA, and `expected_pg_cron_oid`.
 
 The QA persona authorization must bind `.github/workflows/provision-qa-personas.yaml`, the exact acknowledgement `I_APPROVE_WIN_43_QA_PERSONA_PROVISIONING`, the merged WIN-43 PR number, the exact current-main commit SHA, and the workflow's immutable inputs. It permits only the fixed eight-persona synthetic bootstrap and does not authorize secret viewing, active `PW_*` rotation, or any unrelated hosted mutation.
 
-Codex must recheck main, PR, required CI, owner identity, sole-maintainer topology, manifest hashes, and visible exact inputs immediately before click. Each workflow must still revalidate immediately before hosted access.
+Codex must recheck main, PR, required CI, owner identity, sole-maintainer topology, manifest hashes, and visible exact inputs immediately before dispatch submission. A connector is unavailable unless it exposes the exact submitted inputs, requires no credential or secret disclosure, and preserves the owner actor for the workflow's own validation. Each workflow must still revalidate immediately before hosted access.
 
-The authorization is one-time, consumed on click, non-transferable, and non-reusable. It is revoked by any drift, missing evidence, navigation/session ambiguity, or failed run. Any rerun needs fresh authorization.
+The authorization is one-time, consumed on dispatch submission, non-transferable, and non-reusable. It is revoked by any drift, missing evidence, navigation/session/tool ambiguity, or failed run. Any rerun needs fresh authorization.
 
-These exceptions are browser-only and solo-maintainer only. They do not permit gh/CLI/API/token dispatch, secret viewing, self-authorization, active mode, gate weakening, or extension to any other workflow. Cleanup and recovery remain zero-residue only with no provider/model calls or retention deletion. The canary remains temporary advisory only, restores disabled first on every terminal path, forbids provider/model calls and retention deletion, and must also end with zero residue. Active mode remains forbidden.
+These exceptions are owner-session-only and solo-maintainer-only. They permit only the owner-authenticated GitHub UI or the purpose-built connector action above; direct gh/CLI/raw API/token dispatch, generic repository-write tools, secret viewing, self-authorization, active mode, gate weakening, and extension to any other workflow remain forbidden. Cleanup and recovery remain zero-residue only with no provider/model calls or retention deletion. The canary remains temporary advisory only, restores disabled first on every terminal path, forbids provider/model calls and retention deletion, and must also end with zero residue. Active mode remains forbidden.
 
 ## Commands
 

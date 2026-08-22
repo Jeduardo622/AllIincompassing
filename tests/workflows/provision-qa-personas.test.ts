@@ -365,6 +365,7 @@ describe('persistent QA persona protected workflow', () => {
       reviewMode?: string;
       repository?: string;
       specialistReviews?: Record<string, { agentId?: string; verdict?: string }>;
+      invariants?: Record<string, boolean>;
       protectedSurfaceHashes?: Record<string, string>;
     };
 
@@ -373,7 +374,14 @@ describe('persistent QA persona protected workflow', () => {
       issue: 'WIN-43',
       reviewMode: 'solo-maintainer-owner-attestation',
       repository: 'Jeduardo622/AllIincompassing',
+      invariants: {
+        ownerSessionDispatchChannels: true,
+        purposeBuiltConnectorFailClosed: true,
+        directCliRawApiTokenDispatchForbidden: true,
+        singleConsumedDispatchSubmission: true,
+      },
     });
+    expect(attestation.invariants).not.toHaveProperty('browserPluginOnly');
     for (const specialist of [
       'code-review-engineer',
       'security-engineer',

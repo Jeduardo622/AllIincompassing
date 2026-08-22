@@ -7,11 +7,11 @@
 - issue: `WIN-43`
 - target organization: `5238e88b-6198-4862-80a2-dbe15bbeabdd`
 
-The provisioning path changes persistent authentication identities and tenant-scoped test data. It must be reviewed and merged before any separate protected dispatch. Codex must not merge this critical slice. After the owner personally inspects and merges the policy PR, the owner may explicitly authorize Codex in the current task to perform exactly one Browser-plugin click dispatch through the owner's already-authenticated in-app GitHub browser session.
+The provisioning path changes persistent authentication identities and tenant-scoped test data. It must be reviewed and merged before any separate protected dispatch. Codex must not merge this critical slice. After the owner personally inspects and merges the policy PR, the owner may explicitly authorize Codex in the current task to perform exactly one dispatch submission through either an owner-authenticated GitHub UI controlled through Browser or Computer Use, including a GitHub Actions page opened from GitHub Desktop, or a purpose-built GitHub connector workflow-dispatch action when that exact capability is available and preserves the owner actor.
 
-Delegated browser dispatch allowlist (exactly four literal entries): [`.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`, `.github/workflows/agent-work-ledger-hosted-advisory-canary.yml`, `.github/workflows/agent-work-ledger-pg-cron-residue-recovery.yml`, `.github/workflows/provision-qa-personas.yaml`].
+Delegated owner-session dispatch allowlist (exactly four literal entries): [`.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`, `.github/workflows/agent-work-ledger-hosted-advisory-canary.yml`, `.github/workflows/agent-work-ledger-pg-cron-residue-recovery.yml`, `.github/workflows/provision-qa-personas.yaml`].
 
-The QA authorization must bind `.github/workflows/provision-qa-personas.yaml`, `I_APPROVE_WIN_43_QA_PERSONA_PROVISIONING`, the merged WIN-43 PR number, the exact current-main commit SHA, and the workflow-specific immutable inputs, including the visible bounded `operation` input. Allowed operations are `verify-readiness` and `provision-empty-namespace`; readiness is the default and provisioning must be selected explicitly. Immediately before click, Codex must recheck current main, the merged PR, required CI, owner identity, sole-maintainer topology, the hash-bound specialist manifest, and the visible exact inputs. Authorization is one-time, consumed on click, and revoked by drift, missing evidence, session ambiguity, or a failed run. A rerun requires fresh current-task authorization. The general prohibition remains for all other solo-maintainer dispatch actions; gh/CLI/API/token dispatch, secret viewing, self-authorization, gate weakening, active `PW_*` rotation, and extension beyond the exact allowlist remain forbidden.
+The QA authorization must bind `.github/workflows/provision-qa-personas.yaml`, `I_APPROVE_WIN_43_QA_PERSONA_PROVISIONING`, the merged WIN-43 PR number, the exact current-main commit SHA, and the workflow-specific immutable inputs, including the visible bounded `operation` input. Allowed operations are `verify-readiness` and `provision-empty-namespace`; readiness is the default and provisioning must be selected explicitly. Immediately before dispatch submission, Codex must recheck current main, the merged PR, required CI, owner identity, sole-maintainer topology, the hash-bound specialist manifest, and the visible exact inputs. A connector is unavailable unless it exposes the exact submitted inputs, requires no credential or secret disclosure, and preserves the owner actor for workflow-side validation. Authorization is one-time, consumed on dispatch submission, and revoked by drift, missing evidence, session/tool ambiguity, or a failed run. A rerun requires fresh current-task authorization. The general prohibition remains for all other solo-maintainer dispatch actions; direct gh/CLI/raw API/token dispatch, generic repository-write tools, secret viewing, self-authorization, gate weakening, active `PW_*` rotation, and extension beyond the exact allowlist remain forbidden.
 
 ## Persona Contract
 
@@ -31,7 +31,7 @@ Steve Job, MJ Menjivar, and every account outside this namespace are reserved an
 ## Post-Merge Activation
 
 1. The repository owner generates eight strong passwords without printing them and sets the sixteen `QA_BOOTSTRAP_*_EMAIL` and `QA_BOOTSTRAP_*_PASSWORD` repository secrets. Email secret values must exactly match the table above.
-2. The owner either dispatches `Provision Persistent QA Personas` personally or gives fresh current-task authorization for exactly one Browser-plugin click dispatch. The visible inputs must be the merged WIN-43 PR number, exact current main SHA, and acknowledgement `I_APPROVE_WIN_43_QA_PERSONA_PROVISIONING`.
+2. The owner either dispatches `Provision Persistent QA Personas` personally or gives fresh current-task authorization for exactly one dispatch submission through the owner-authenticated GitHub UI or an available purpose-built GitHub connector workflow-dispatch action. The visible inputs must be the merged WIN-43 PR number, exact current main SHA, and acknowledgement `I_APPROVE_WIN_43_QA_PERSONA_PROVISIONING`.
 3. The owner verifies the run and downloads `win-43-qa-persona-manifest`. The artifact may contain only role, synthetic email, user id, organization id, and status.
 4. Only after that run succeeds, the owner copies the same bootstrap values into the active `PW_*` secrets. `admin_schedule` is also copied to the legacy `PW_SCHEDULE_*` aliases.
 5. The owner retains all `QA_BOOTSTRAP_*` secrets as the reviewed rollback set and dispatches the credentialed route audit separately. They are deleted only after a later reviewed rotation succeeds and the promoted active credentials pass their audit.
@@ -87,7 +87,7 @@ Stop before mutation if any stable email already exists in Auth, profiles, thera
 - reviewer: independent code and security reviews approved; architecture, test, Supabase, and DevOps reviews completed
 - result: `pass-with-blocked-checks`; no hosted mutation has occurred
 - residual risk: Linux exact-head CI must resolve the Windows-only aggregate ambiguity, and account creation, authentication, exact-role readback, and credentialed route behavior remain unproven until owner-controlled post-merge activation
-- PR handoff: ready for human review; owner merge remains mandatory and any delegated dispatch requires a fresh, one-time, exact-input Browser authorization
+- PR handoff: ready for human review; owner merge remains mandatory and any delegated dispatch requires a fresh, one-time, exact-input owner-session authorization
 
 ## QA Readiness Verification Card (2026-08-20)
 
@@ -103,9 +103,9 @@ Stop before mutation if any stable email already exists in Auth, profiles, thera
 
 ## PR Hygiene
 
-The diff is limited to the one-time provisioner, its owner-gated workflow, contract tests, and this handoff. It does not change migrations, RLS, grants, RPCs, application routes, runtime auth logic, active credentials, or customer data. Human review and owner merge are mandatory; Codex must not merge this critical change and may dispatch only through the exact one-click Browser exception above.
+The diff is limited to the one-time provisioner, its owner-gated workflow, contract tests, and this handoff. It does not change migrations, RLS, grants, RPCs, application routes, runtime auth logic, active credentials, or customer data. Human review and owner merge are mandatory; Codex must not merge this critical change and may dispatch only through the exact one-submission owner-session exception above.
 
-## Delegated Browser Dispatch Policy Verification (2026-08-20)
+## Delegated Owner-Session Dispatch Policy Verification (2026-08-22)
 
 - classification: `high-risk human-reviewed`
 - lane: `critical`

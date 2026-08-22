@@ -32,11 +32,22 @@ const recoveryAttestationPath = path.resolve(
   "docs/ai/reviews/WIN-275-pg-cron-residue-recovery-attestation.md",
 );
 
-const policySources = [
+const currentPolicySources = [
   { label: "AGENTS", text: readFileSync(agentsPath, "utf8") },
   { label: "lane contract", text: readFileSync(laneContractPath, "utf8") },
   { label: "high-risk paths", text: readFileSync(highRiskPathsPath, "utf8") },
   { label: "route-task skill", text: readFileSync(routeTaskSkillPath, "utf8") },
+  {
+    label: "WIN-43 persona handoff",
+    text: readFileSync(qaPersonaHandoffPath, "utf8"),
+  },
+  {
+    label: "WIN-43 audit handoff",
+    text: readFileSync(qaAuditHandoffPath, "utf8"),
+  },
+] as const;
+
+const historicalPolicySources = [
   {
     label: "WIN-275 cleanup handoff",
     text: readFileSync(cleanupHandoffPath, "utf8"),
@@ -52,19 +63,10 @@ const policySources = [
     label: "WIN-275 pg_cron recovery attestation",
     text: readFileSync(recoveryAttestationPath, "utf8"),
   },
-  {
-    label: "WIN-43 persona handoff",
-    text: readFileSync(qaPersonaHandoffPath, "utf8"),
-  },
-  {
-    label: "WIN-43 audit handoff",
-    text: readFileSync(qaAuditHandoffPath, "utf8"),
-  },
 ] as const;
 
-const hostedSafetyPolicySources = policySources.filter(
-  ({ label }) => !label.startsWith("WIN-43"),
-);
+const allPolicySources = [...currentPolicySources, ...historicalPolicySources];
+const hostedSafetyPolicySources = historicalPolicySources;
 
 const cleanupWorkflowPath =
   ".github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml";
@@ -89,7 +91,7 @@ const qaPersonaAcknowledgement =
 const recoveryAcknowledgement =
   "I_ATTEST_SOLO_MAINTAINER_CRITICAL_REVIEW_AND_APPROVE_WIN_275_PG_CRON_RESIDUE_RECOVERY";
 const exactAllowlist =
-  "Delegated browser dispatch allowlist (exactly four literal entries): [`.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`, `.github/workflows/agent-work-ledger-hosted-advisory-canary.yml`, `.github/workflows/agent-work-ledger-pg-cron-residue-recovery.yml`, `.github/workflows/provision-qa-personas.yaml`].";
+  "Delegated owner-session dispatch allowlist (exactly four literal entries): [`.github/workflows/agent-work-ledger-stale-edge-secret-cleanup.yml`, `.github/workflows/agent-work-ledger-hosted-advisory-canary.yml`, `.github/workflows/agent-work-ledger-pg-cron-residue-recovery.yml`, `.github/workflows/provision-qa-personas.yaml`].";
 const delegatedWorkflowPaths = [
   cleanupWorkflowPath,
   canaryWorkflowPath,
@@ -103,7 +105,7 @@ const delegatedAcknowledgements = [
   qaPersonaAcknowledgement,
 ] as const;
 
-describe("delegated browser dispatch policy", () => {
+describe("delegated owner-session dispatch policy", () => {
   it("retains the cleanup workflow's enforceable fail-closed dispatch gates", () => {
     expect(cleanupWorkflow).toContain(cleanupAcknowledgement);
     expect(cleanupWorkflow).toContain(
@@ -243,9 +245,9 @@ describe("delegated browser dispatch policy", () => {
   });
 
   it("encodes the only delegated-dispatch allowlist and exact binding inputs", () => {
-    for (const { label, text } of policySources) {
+    for (const { label, text } of currentPolicySources) {
       expect(
-        text.match(/Delegated browser dispatch allowlist/g) ?? [],
+        text.match(/Delegated owner-session dispatch allowlist/g) ?? [],
         `${label} should define exactly one delegated-dispatch allowlist`,
       ).toHaveLength(1);
       expect(text, `${label} should use the exact four-entry allowlist`).toContain(
@@ -286,34 +288,81 @@ describe("delegated browser dispatch policy", () => {
         `${label} should bind authorization to immutable workflow inputs`,
       ).toMatch(/workflow-specific immutable inputs|immutable inputs/i);
     }
-  });
 
-  it("requires separate one-time browser-only delegation for each workflow with immediate revalidation and fail-closed drift handling", () => {
-    for (const { label, text } of policySources) {
+    for (const { label, text } of historicalPolicySources) {
+      expect(
+        text.match(/Delegated browser dispatch allowlist/g) ?? [],
+        `${label} should retain its historical delegated-dispatch allowlist`,
+      ).toHaveLength(1);
       expect(
         text,
-        `${label} should allow only one browser click through the owner session`,
-      ).toMatch(/browser click dispatch|browser-only|already-authenticated (?:in-app )?GitHub (?:browser )?session/i);
+        `${label} should retain exactly the same four historical workflow paths`,
+      ).toContain(
+        exactAllowlist.replace("owner-session", "browser"),
+      );
+    }
+  });
+
+  it("requires separate one-time owner-session delegation for each workflow with immediate revalidation and fail-closed drift handling", () => {
+    for (const { label, text } of currentPolicySources) {
+      expect(
+        text,
+        `${label} should not retain delegated browser-only wording`,
+      ).not.toMatch(
+        /delegated dispatch[^\n]*Browser authorization|exceptions are browser-only|browser click dispatch/i,
+      );
+      expect(
+        text,
+        `${label} should allow an owner-authenticated GitHub UI dispatch`,
+      ).toMatch(/owner-authenticated GitHub UI/i);
+      expect(
+        text,
+        `${label} should allow a purpose-built GitHub connector only when available and owner-bound`,
+      ).toMatch(/purpose-built GitHub connector workflow-dispatch action/i);
+      expect(
+        text,
+        `${label} should require connector visibility into exact submitted inputs`,
+      ).toMatch(/exposes the exact submitted inputs/i);
+      expect(
+        text,
+        `${label} should forbid connector credential or secret disclosure`,
+      ).toMatch(/requires no credential or secret disclosure/i);
+      expect(
+        text,
+        `${label} should preserve the owner actor for workflow validation`,
+      ).toMatch(/preserves the owner actor/i);
+      expect(
+        text,
+        `${label} should name Browser, Computer Use, and GitHub Desktop UI access`,
+      ).toMatch(/Browser or Computer Use.*GitHub Desktop/i);
       expect(
         text,
         `${label} should require separate current-task owner authorization per workflow`,
       ).toMatch(/current[- ]task/i);
       expect(
         text,
-        `${label} should state one click and separate authorization per workflow`,
-      ).toMatch(/exactly one (?:Browser-plugin )?(?:browser )?click dispatch|one browser click dispatch|separate current-task owner authorization per workflow|fresh current-task owner authorization per workflow/i);
+        `${label} should state exactly one dispatch submission`,
+      ).toMatch(/exactly one dispatch submission/i);
       expect(
         text,
-        `${label} should require immediate revalidation before the click`,
-      ).toMatch(/immediately before click|immediately before hosted access|immediately before dispatch/i);
+        `${label} should require immediate revalidation before dispatch submission`,
+      ).toMatch(/immediately before dispatch submission|immediately before hosted access|immediately before dispatch/i);
       expect(
         text,
         `${label} should require rechecking current main, PR, CI, owner identity, maintainer topology, manifest hashes, and visible exact inputs`,
       ).toMatch(/main\/PR\/required CI\/owner identity\/sole-maintainer topology\/manifest hashes|main, (?:the merged )?PR, required CI, owner identity, sole-maintainer topology, (?:manifest hashes|the hash-bound specialist manifest), and (?:the )?visible exact inputs/i);
       expect(
         text,
-        `${label} should make the authorization one-time and consumed on click`,
-      ).toMatch(/one-time|consumed on click|non-transferable|non-reusable/i);
+        `${label} should make the authorization one-time`,
+      ).toMatch(/authorization is one-time|authorization is separate per workflow and requires fresh current-task owner authorization/i);
+      expect(
+        text,
+        `${label} should consume authorization on dispatch submission`,
+      ).toMatch(/consumed on dispatch submission/i);
+      expect(
+        text,
+        `${label} should require fresh authorization for every rerun`,
+      ).toMatch(/(?:any |a )?reruns? (?:needs|requires?) fresh/i);
       expect(
         text,
         `${label} should revoke the authorization on drift or ambiguity`,
@@ -326,7 +375,7 @@ describe("delegated browser dispatch policy", () => {
   });
 
   it("retains the general prohibition and forbids all broadening vectors", () => {
-    for (const { label, text } of policySources) {
+    for (const { label, text } of allPolicySources) {
       expect(
         text,
         `${label} should preserve the general no-Codex-merge rule`,
@@ -339,8 +388,16 @@ describe("delegated browser dispatch policy", () => {
       ).toMatch(/general prohibition|all other .* dispatch actions|do not remove the general prohibition|no Codex merge or dispatch/i);
       expect(
         text,
-        `${label} should forbid non-browser dispatch methods and self-authorization`,
-      ).toMatch(/forbid gh\/CLI\/API\/token dispatch|secret viewing|self-authorization/i);
+        `${label} should forbid direct CLI/raw API/token dispatch`,
+      ).toMatch(/(?:direct )?gh\/CLI\/(?:raw )?API\/token dispatch/i);
+      expect(
+        text,
+        `${label} should forbid secret viewing`,
+      ).toMatch(/secret viewing/i);
+      expect(
+        text,
+        `${label} should forbid self-authorization`,
+      ).toMatch(/self-authorization/i);
       expect(
         text,
         `${label} should preserve gate weakening and workflow broadening bans`,

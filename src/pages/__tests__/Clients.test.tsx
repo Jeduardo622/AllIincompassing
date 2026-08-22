@@ -241,4 +241,25 @@ describe('Clients page filtering', () => {
     expect(onboardButton).toHaveClass('min-h-11');
     expect(onboardButton).toHaveClass('bg-green-700');
   });
+
+  it('keeps the units summary readable instead of compressing it into a word stack', () => {
+    renderWithProviders(<Clients />);
+
+    expect(screen.getByRole('table', { name: 'Clients' })).toHaveClass('min-w-[72rem]');
+
+    const unitsCell = screen.getByText('3 parent consult units').closest('td');
+    expect(unitsCell).toHaveClass('min-w-[15rem]');
+    expect(unitsCell?.firstElementChild).toHaveClass('whitespace-nowrap');
+  });
+
+  it('keeps visible mobile controls at least 44px tall and client links touch sized', () => {
+    renderWithProviders(<Clients />);
+
+    expect(screen.getByRole('link', { name: 'Active Client' })).toHaveClass('min-h-11', 'min-w-11');
+    expect(screen.getByRole('textbox', { name: 'Search clients' })).toHaveClass('min-h-11');
+    expect(screen.getByRole('combobox', { name: 'Filter clients by email domain' })).toHaveClass('min-h-11');
+    expect(screen.getByRole('combobox', { name: 'Filter clients by service' })).toHaveClass('min-h-11');
+    expect(screen.getByRole('combobox', { name: 'Filter clients by units' })).toHaveClass('min-h-11');
+    expect(screen.getByRole('combobox', { name: 'Filter clients by archive status' })).toHaveClass('min-h-11');
+  });
 });

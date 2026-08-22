@@ -2,7 +2,7 @@
 
 Date: 2026-08-22
 Issue: `WIN-43`
-Status: `incomplete - owner-gated production deployment and persistent-persona proof remain`
+Status: `incomplete - persistent-persona proof, migration drift, and global cleanup remain`
 Observed production `main`: [`96e349ee2f6e2f121cf6ce1222245e88638a9380`](https://github.com/Jeduardo622/AllIincompassing/commit/96e349ee2f6e2f121cf6ce1222245e88638a9380)
 
 ## Purpose
@@ -36,7 +36,7 @@ This handoff records what the evidence-first QA campaign has and has not proven.
 | Hosted auth verification | Proven | [Run 32577951532](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32577951532) succeeded at the observed `main` SHA |
 | Hosted database checks | Proven | [Run 32577951564](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32577951564) succeeded at the observed `main` SHA |
 | Production availability | Partial | `https://app.allincompassing.ai` returned HTTP 200 on 2026-08-22 after the merge; exact Netlify deploy-to-commit attribution is unavailable because the deploy-list API now returns HTTP 401 |
-| Production Feature Flags preflight | Blocked | Production still serves active Edge Function version `63` (`ezbr_sha256=165ca7f8a18106c50a82b2542441308f16053a19785489ff7540f5edeee16fe8`), whose bundle lacks the merged preflight module. Three post-merge `OPTIONS` probes timed out locally; sanitized Edge logs recorded two version-63 504 responses after about 150 seconds and one 502. Production deployment was excluded from PR #1007 and requires explicit owner authorization. |
+| Production Feature Flags preflight | Proven | After explicit owner authorization, only `feature-flags-v2` was deployed from merge `96e349ee2f6e2f121cf6ce1222245e88638a9380` with `verify_jwt=true`. Active version `64` (`ezbr_sha256=af63733901f8c9d0fd8128397f77ef2f6d81a1099e0e5974b52fc2c6d5f4758c`) contains all 13 authorized files with no readback mismatch. Allowed GET and POST preflights returned `204` in 1.38 and 0.88 seconds, denied-origin preflight returned `403` in 0.94 seconds, and unauthenticated GET and POST remained fail-closed at `401` in 0.84 and 0.83 seconds. Sanitized version-64 Edge logs confirmed the new execution path. |
 | Supabase Preview external check | Unresolved | Check run `97043030519` failed because remote migration versions were not found in the local migrations directory; this remains migration-drift risk even though the strict GitHub Actions gates passed |
 
 ## Owner-Gated Repair Chain
@@ -44,9 +44,9 @@ This handoff records what the evidence-first QA campaign has and has not proven.
 | PR | State | Evidence | Required next action |
 | --- | --- | --- | --- |
 | [#1008](https://github.com/Jeduardo622/AllIincompassing/pull/1008) `fix(ci): keep tenant safety progress observable` | Merged | Owner merge commit `e84cb3e559d295ad2cbb2b5a7bafaf7b88a22a1a`; exact-main aggregate [run 32574193897](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32574193897) and standalone tenant-safety [run 32574193896](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32574193896) succeeded | None for this PR; retain post-merge evidence |
-| [#1007](https://github.com/Jeduardo622/AllIincompassing/pull/1007) `fix(edge): short-circuit Feature Flags preflight (WIN-43)` | Merged; production deployment pending | Owner merge commit `96e349ee2f6e2f121cf6ce1222245e88638a9380`; exact-main aggregate [run 32577951521](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32577951521), standalone tenant-safety [run 32577951688](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32577951688), auth verification [run 32577951532](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32577951532), and database pipeline [run 32577951564](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32577951564) succeeded. Hosted production remains version 63 and its `OPTIONS` path still returns 504/502. | Obtain explicit owner authorization for a production-only `feature-flags-v2` deployment bound to this merge, then repeat sanitized preflight and log readback |
+| [#1007](https://github.com/Jeduardo622/AllIincompassing/pull/1007) `fix(edge): short-circuit Feature Flags preflight (WIN-43)` | Merged and deployed | Owner merge commit `96e349ee2f6e2f121cf6ce1222245e88638a9380`; exact-main aggregate [run 32577951521](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32577951521), standalone tenant-safety [run 32577951688](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32577951688), auth verification [run 32577951532](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32577951532), and database pipeline [run 32577951564](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32577951564) succeeded. Explicitly authorized production deployment version `64` matches all 13 source files and passed bounded preflight, fail-closed, and Edge-log checks. | Retain evidence; authenticated Super Admin workflow proof remains part of the separately authorized persona campaign |
 
-Codex did not merge #1008 or #1007 and has not deployed `feature-flags-v2` to production. Passing CI and an owner merge do not authorize a separate hosted mutation.
+Codex did not merge #1008 or #1007. The production-only `feature-flags-v2` deployment occurred only after separate explicit owner authorization and changed no database, secret, workflow, or other function.
 
 ## Persistent Persona Matrix
 
@@ -87,7 +87,7 @@ The local responsive observer contains scenarios for schedule overlap, clients d
 | Dashboard | Partial | Authorized-units and responsive repairs merged; complete role-by-role data and action coverage remains pending |
 | Reports | Partial | Date and touch-target repairs plus responsive scenario merged; full authorized hosted workflow remains pending |
 | Account settings | Partial | Responsive scenario merged; complete persistent-persona behavior remains pending |
-| Super Admin Feature Flags | Blocked | Loading, responsive, and preflight source repairs are merged. Production still runs stale Edge Function version 63; an explicitly authorized deployment and post-deploy proof remain required. |
+| Super Admin Feature Flags | Partial | Loading, responsive, source, production deployment, preflight, denied-origin, and unauthenticated fail-closed proof passed. The authenticated persistent Super Admin workflow remains pending. |
 | Client/guardian family workflow | Pending | No complete current persistent-client browser walkthrough |
 | Messaging and documentation | Pending | No complete current per-persona browser walkthrough |
 | Programs, goals, targets, and assignments | Pending | No complete current role-by-role browser walkthrough |
@@ -112,7 +112,7 @@ The local responsive observer contains scenarios for schedule overlap, clients d
 | [#1004](https://github.com/Jeduardo622/AllIincompassing/pull/1004) | Merged: account responsive observer scenario |
 | [#1005](https://github.com/Jeduardo622/AllIincompassing/pull/1005) | Merged: Feature Flags loading state |
 | [#1006](https://github.com/Jeduardo622/AllIincompassing/pull/1006) | Merged: Feature Flags responsive scenario |
-| [#1007](https://github.com/Jeduardo622/AllIincompassing/pull/1007) | Owner-merged critical repair: Feature Flags preflight startup; exact-main checks green, but the production function remains undeployed at version 63 |
+| [#1007](https://github.com/Jeduardo622/AllIincompassing/pull/1007) | Owner-merged and explicitly deployed critical repair: Feature Flags preflight startup; exact-main checks and bounded production proof passed at version 64 |
 | [#1008](https://github.com/Jeduardo622/AllIincompassing/pull/1008) | Owner-merged critical repair: tenant-safety watchdog observability; exact-main checks green |
 
 ## Cleanup Evidence
@@ -124,13 +124,11 @@ The local responsive observer contains scenarios for schedule overlap, clients d
 
 ## Required Sequence
 
-1. Obtain explicit owner authorization for a production-only `feature-flags-v2` deployment bound to merge `96e349ee2f6e2f121cf6ce1222245e88638a9380`; deploy with `verify_jwt=true` and no other hosted mutation.
-2. Repeat allowed-origin and denied-origin preflight probes, unauthenticated fail-closed probes, and sanitized exact-version Edge log readback after deployment.
-3. The owner may then dispatch `verify-readiness` only with a fresh exact current-main SHA, the eligible merged WIN-43 PR, and the workflow's exact acknowledgement. No authorization is supplied by this document.
-4. If readiness succeeds, execute a separately authorized full persistent-persona workflow audit; the existing readiness workflow proves route entry and denial checks, not complete workflow usability.
-5. Run a final marker-owned hosted zero-residue readback and retain sanitized proof.
-6. Produce the final CTO memo only after the evidence above is complete.
+1. The owner may dispatch `verify-readiness` only with a fresh exact current-main SHA, the eligible merged WIN-43 PR, and the workflow's exact acknowledgement. No authorization is supplied by this document.
+2. If readiness succeeds, execute a separately authorized full persistent-persona workflow audit; the existing readiness workflow proves route entry and denial checks, not complete workflow usability.
+3. Run a final marker-owned hosted zero-residue readback and retain sanitized proof.
+4. Produce the final CTO memo only after the evidence above is complete.
 
 ## Readiness Verdict
 
-The production web release is reachable and strict GitHub Actions gates passed at the observed `main` SHA. The WIN-43 campaign's stronger definition of production usability is **not yet proven**: the merged Feature Flags repair is not deployed to production, exact Netlify deploy attribution is unavailable, current readiness has not run for the eight persistent personas, complete authenticated persona workflows remain incomplete, migration drift remains unresolved, and final global zero-residue proof is pending.
+The production web release is reachable, strict GitHub Actions gates passed at the observed `main` SHA, and the explicitly authorized Feature Flags production repair passed bounded deployment proof. The WIN-43 campaign's stronger definition of production usability is **not yet proven**: exact Netlify deploy attribution is unavailable, current readiness has not run for the eight persistent personas, complete authenticated persona workflows remain incomplete, migration drift remains unresolved, and final global zero-residue proof is pending.

@@ -48,6 +48,9 @@ const SCHEDULE_SCENARIO_SHELL_PREFIXES = [
 ];
 const SCHEDULE_SCENARIO_STATIC_PATH_PATTERN = /\.(?:css|gif|ico|jpe?g|js|map|mjs|png|svg|ttf|webmanifest|webp|woff2?)$/i;
 const SYNTHETIC_AUTH_STORAGE_KEY = 'auth-storage';
+const SYNTHETIC_SUPABASE_ANON_KEY = 'observer-local-anon-key';
+const SYNTHETIC_FEATURE_FLAGS_ACCESS_TOKEN = 'observer-feature-flags-access-token';
+const SYNTHETIC_FEATURE_FLAGS_USER_ID = '00000000-0000-4000-8000-000000000003';
 const SYNTHETIC_AUTH_STORAGE_PAYLOAD = {
   role: 'admin_schedule',
   roleAssignments: ['admin_schedule'],
@@ -77,6 +80,23 @@ const SYNTHETIC_ACCOUNT_AUTH_STORAGE_PAYLOAD = {
     email: 'observer-account@example.test',
     first_name: 'Synthetic',
     last_name: 'Account',
+  },
+};
+const SYNTHETIC_FEATURE_FLAGS_AUTH_STORAGE_PAYLOAD = {
+  role: 'super_admin',
+  roleAssignments: ['super_admin'],
+  accessToken: SYNTHETIC_FEATURE_FLAGS_ACCESS_TOKEN,
+  refreshToken: 'observer-feature-flags-refresh-token',
+  expiresAt: 4_102_444_800_000,
+  access_token: SYNTHETIC_FEATURE_FLAGS_ACCESS_TOKEN,
+  refresh_token: 'observer-feature-flags-refresh-token',
+  expires_at: 4_102_444_800,
+  token_type: 'bearer',
+  user: {
+    id: SYNTHETIC_FEATURE_FLAGS_USER_ID,
+    aud: 'authenticated',
+    role: 'super_admin',
+    email: 'observer-feature-flags@example.test',
   },
 };
 const CLIENTS_DIRECTORY_SELECT = [
@@ -114,6 +134,53 @@ const isExactClientsDirectoryRequest = (requestUrl: URL): boolean => {
   const entries = [...requestUrl.searchParams.entries()];
   return entries.length === expected.size
     && entries.every(([key, value]) => expected.get(key) === value);
+};
+
+const parseFeatureFlagsListBody = (
+  requestBody: string | null,
+): { action: 'list' } | null => {
+  if (typeof requestBody !== 'string') {
+    return null;
+  }
+
+  let parsedBody: unknown;
+  try {
+    parsedBody = JSON.parse(requestBody);
+  } catch {
+    return null;
+  }
+
+  if (!parsedBody || typeof parsedBody !== 'object' || Array.isArray(parsedBody)) {
+    return null;
+  }
+
+  const { action, ...rest } = parsedBody as { action?: unknown; [key: string]: unknown };
+  if (action !== 'list' || Object.keys(rest).length > 0) {
+    return null;
+  }
+
+  return { action: 'list' };
+};
+
+const getFeatureFlagsAction = (requestBody: string | null): string | null => {
+  if (typeof requestBody !== 'string') {
+    return null;
+  }
+
+  let parsedBody: unknown;
+  try {
+    parsedBody = JSON.parse(requestBody);
+  } catch {
+    return null;
+  }
+
+  if (!parsedBody || typeof parsedBody !== 'object' || Array.isArray(parsedBody)) {
+    return null;
+  }
+
+  return typeof (parsedBody as { action?: unknown }).action === 'string'
+    ? (parsedBody as { action: string }).action
+    : null;
 };
 
 type PayrollTimeFixtureMode = 'get_day' | 'mutation-action';
@@ -424,6 +491,14 @@ const isAllowedScenarioShellRequest = (
       || SCHEDULE_SCENARIO_STATIC_PATH_PATTERN.test(pathname);
   }
 
+  if (parsedArgs.scenario === 'feature-flags') {
+    const { pathname } = requestUrl;
+    return pathname === parsedArgs.routes[0]
+      || pathname === '/@react-refresh'
+      || SCHEDULE_SCENARIO_SHELL_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+      || SCHEDULE_SCENARIO_STATIC_PATH_PATTERN.test(pathname);
+  }
+
   if (parsedArgs.scenario === 'payroll-time') {
     return requestUrl.pathname === parsedArgs.routes[0];
   }
@@ -449,9 +524,118 @@ const isAllowedScenarioShellRequest = (
 
 const buildSyntheticRuntimeConfig = (baseOrigin: string) => ({
   supabaseUrl: baseOrigin,
-  supabaseAnonKey: 'observer-local-anon-key',
+  supabaseAnonKey: SYNTHETIC_SUPABASE_ANON_KEY,
   defaultOrganizationId: 'observer-local-org',
 });
+
+const buildSyntheticSupabaseStorageKey = (baseOrigin: string): string =>
+  `sb-${new URL(baseOrigin).hostname.split('.')[0]}-auth-token`;
+
+const buildSyntheticSupabaseSessionPayload = (storagePayload: typeof SYNTHETIC_FEATURE_FLAGS_AUTH_STORAGE_PAYLOAD) => ({
+  access_token: storagePayload.access_token,
+  refresh_token: storagePayload.refresh_token,
+  expires_at: storagePayload.expires_at,
+  expires_in: storagePayload.expires_at - Math.floor(Date.now() / 1000),
+  token_type: storagePayload.token_type,
+  user: storagePayload.user,
+});
+
+const isExactRuntimeConfigRequest = (requestUrl: URL): boolean =>
+  requestUrl.pathname === '/api/runtime-config'
+  && requestUrl.search === '';
+
+const isExactFeatureFlagsFunctionRequest = (requestUrl: URL): boolean =>
+  requestUrl.pathname === '/functions/v1/feature-flags-v2'
+  && requestUrl.search === '';
+
+const FEATURE_FLAGS_PROFILE_SELECT = [
+  'id',
+  'email',
+  'role',
+  'organization_id',
+  'first_name',
+  'last_name',
+  'full_name',
+  'phone',
+  'avatar_url',
+  'time_zone',
+  'preferences',
+  'is_active',
+  'last_login_at',
+  'created_at',
+  'updated_at',
+].join(',');
+
+const hasExactSearchParams = (requestUrl: URL, expected: Map<string, string>): boolean => {
+  const entries = [...requestUrl.searchParams.entries()];
+  return entries.length === expected.size
+    && entries.every(([key, value]) => expected.get(key) === value);
+};
+
+const isExactFeatureFlagsProfileRequest = (requestUrl: URL): boolean =>
+  requestUrl.pathname === '/rest/v1/profiles'
+  && hasExactSearchParams(requestUrl, new Map([
+    ['select', FEATURE_FLAGS_PROFILE_SELECT],
+    ['id', `eq.${SYNTHETIC_FEATURE_FLAGS_USER_ID}`],
+  ]));
+
+const isExactFeatureFlagsRoleRequest = (requestUrl: URL): boolean =>
+  requestUrl.pathname === '/rest/v1/user_roles'
+  && hasExactSearchParams(requestUrl, new Map([
+    ['select', 'is_active,expires_at,roles(name)'],
+    ['user_id', `eq.${SYNTHETIC_FEATURE_FLAGS_USER_ID}`],
+  ]));
+
+const hasExactFeatureFlagsAuthorityHeaders = (
+  requestHeaders: Record<string, string>,
+): boolean => requestHeaders.authorization === `Bearer ${SYNTHETIC_FEATURE_FLAGS_ACCESS_TOKEN}`
+  && requestHeaders.apikey === SYNTHETIC_SUPABASE_ANON_KEY;
+
+const hasExactFeatureFlagsListHeaders = (
+  requestHeaders: Record<string, string>,
+): boolean => requestHeaders.authorization === `Bearer ${SYNTHETIC_FEATURE_FLAGS_ACCESS_TOKEN}`
+  && (requestHeaders.apikey === undefined || requestHeaders.apikey === SYNTHETIC_SUPABASE_ANON_KEY)
+  && requestHeaders['content-type'] === 'application/json';
+
+const parsePayrollAdministrationReadBody = (
+  requestBody: string | null,
+): { action: 'get_administration'; selectedLocalDate: string } | null => {
+  if (typeof requestBody !== 'string') {
+    return null;
+  }
+
+  try {
+    const parsedBody = JSON.parse(requestBody) as Record<string, unknown>;
+    if (
+      parsedBody.action !== 'get_administration'
+      || typeof parsedBody.selectedLocalDate !== 'string'
+      || !/^\d{4}-\d{2}-\d{2}$/.test(parsedBody.selectedLocalDate)
+      || Object.keys(parsedBody).length !== 2
+    ) {
+      return null;
+    }
+    return {
+      action: 'get_administration',
+      selectedLocalDate: parsedBody.selectedLocalDate,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const isExactFeatureFlagsMessageParticipantsRequest = (requestUrl: URL): boolean =>
+  requestUrl.pathname === '/rest/v1/message_thread_participants'
+  && hasExactSearchParams(requestUrl, new Map([
+    ['select', 'thread_id,last_read_at,archived_at,muted_at,joined_at,organization_id,user_id'],
+    ['user_id', `eq.${SYNTHETIC_FEATURE_FLAGS_USER_ID}`],
+    ['organization_id', 'eq.observer-local-org'],
+    ['archived_at', 'is.null'],
+  ]));
+
+const hasExactFeatureFlagsJsonReadHeaders = (
+  requestHeaders: Record<string, string>,
+): boolean => hasExactFeatureFlagsAuthorityHeaders(requestHeaders)
+  && requestHeaders['content-type'] === 'application/json';
 
 export const getSyntheticScheduleNow = (): Date => new Date(2026, 7, 10, 9, 0, 0, 0);
 
@@ -533,12 +717,14 @@ const buildSyntheticClientListPayload = () => ([
 
 const maybeEnableScenarioContext = async (
   context: BrowserContext,
+  baseUrl: string,
   scenario: ObserverScenario | undefined,
 ): Promise<void> => {
   if (
     scenario !== 'schedule-overlap'
     && scenario !== 'clients-directory'
     && scenario !== 'account-settings'
+    && scenario !== 'feature-flags'
   ) {
     return;
   }
@@ -548,17 +734,30 @@ const maybeEnableScenarioContext = async (
   }
   const storagePayload = scenario === 'account-settings'
     ? SYNTHETIC_ACCOUNT_AUTH_STORAGE_PAYLOAD
-    : SYNTHETIC_AUTH_STORAGE_PAYLOAD;
-  await context.addInitScript(([storageKey, storageValue, clearStorage]) => {
+    : scenario === 'feature-flags'
+      ? SYNTHETIC_FEATURE_FLAGS_AUTH_STORAGE_PAYLOAD
+      : SYNTHETIC_AUTH_STORAGE_PAYLOAD;
+  const supabaseStorageKey = scenario === 'feature-flags'
+    ? buildSyntheticSupabaseStorageKey(baseUrl)
+    : null;
+  const supabaseSessionValue = scenario === 'feature-flags'
+    ? JSON.stringify(buildSyntheticSupabaseSessionPayload(SYNTHETIC_FEATURE_FLAGS_AUTH_STORAGE_PAYLOAD))
+    : null;
+  await context.addInitScript(([storageKey, storageValue, clearStorage, sessionStorageKey, sessionStorageValue]) => {
     if (clearStorage) {
       window.localStorage.clear();
       window.sessionStorage.clear();
     }
     window.localStorage.setItem(storageKey, storageValue);
+    if (sessionStorageKey && sessionStorageValue) {
+      window.sessionStorage.setItem(sessionStorageKey, sessionStorageValue);
+    }
   }, [
     SYNTHETIC_AUTH_STORAGE_KEY,
     JSON.stringify(storagePayload),
-    scenario === 'account-settings',
+    scenario === 'account-settings' || scenario === 'feature-flags',
+    supabaseStorageKey,
+    supabaseSessionValue,
   ]);
 };
 
@@ -566,6 +765,198 @@ const maybeFulfillScenarioRequest = async (
   parsedArgs: ObserverArgs,
   routeHandler: Parameters<BrowserContext['route']>[1] extends (arg: infer T) => unknown ? T : never,
 ): Promise<boolean> => {
+  if (parsedArgs.scenario === 'feature-flags') {
+    const request = routeHandler.request();
+    const requestUrl = new URL(request.url());
+    if (requestUrl.origin !== new URL(parsedArgs.baseUrl).origin) {
+      return false;
+    }
+
+    if (request.method().toUpperCase() === 'GET' && isExactRuntimeConfigRequest(requestUrl)) {
+      await routeHandler.fulfill({
+        status: 200,
+        contentType: 'application/json; charset=utf-8',
+        body: JSON.stringify(buildSyntheticRuntimeConfig(requestUrl.origin)),
+      });
+      return true;
+    }
+
+    if (
+      request.method().toUpperCase() === 'GET'
+      && isExactFeatureFlagsProfileRequest(requestUrl)
+      && hasExactFeatureFlagsAuthorityHeaders(request.headers())
+    ) {
+      await routeHandler.fulfill({
+        status: 200,
+        contentType: 'application/json; charset=utf-8',
+        body: JSON.stringify({
+          id: SYNTHETIC_FEATURE_FLAGS_USER_ID,
+          email: 'observer-feature-flags@example.test',
+          role: 'super_admin',
+          organization_id: 'observer-local-org',
+          first_name: 'Synthetic',
+          last_name: 'Observer',
+          full_name: 'Synthetic Observer',
+          phone: null,
+          avatar_url: null,
+          time_zone: 'America/Los_Angeles',
+          preferences: {},
+          is_active: true,
+          last_login_at: '2026-08-21T00:00:00.000Z',
+          created_at: '2026-08-21T00:00:00.000Z',
+          updated_at: '2026-08-21T00:00:00.000Z',
+        }),
+      });
+      return true;
+    }
+
+    if (
+      request.method().toUpperCase() === 'GET'
+      && isExactFeatureFlagsRoleRequest(requestUrl)
+      && hasExactFeatureFlagsAuthorityHeaders(request.headers())
+    ) {
+      await routeHandler.fulfill({
+        status: 200,
+        contentType: 'application/json; charset=utf-8',
+        body: JSON.stringify([{
+          is_active: true,
+          expires_at: null,
+          roles: { name: 'super_admin' },
+        }]),
+      });
+      return true;
+    }
+
+    if (
+      request.method().toUpperCase() === 'POST'
+      && requestUrl.pathname === '/api/payroll-time-events'
+      && requestUrl.search === ''
+      && parsePayrollTimeReadBody(request.postData())
+      && hasExactFeatureFlagsListHeaders(request.headers())
+    ) {
+      await routeHandler.fulfill({
+        status: 200,
+        contentType: 'application/json; charset=utf-8',
+        body: JSON.stringify({ state: 'feature_disabled' }),
+      });
+      return true;
+    }
+
+    if (
+      request.method().toUpperCase() === 'POST'
+      && requestUrl.pathname === '/api/payroll-approvals'
+      && requestUrl.search === ''
+      && parsePayrollApprovalReadBody(request.postData())?.action === 'review_queue'
+      && hasExactFeatureFlagsListHeaders(request.headers())
+    ) {
+      await routeHandler.fulfill({
+        status: 200,
+        contentType: 'application/json; charset=utf-8',
+        body: JSON.stringify({ state: 'feature_disabled' }),
+      });
+      return true;
+    }
+
+    const administrationRead = requestUrl.pathname === '/api/payroll-administration'
+      ? parsePayrollAdministrationReadBody(request.postData())
+      : null;
+    if (
+      request.method().toUpperCase() === 'POST'
+      && requestUrl.search === ''
+      && administrationRead
+      && hasExactFeatureFlagsListHeaders(request.headers())
+    ) {
+      await routeHandler.fulfill({
+        status: 200,
+        contentType: 'application/json; charset=utf-8',
+        body: JSON.stringify({
+          state: 'ok',
+          selectedLocalDate: administrationRead.selectedLocalDate,
+          capabilities: {
+            canConfigureEmployment: false,
+            canResolveExceptions: false,
+            canLockPeriod: false,
+            canReopenPeriod: false,
+            canGeneratePeriods: false,
+            canExportPeriod: false,
+            canViewCompensation: false,
+            canManagePolicyMutations: false,
+          },
+          orgSettings: [],
+          policies: [],
+          employments: [],
+          payGroups: [],
+          generationVersions: [],
+          payPeriods: [],
+          bounds: {
+            orgSettings: 0,
+            policies: 0,
+            employments: 0,
+            payGroups: 0,
+            generationVersions: 0,
+            payPeriods: 0,
+          },
+        }),
+      });
+      return true;
+    }
+
+    if (
+      request.method().toUpperCase() === 'GET'
+      && isExactFeatureFlagsMessageParticipantsRequest(requestUrl)
+      && hasExactFeatureFlagsAuthorityHeaders(request.headers())
+    ) {
+      await routeHandler.fulfill({
+        status: 200,
+        contentType: 'application/json; charset=utf-8',
+        body: '[]',
+      });
+      return true;
+    }
+
+    if (
+      request.method().toUpperCase() === 'POST'
+      && requestUrl.pathname === '/rest/v1/rpc/get_supervision_session_note_action_count'
+      && requestUrl.search === ''
+      && request.postData() === '{}'
+      && hasExactFeatureFlagsJsonReadHeaders(request.headers())
+    ) {
+      await routeHandler.fulfill({
+        status: 200,
+        contentType: 'application/json; charset=utf-8',
+        body: '0',
+      });
+      return true;
+    }
+
+    if (
+      request.method().toUpperCase() === 'POST'
+      && isExactFeatureFlagsFunctionRequest(requestUrl)
+    ) {
+      if (
+        !parseFeatureFlagsListBody(request.postData())
+        || !hasExactFeatureFlagsListHeaders(request.headers())
+      ) {
+        return false;
+      }
+
+      await routeHandler.fulfill({
+        status: 200,
+        contentType: 'application/json; charset=utf-8',
+        body: JSON.stringify({
+          flags: [],
+          organizations: [],
+          organizationFlags: [],
+          organizationPlans: [],
+          plans: [],
+        }),
+      });
+      return true;
+    }
+
+    return false;
+  }
+
   if (parsedArgs.scenario === 'account-settings') {
     const request = routeHandler.request();
     const requestUrl = new URL(request.url());
@@ -1065,6 +1456,58 @@ const collectAccountSettingsMetrics = async (page: Page): Promise<{ metrics: Lay
   return { metrics: await collectLayoutMetrics(page) };
 };
 
+const collectFeatureFlagsMetrics = async (page: Page): Promise<{ metrics: LayoutMetrics; failure?: string }> => {
+  try {
+    await Promise.all([
+      page.getByRole('heading', { name: 'Settings', exact: true, level: 1 })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('button', { name: 'Feature Flags', exact: true })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('heading', { name: 'Super Admin Feature Flags', exact: true, level: 1 })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('heading', { name: 'Organization enrollment locked', exact: true, level: 2 })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('heading', { name: 'Global feature flags', exact: true, level: 2 })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('heading', { name: 'Organization overrides', exact: true, level: 2 })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('button', { name: 'Create flag', exact: true })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByText('No feature flags have been created yet.', { exact: true })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByText(/^No organization records are available yet\./)
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+    ]);
+
+    const featureFlagsTab = page.getByRole('button', { name: 'Feature Flags', exact: true });
+    if ((await featureFlagsTab.getAttribute('aria-current')) !== 'page') {
+      return {
+        metrics: await collectLayoutMetrics(page),
+        failure: 'route-surface-missing',
+      };
+    }
+
+    const loadingIndicators = page.getByText('Loading…', { exact: true });
+    const loadingCount = await loadingIndicators.count();
+    for (let index = 0; index < loadingCount; index += 1) {
+      const indicator = loadingIndicators.nth(index);
+      if (await indicator.isVisible().catch(() => false)) {
+        return {
+          metrics: await collectLayoutMetrics(page),
+          failure: 'route-surface-missing',
+        };
+      }
+    }
+  } catch {
+    return {
+      metrics: await collectLayoutMetrics(page),
+      failure: 'route-surface-missing',
+    };
+  }
+
+  return { metrics: await collectLayoutMetrics(page) };
+};
+
 export const redactPageForCapture = async (page: Page): Promise<void> => {
   await page.addStyleTag({ content: RESPONSIVE_CAPTURE_REDACTION_CSS });
 };
@@ -1095,11 +1538,59 @@ const observeRouteAtViewport = async (
   });
 
   try {
-    await maybeEnableScenarioContext(context, parsedArgs.scenario);
+    await maybeEnableScenarioContext(context, parsedArgs.baseUrl, parsedArgs.scenario);
     await context.route('**/*', async (routeHandler) => {
       const request = routeHandler.request();
       const requestUrl = request.url();
       const method = request.method().toUpperCase();
+      const parsedRequestUrl = new URL(requestUrl);
+
+      if (
+        parsedArgs.scenario === 'feature-flags'
+        && isSameOrigin(requestUrl, baseOrigin)
+        && (
+          (method === 'GET' && parsedRequestUrl.pathname === '/api/runtime-config')
+          || (method === 'POST' && parsedRequestUrl.pathname === '/functions/v1/feature-flags-v2')
+        )
+      ) {
+        if (method === 'GET' && !isExactRuntimeConfigRequest(parsedRequestUrl)) {
+          failures.push('unexpected-scenario-request');
+          await routeHandler.abort('blockedbyclient');
+          return;
+        }
+
+        if (method === 'POST') {
+          const requestBody = request.postData();
+          const featureFlagsAction = getFeatureFlagsAction(requestBody);
+          if (
+            featureFlagsAction === 'list'
+            && (
+              !parseFeatureFlagsListBody(requestBody)
+              || !isExactFeatureFlagsFunctionRequest(parsedRequestUrl)
+              || !hasExactFeatureFlagsListHeaders(request.headers())
+            )
+          ) {
+            failures.push('unexpected-scenario-request');
+            await routeHandler.abort('blockedbyclient');
+            return;
+          }
+        }
+      }
+
+      if (
+        parsedArgs.scenario === 'feature-flags'
+        && isSameOrigin(requestUrl, baseOrigin)
+        && method === 'POST'
+        && parsedRequestUrl.pathname === '/functions/v1/feature-flags-v2'
+      ) {
+        const requestBody = request.postData();
+        const featureFlagsAction = getFeatureFlagsAction(requestBody);
+        if (featureFlagsAction === 'list' && !parseFeatureFlagsListBody(requestBody)) {
+          failures.push('unexpected-scenario-request');
+          await routeHandler.abort('blockedbyclient');
+          return;
+        }
+      }
 
       if (await maybeFulfillScenarioRequest(parsedArgs, routeHandler)) {
         return;
@@ -1117,7 +1608,7 @@ const observeRouteAtViewport = async (
         return;
       }
 
-      if (!isAllowedScenarioShellRequest(parsedArgs, new URL(requestUrl))) {
+      if (!isAllowedScenarioShellRequest(parsedArgs, parsedRequestUrl)) {
         failures.push('unexpected-scenario-request');
         await routeHandler.abort('blockedbyclient');
         return;
@@ -1177,6 +1668,12 @@ const observeRouteAtViewport = async (
         metrics = accountInspection.metrics;
         if (accountInspection.failure) {
           failures.push(accountInspection.failure);
+        }
+      } else if (parsedArgs.scenario === 'feature-flags') {
+        const featureFlagsInspection = await collectFeatureFlagsMetrics(page);
+        metrics = featureFlagsInspection.metrics;
+        if (featureFlagsInspection.failure) {
+          failures.push(featureFlagsInspection.failure);
         }
       } else {
         metrics = await collectLayoutMetrics(page, scenarioResult.dialogId);

@@ -1630,13 +1630,17 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
   }
 
   const tenantJob = tenantJobs["tenant-safety"];
-  const tenantTestSteps = tenantJob?.steps.filter((step) => stepHasExactCommand(step, "npm test")) ?? [];
+  const tenantTestSteps = tenantJob?.steps.filter(
+    (step) => stepHasExactCommand(step, "npm test -- --reporter=verbose"),
+  ) ?? [];
   if (
     tenantTestSteps.length !== 1 ||
     executableLines(tenantTestSteps[0]?.run).length !== 1 ||
     String(tenantTestSteps[0]?.["continue-on-error"] ?? "false").toLowerCase() === "true"
   ) {
-    violations.push("tenant-safety workflow must run `npm test` without masking failures");
+    violations.push(
+      "tenant-safety workflow must run `npm test -- --reporter=verbose` without masking failures",
+    );
   }
   const tenantTestEnvironment = tenantTestSteps[0]?.env ?? {};
   const requiredTenantTestEnvironment = [
@@ -1652,6 +1656,9 @@ export const evaluateSessionDeploySafety = ({ ciWorkflow, tenantWorkflow }) => {
     )
   ) {
     violations.push("tenant-safety workflow must map the required Supabase test environment");
+  }
+  if (String(tenantTestEnvironment.VITEST_HANG_TIMEOUT_MS ?? "").trim() !== "180000") {
+    violations.push("tenant-safety workflow must set VITEST_HANG_TIMEOUT_MS to 180000");
   }
 
   return { violations };

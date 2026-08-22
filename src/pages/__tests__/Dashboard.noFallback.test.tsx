@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DashboardView } from '../Dashboard';
 import { validateBtCorrectionSnapshotResponses } from '../../components/session-notes/BtCorrectionSnapshotFields';
@@ -94,6 +94,29 @@ describe('Dashboard without client fallbacks', () => {
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
     expect(screen.getByText('Active Clients')).toBeInTheDocument();
     expect(screen.getByText('Billing Alerts')).toBeInTheDocument();
+  });
+
+  it('shows only the authoritative combined authorized units total', () => {
+    render(
+      <DashboardView
+        {...baseProps}
+        dashboardData={{
+          ...baseProps.dashboardData,
+          clientMetrics: { total: 10, active: 5, totalUnits: 165676 },
+        }}
+      />,
+    );
+
+    const authorizedUnits = screen.getByRole('region', { name: 'Authorized Units' });
+    expect(within(authorizedUnits).getAllByRole('heading')).toHaveLength(2);
+    expect(within(authorizedUnits).getByRole('heading', { name: 'Total Authorized Units' })).toBeInTheDocument();
+    expect(within(authorizedUnits).getAllByText('165,676')).toHaveLength(1);
+    expect(within(authorizedUnits).getByText(/combined 1:1, supervision, and parent consult units/i)).toBeInTheDocument();
+    expect(within(authorizedUnits).queryByText('1:1 Units')).not.toBeInTheDocument();
+    expect(within(authorizedUnits).queryByText('Supervision Units')).not.toBeInTheDocument();
+    expect(within(authorizedUnits).queryByText('Parent Consult Units')).not.toBeInTheDocument();
+    expect(within(authorizedUnits).queryByRole('progressbar')).not.toBeInTheDocument();
+    expect(authorizedUnits.querySelector('progress, meter, [aria-valuenow]')).not.toBeInTheDocument();
   });
 
   it('shows an empty state when there is no recent documentation or billing activity', () => {

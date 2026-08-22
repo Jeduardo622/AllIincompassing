@@ -7,6 +7,7 @@ import { defineConfig, normalizePath } from "vite";
 const repoRoot = path.dirname(fileURLToPath(import.meta.url));
 const fixtureRoot = path.join(repoRoot, "tests", "fixtures", "responsive-harness");
 const shimRoot = path.join(fixtureRoot, "src", "shims");
+const monitoringShim = path.join(shimRoot, "monitoring.ts");
 
 const moduleRemaps = new Map<string, string>([
   [path.join(repoRoot, "src", "lib", "api.ts"), path.join(shimRoot, "api.ts")],
@@ -18,6 +19,10 @@ const moduleRemaps = new Map<string, string>([
   [path.join(repoRoot, "src", "lib", "supabase.ts"), path.join(shimRoot, "supabase.ts")],
   [path.join(repoRoot, "src", "lib", "agent-work-ledger.ts"), path.join(shimRoot, "agent-work-ledger.ts")],
   [path.join(repoRoot, "src", "lib", "logger", "logger.ts"), path.join(shimRoot, "logger.ts")],
+  [path.join(repoRoot, "src", "lib", "performance.ts"), monitoringShim],
+  [path.join(repoRoot, "src", "lib", "cacheCleanup.ts"), monitoringShim],
+  [path.join(repoRoot, "src", "lib", "queryPerformanceTracker.ts"), monitoringShim],
+  [path.join(repoRoot, "src", "lib", "agentTraceReport.ts"), monitoringShim],
 ].map(([source, target]) => [normalizePath(source), normalizePath(target)]));
 
 const specifierRemaps = new Map<string, string>([
@@ -32,6 +37,10 @@ const specifierRemaps = new Map<string, string>([
   ["../../lib/supabase", path.join(shimRoot, "supabase.ts")],
   ["../../lib/agent-work-ledger", path.join(shimRoot, "agent-work-ledger.ts")],
   ["../lib/logger/logger", path.join(shimRoot, "logger.ts")],
+  ["../lib/performance", monitoringShim],
+  ["../lib/cacheCleanup", monitoringShim],
+  ["../lib/queryPerformanceTracker", monitoringShim],
+  ["../lib/agentTraceReport", monitoringShim],
 ].map(([source, target]) => [source, normalizePath(target)]));
 
 const suffixRemaps: Array<[suffix: string, target: string]> = [
@@ -43,6 +52,10 @@ const suffixRemaps: Array<[suffix: string, target: string]> = [
   ["toast", normalizePath(path.join(shimRoot, "toast.ts"))],
   ["ai", normalizePath(path.join(shimRoot, "ai.ts"))],
   ["logger/logger", normalizePath(path.join(shimRoot, "logger.ts"))],
+  ["performance", normalizePath(monitoringShim)],
+  ["cacheCleanup", normalizePath(monitoringShim)],
+  ["queryPerformanceTracker", normalizePath(monitoringShim)],
+  ["agentTraceReport", normalizePath(monitoringShim)],
 ];
 
 const responsiveHarnessAliases = () => ({

@@ -18,6 +18,8 @@
 - preview-deployment evidence: the first PR preview retained production-cloned function version 63 because `feature-flags-v2` was absent from `supabase/config.toml`; branch-action logs showed only explicitly registered functions being deployed
 - preview-runtime evidence: after registration, preview version 64 contained the branch `index.ts`, `preflight.ts`, and `runtime.ts`, but allowed and denied `OPTIONS` requests still returned no bytes within 10 seconds; a registered control function on the same preview returned `204` in about one second, a missing slug returned `404` in 0.15 seconds, and unauthenticated `GET`/`POST` requests received gateway `401` responses promptly
 - root cause: the deployed `index.ts` exported `handler` but never registered it with `Deno.serve`, so gateway-owned JWT denials worked while worker-owned preflight handling never started
+- repaired-preview evidence: exact preview version 65 (`ezbr_sha256=83c739e9fbfa5da1523f5d785dd94e2e242e3e5c0bf7a583531b7054614889c1`) contains both guarded `Deno.serve(handler)` and the lazy runtime import; allowed `OPTIONS` returned `204` in 0.97 seconds, denied `OPTIONS` returned `403` in 1.07 seconds, and unauthenticated `GET`/`POST` retained gateway `401` responses in under 0.2 seconds
+- repaired-preview log evidence: sanitized Edge readback records the allowed and denied worker executions at 791 ms and 929 ms for the exact function id, with no request body, identity, token, or PHI retained
 - evidence handling: sanitized status, duration, function slug, version, and contract evidence only; no identity, credential, token, PHI, or raw request payload retained
 
 ## Scope
@@ -74,6 +76,9 @@
   - preview-deployment config contract before registration: fail as expected because `[functions.feature-flags-v2]` was absent
   - preview-deployment config contract after registration: pass, 2 tests
   - widened-diff security, Supabase, DevOps, and code reviews: pass with no findings
+  - exact preview version/hash/source readback: pass; version 65, `verify_jwt=true`, deployed `index.ts`, guarded server registration, and lazy runtime import confirmed
+  - exact preview public behavior: pass; allowed `OPTIONS=204`, denied `OPTIONS=403`, and unauthenticated `GET/POST=401`, all prompt
+  - exact preview sanitized Edge log readback: pass; worker-owned preflights completed in 791 ms and 929 ms
   - `npm run test:ci`: fail at the default 4 GB heap with Node out-of-memory after no observed assertion failure
   - `NODE_OPTIONS=--max-old-space-size=8192 npm run test:ci`: fail, 5184 passed and 101 skipped with one deterministic failure in `tests/scripts/provision-ci-smoke-bcba.test.ts`
   - isolated rerun of `tests/scripts/provision-ci-smoke-bcba.test.ts`: fail, 1 failed and 21 passed; both the test and subject file match `origin/main`, whose exact-main Linux CI passed
@@ -85,10 +90,9 @@
 - blocked checks:
   - `npm run ci:playwright`: protected hosted persona credentials are not available to this process; no `.env*` file was read
   - `npm run verify:local`: aggregate cannot be green locally because its `test:ci` stage contains the unchanged Windows CRLF-sensitive BCBA provisioning assertion above; exact-head Linux CI remains required
-  - preview deployed `OPTIONS` and function metadata readback: version 64 branch source was confirmed, but preflight still timed out because the deployed handler was not registered; the next exact-head preview must prove the `Deno.serve` repair
   - production authenticated `GET`/`POST`, wrong-org denial, and Edge log readback: require a human-reviewed merge and explicit production deployment of this critical-path change
 - result: `pass-with-blocked-checks`
-- residual risk: source and focused tests now prove both server registration and the lazy startup boundary, but only the next preview can prove the Edge worker dispatches preflight promptly, and production authenticated readback remains owner-gated
+- residual risk: exact preview evidence proves server registration, lazy startup, CORS allow/deny behavior, and unchanged gateway JWT enforcement; production deployment and authenticated same-org/wrong-org readback remain owner-gated
 
 ## PR Hygiene
 

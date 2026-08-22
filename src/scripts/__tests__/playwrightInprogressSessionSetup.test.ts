@@ -14,15 +14,41 @@ import {
   resolveEligibleTherapistIdsForActor,
   restrictTherapistIdsToActorLinks,
   resolveBrowserScheduleTimeZone,
+  selectAlternativeBookingTarget,
+  shouldProbeAlternativeBookingTarget,
 } from "../../../scripts/lib/playwright-inprogress-session-setup";
 
 const VISIBLE_HOURS = [8, 10, 12, 14, 16] as const;
 
 describe("playwright in-progress session setup", () => {
-  it("rotates away from a shared pair after five distinct-day booking conflicts", () => {
-    expect(shouldRotateBookingTargetPair(409, 4)).toBe(false);
-    expect(shouldRotateBookingTargetPair(409, 5)).toBe(true);
-    expect(shouldRotateBookingTargetPair(502, 5)).toBe(false);
+  it("rotates after five conflicts only when target selection proves a viable alternate", async () => {
+    const unavailableTarget = await selectAlternativeBookingTarget(
+      "selected-pair",
+      new Set(["prior-pair"]),
+      async (excludedPairKeys) => {
+        expect(excludedPairKeys).toEqual(new Set(["prior-pair", "selected-pair"]));
+        throw new Error("Could not find therapist/client/program/goal combination for in-progress session setup.");
+      },
+    );
+    const viableTarget = await selectAlternativeBookingTarget(
+      "selected-pair",
+      new Set(),
+      async () => ({ pairKey: "alternate-pair" }),
+    );
+
+    expect(shouldProbeAlternativeBookingTarget(409, 4, false)).toBe(false);
+    expect(shouldProbeAlternativeBookingTarget(409, 5, false)).toBe(true);
+    expect(shouldProbeAlternativeBookingTarget(409, 5, true)).toBe(false);
+    expect(shouldRotateBookingTargetPair(409, 5, unavailableTarget)).toBe(false);
+    expect(shouldRotateBookingTargetPair(409, 5, viableTarget)).toBe(true);
+    expect(shouldRotateBookingTargetPair(502, 5, viableTarget)).toBe(false);
+    await expect(selectAlternativeBookingTarget(
+      "selected-pair",
+      new Set(),
+      async () => {
+        throw new Error("target selection infrastructure failed");
+      },
+    )).rejects.toThrow("target selection infrastructure failed");
   });
 
   it("wires the conflict budget to break the attempt loop and exclude the stale pair", () => {
@@ -32,7 +58,7 @@ describe("playwright in-progress session setup", () => {
     );
 
     expect(source).toMatch(
-      /if \(shouldRotateBookingTargetPair\(payload\.status, bookingConflictCount\)\)[\s\S]{0,400}?break;/,
+      /alternativeSelected = await selectAlternativeBookingTarget\([\s\S]{0,700}?shouldRotateBookingTargetPair\([\s\S]{0,300}?alternativeSelected\)[\s\S]{0,400}?break;/,
     );
     expect(source).toMatch(
       /if \(payload\?\.status === 409\)[\s\S]{0,500}?excludedPairKeys\.add\(selected\.pairKey\);/,

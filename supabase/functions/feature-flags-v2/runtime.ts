@@ -7,14 +7,18 @@ import {
   handlePreflightRequest,
   resolveRequestOrigin,
 } from "./preflight.ts";
-import { organizationMetadataSchema, type OrganizationMetadata } from "./schema.ts";
+import {
+  type OrganizationMetadata,
+  organizationMetadataSchema,
+} from "./schema.ts";
 
 const SUPABASE_MODULE_SPEC = "npm:@supabase/supabase-js@2.50.0" as const;
 
 type SupabaseModule = typeof import("npm:@supabase/supabase-js@2.50.0");
 type SupabaseClient = import("npm:@supabase/supabase-js@2.50.0").SupabaseClient;
 type UserContext = import("../_shared/auth-middleware.ts").UserContext;
-type AuthMiddlewareOptions = import("../_shared/auth-middleware.ts").AuthMiddlewareOptions;
+type AuthMiddlewareOptions =
+  import("../_shared/auth-middleware.ts").AuthMiddlewareOptions;
 
 type ProtectedRouteFactory = (
   handler: (req: Request, userContext: UserContext) => Promise<Response>,
@@ -43,7 +47,12 @@ const DEFAULT_ORGANIZATION_ID = ((): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 })();
 
-type LogApiAccess = (method: string, path: string, userContext: UserContext | null, status: number) => void;
+type LogApiAccess = (
+  method: string,
+  path: string,
+  userContext: UserContext | null,
+  status: number,
+) => void;
 
 let supabaseModulePromise: Promise<SupabaseModule> | null = null;
 const loadSupabaseModule = () => {
@@ -56,18 +65,20 @@ const loadSupabaseModule = () => {
 let authModulePromise: Promise<AuthModule> | null = null;
 const loadAuthModule = () => {
   if (!authModulePromise) {
-    authModulePromise = import("../_shared/auth-middleware.ts").then(module => {
-      const api = module as {
-        createProtectedRoute: ProtectedRouteFactory;
-        RouteOptions: { admin: AuthMiddlewareOptions };
-        logApiAccess: LogApiAccess;
-      };
-      return {
-        createProtectedRoute: api.createProtectedRoute,
-        RouteOptions: api.RouteOptions,
-        logApiAccess: api.logApiAccess,
-      };
-    });
+    authModulePromise = import("../_shared/auth-middleware.ts").then(
+      (module) => {
+        const api = module as {
+          createProtectedRoute: ProtectedRouteFactory;
+          RouteOptions: { admin: AuthMiddlewareOptions };
+          logApiAccess: LogApiAccess;
+        };
+        return {
+          createProtectedRoute: api.createProtectedRoute,
+          RouteOptions: api.RouteOptions,
+          logApiAccess: api.logApiAccess,
+        };
+      },
+    );
   }
   return authModulePromise;
 };
@@ -75,7 +86,7 @@ const loadAuthModule = () => {
 let databaseModulePromise: Promise<DatabaseModule> | null = null;
 const loadDatabaseModule = () => {
   if (!databaseModulePromise) {
-    databaseModulePromise = import("./_shared/database.ts").then(module => {
+    databaseModulePromise = import("./_shared/database.ts").then((module) => {
       const api = module as unknown as DatabaseModule;
       return {
         configureSupabaseModule: api.configureSupabaseModule,
@@ -126,18 +137,32 @@ const initializeDependencies = (): Promise<InitializedDependencies> => {
   return initializationPromise;
 };
 
-const withCors = (origin: string | null, init: ResponseInit = {}): ResponseInit => ({
+const withCors = (
+  origin: string | null,
+  init: ResponseInit = {},
+): ResponseInit => ({
   ...init,
   headers: { ...(init.headers ?? {}), ...buildRuntimeCorsHeaders(origin) },
 });
 
-const respond = (origin: string | null, status: number, body: Record<string, unknown>) =>
+const respond = (
+  origin: string | null,
+  status: number,
+  body: Record<string, unknown>,
+) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...BASE_CORS_HEADERS, ...buildAdminCorsHeaders(origin), "Content-Type": "application/json" },
+    headers: {
+      ...BASE_CORS_HEADERS,
+      ...buildAdminCorsHeaders(origin),
+      "Content-Type": "application/json",
+    },
   });
 
-const parseJson = async (req: Request, origin: string | null): Promise<unknown> => {
+const parseJson = async (
+  req: Request,
+  origin: string | null,
+): Promise<unknown> => {
   try {
     return await req.json();
   } catch {
@@ -192,9 +217,13 @@ const upsertOrganizationSchema = z.object({
       .trim()
       .max(200)
       .optional()
-      .refine((value: string | null | undefined) => !value || slugPattern.test(value), {
-        message: "Slug may contain only lowercase letters, numbers, and hyphens",
-      }),
+      .refine(
+        (value: string | null | undefined) => !value || slugPattern.test(value),
+        {
+          message:
+            "Slug may contain only lowercase letters, numbers, and hyphens",
+        },
+      ),
     metadata: organizationMetadataSchema.optional(),
   }),
 });
@@ -240,7 +269,9 @@ const sanitizeOrganizationMetadata = (
   if (!result.success) {
     const issue = result.error.issues[0];
     const message = issue?.message ?? "Invalid organization metadata";
-    throw respond(origin, 400, { error: `Invalid organization metadata: ${message}` });
+    throw respond(origin, 400, {
+      error: `Invalid organization metadata: ${message}`,
+    });
   }
 
   return JSON.parse(JSON.stringify(result.data)) as OrganizationMetadata;
@@ -272,15 +303,23 @@ const resolveCallerOrganizationId = async (
   const { data, error } = await adminClient.auth.admin.getUserById(userId);
 
   if (error || !data?.user) {
-    console.error("Failed to load caller metadata for organization sync", { userId, error });
+    console.error("Failed to load caller metadata for organization sync", {
+      userId,
+      error,
+    });
     throw respond(origin, 500, { error: "Unable to load caller metadata" });
   }
 
-  const metadata = data.user.user_metadata as Record<string, unknown> | undefined;
+  const metadata = data.user.user_metadata as
+    | Record<string, unknown>
+    | undefined;
   return extractOrganizationIdFromMetadata(metadata ?? {});
 };
 
-const parseActionPayload = (raw: unknown, origin: string | null): ParsedAction => {
+const parseActionPayload = (
+  raw: unknown,
+  origin: string | null,
+): ParsedAction => {
   if (!raw || typeof raw !== "object") {
     throw respond(origin, 400, { error: "Payload must be an object" });
   }
@@ -364,28 +403,33 @@ export async function handleFeatureFlagAdmin({
         if (!isSuperAdmin) {
           return handleError(403, "Super admin role required");
         }
-        const [flagsRes, orgsRes, orgFlagsRes, plansRes, assignmentsRes] = await Promise.all([
-          db
-            .from("feature_flags")
-            .select("id, flag_key, description, default_enabled, metadata, created_at, updated_at")
-            .order("flag_key", { ascending: true }),
-          db
-            .from("organizations")
-            .select("id, name, slug, metadata, created_at, updated_at")
-            .order("name", { ascending: true, nullsFirst: true }),
-          db
-            .from("organization_feature_flags")
-            .select(
-              "id, organization_id, feature_flag_id, is_enabled, created_at, updated_at, created_by, updated_by",
-            ),
-          db
-            .from("plans")
-            .select("code, name, description, is_active, updated_at")
-            .order("code", { ascending: true }),
-          db
-            .from("organization_plans")
-            .select("organization_id, plan_code, assigned_at, assigned_by, notes"),
-        ]);
+        const [flagsRes, orgsRes, orgFlagsRes, plansRes, assignmentsRes] =
+          await Promise.all([
+            db
+              .from("feature_flags")
+              .select(
+                "id, flag_key, description, default_enabled, metadata, created_at, updated_at",
+              )
+              .order("flag_key", { ascending: true }),
+            db
+              .from("organizations")
+              .select("id, name, slug, metadata, created_at, updated_at")
+              .order("name", { ascending: true, nullsFirst: true }),
+            db
+              .from("organization_feature_flags")
+              .select(
+                "id, organization_id, feature_flag_id, is_enabled, created_at, updated_at, created_by, updated_by",
+              ),
+            db
+              .from("plans")
+              .select("code, name, description, is_active, updated_at")
+              .order("code", { ascending: true }),
+            db
+              .from("organization_plans")
+              .select(
+                "organization_id, plan_code, assigned_at, assigned_by, notes",
+              ),
+          ]);
 
         if (flagsRes.error) {
           console.error("Failed to load feature flags", flagsRes.error);
@@ -398,7 +442,10 @@ export async function handleFeatureFlagAdmin({
         }
 
         if (orgFlagsRes.error) {
-          console.error("Failed to load organization flag overrides", orgFlagsRes.error);
+          console.error(
+            "Failed to load organization flag overrides",
+            orgFlagsRes.error,
+          );
           return handleError(500, "Unable to load organization overrides");
         }
 
@@ -408,7 +455,10 @@ export async function handleFeatureFlagAdmin({
         }
 
         if (assignmentsRes.error) {
-          console.error("Failed to load organization plans", assignmentsRes.error);
+          console.error(
+            "Failed to load organization plans",
+            assignmentsRes.error,
+          );
           return handleError(500, "Unable to load organization plans");
         }
 
@@ -437,13 +487,20 @@ export async function handleFeatureFlagAdmin({
             created_by: actorId,
             updated_by: actorId,
           })
-          .select("id, flag_key, description, default_enabled, metadata, created_at, updated_at")
+          .select(
+            "id, flag_key, description, default_enabled, metadata, created_at, updated_at",
+          )
           .single();
 
         if (insertResult.error) {
           console.error("Failed to create feature flag", insertResult.error);
           const status = insertResult.error.code === "23505" ? 409 : 400;
-          return handleError(status, status === 409 ? "Flag already exists" : "Unable to create feature flag");
+          return handleError(
+            status,
+            status === 409
+              ? "Flag already exists"
+              : "Unable to create feature flag",
+          );
         }
 
         const createdFlag = insertResult.data;
@@ -474,7 +531,9 @@ export async function handleFeatureFlagAdmin({
         const { flagId, enabled } = parsed;
         const existing = await db
           .from("feature_flags")
-          .select("id, flag_key, description, default_enabled, metadata, created_at, updated_at")
+          .select(
+            "id, flag_key, description, default_enabled, metadata, created_at, updated_at",
+          )
           .eq("id", flagId)
           .single();
 
@@ -491,7 +550,9 @@ export async function handleFeatureFlagAdmin({
           .from("feature_flags")
           .update({ default_enabled: enabled, updated_by: actorId })
           .eq("id", flagId)
-          .select("id, flag_key, description, default_enabled, metadata, created_at, updated_at")
+          .select(
+            "id, flag_key, description, default_enabled, metadata, created_at, updated_at",
+          )
           .single();
 
         if (updateResult.error) {
@@ -528,16 +589,26 @@ export async function handleFeatureFlagAdmin({
 
         if (!DEFAULT_ORGANIZATION_ID) {
           console.error("DEFAULT_ORGANIZATION_ID env var is not configured");
-          return handleError(500, "Organization provisioning is not configured");
+          return handleError(
+            500,
+            "Organization provisioning is not configured",
+          );
         }
 
         if (organizationId !== DEFAULT_ORGANIZATION_ID) {
-          return handleError(403, "Only the primary clinic can be updated while single-clinic mode is active");
+          return handleError(
+            403,
+            "Only the primary clinic can be updated while single-clinic mode is active",
+          );
         }
 
         const [orgResult, flagResult] = await Promise.all([
-          db.from("organizations").select("id, name").eq("id", organizationId).single(),
-          db.from("feature_flags").select("id, flag_key, default_enabled").eq("id", flagId).single(),
+          db.from("organizations").select("id, name").eq("id", organizationId)
+            .single(),
+          db.from("feature_flags").select("id, flag_key, default_enabled").eq(
+            "id",
+            flagId,
+          ).single(),
         ]);
 
         if (orgResult.error) {
@@ -554,19 +625,27 @@ export async function handleFeatureFlagAdmin({
           if (status === 404) {
             return handleError(404, "Feature flag not found");
           }
-          console.error("Failed to load feature flag for organization toggle", flagResult.error);
+          console.error(
+            "Failed to load feature flag for organization toggle",
+            flagResult.error,
+          );
           return handleError(500, "Unable to load feature flag");
         }
 
         const existing = await db
           .from("organization_feature_flags")
-          .select("id, is_enabled, created_at, updated_at, created_by, updated_by")
+          .select(
+            "id, is_enabled, created_at, updated_at, created_by, updated_by",
+          )
           .eq("organization_id", organizationId)
           .eq("feature_flag_id", flagId)
           .maybeSingle();
 
         if (existing.error) {
-          console.error("Failed to load organization feature flag", existing.error);
+          console.error(
+            "Failed to load organization feature flag",
+            existing.error,
+          );
           return handleError(500, "Unable to read organization feature flag");
         }
 
@@ -582,8 +661,14 @@ export async function handleFeatureFlagAdmin({
             .single();
 
           if (update.error) {
-            console.error("Failed to update organization feature flag", update.error);
-            return handleError(400, "Unable to update organization feature flag");
+            console.error(
+              "Failed to update organization feature flag",
+              update.error,
+            );
+            return handleError(
+              400,
+              "Unable to update organization feature flag",
+            );
           }
 
           updatedRecord = update.data;
@@ -603,8 +688,14 @@ export async function handleFeatureFlagAdmin({
             .single();
 
           if (insert.error) {
-            console.error("Failed to create organization feature flag", insert.error);
-            return handleError(400, "Unable to create organization feature flag");
+            console.error(
+              "Failed to create organization feature flag",
+              insert.error,
+            );
+            return handleError(
+              400,
+              "Unable to create organization feature flag",
+            );
           }
 
           updatedRecord = insert.data;
@@ -621,7 +712,10 @@ export async function handleFeatureFlagAdmin({
         });
 
         if (audit.error) {
-          console.error("Failed to log organization feature flag change", audit.error);
+          console.error(
+            "Failed to log organization feature flag change",
+            audit.error,
+          );
           return handleError(500, "Unable to persist feature flag audit trail");
         }
 
@@ -637,11 +731,17 @@ export async function handleFeatureFlagAdmin({
 
         if (!DEFAULT_ORGANIZATION_ID) {
           console.error("DEFAULT_ORGANIZATION_ID env var is not configured");
-          return handleError(500, "Organization provisioning is not configured");
+          return handleError(
+            500,
+            "Organization provisioning is not configured",
+          );
         }
 
         if (organizationId !== DEFAULT_ORGANIZATION_ID) {
-          return handleError(403, "Only the primary clinic can be updated while single-clinic mode is active");
+          return handleError(
+            403,
+            "Only the primary clinic can be updated while single-clinic mode is active",
+          );
         }
 
         const orgResult = await db
@@ -655,18 +755,27 @@ export async function handleFeatureFlagAdmin({
           if (status === 404) {
             return handleError(404, "Organization not found");
           }
-          console.error("Failed to load organization for plan update", orgResult.error);
+          console.error(
+            "Failed to load organization for plan update",
+            orgResult.error,
+          );
           return handleError(500, "Unable to load organization");
         }
 
         if (planCode) {
-          const planResult = await db.from("plans").select("code").eq("code", planCode).single();
+          const planResult = await db.from("plans").select("code").eq(
+            "code",
+            planCode,
+          ).single();
           if (planResult.error) {
             const status = planResult.error.code === "PGRST116" ? 404 : 500;
             if (status === 404) {
               return handleError(404, "Plan not found");
             }
-            console.error("Failed to load plan for assignment", planResult.error);
+            console.error(
+              "Failed to load plan for assignment",
+              planResult.error,
+            );
             return handleError(500, "Unable to load plan");
           }
         }
@@ -678,7 +787,10 @@ export async function handleFeatureFlagAdmin({
           .maybeSingle();
 
         if (existing.error) {
-          console.error("Failed to load existing organization plan", existing.error);
+          console.error(
+            "Failed to load existing organization plan",
+            existing.error,
+          );
           return handleError(500, "Unable to load organization plan");
         }
 
@@ -690,7 +802,9 @@ export async function handleFeatureFlagAdmin({
               .from("organization_plans")
               .delete()
               .eq("organization_id", organizationId)
-              .select("organization_id, plan_code, assigned_at, assigned_by, notes")
+              .select(
+                "organization_id, plan_code, assigned_at, assigned_by, notes",
+              )
               .maybeSingle();
 
             if (remove.error) {
@@ -702,9 +816,15 @@ export async function handleFeatureFlagAdmin({
         } else if (existing.data) {
           const update = await db
             .from("organization_plans")
-            .update({ plan_code: planCode, notes: notes ?? existing.data.notes, assigned_by: actorId })
+            .update({
+              plan_code: planCode,
+              notes: notes ?? existing.data.notes,
+              assigned_by: actorId,
+            })
             .eq("organization_id", organizationId)
-            .select("organization_id, plan_code, assigned_at, assigned_by, notes")
+            .select(
+              "organization_id, plan_code, assigned_at, assigned_by, notes",
+            )
             .single();
 
           if (update.error) {
@@ -722,7 +842,9 @@ export async function handleFeatureFlagAdmin({
               assigned_by: actorId,
               notes: notes ?? null,
             })
-            .select("organization_id, plan_code, assigned_at, assigned_by, notes")
+            .select(
+              "organization_id, plan_code, assigned_at, assigned_by, notes",
+            )
             .single();
 
           if (insert.error) {
@@ -758,24 +880,40 @@ export async function handleFeatureFlagAdmin({
             return handleError(403, "Insufficient permissions");
           }
 
-          const callerOrgId = await resolveCallerOrganizationId(actorId, origin, adminClient);
+          const callerOrgId = await resolveCallerOrganizationId(
+            actorId,
+            origin,
+            adminClient,
+          );
           if (callerOrgId) {
-            return handleError(403, "Admins already linked to an organization cannot create additional organizations");
+            return handleError(
+              403,
+              "Admins already linked to an organization cannot create additional organizations",
+            );
           }
         }
 
         const { organization } = parsed;
         const normalizedSlug = normalizeSlug(organization.slug);
-        const sanitizedMetadata = sanitizeOrganizationMetadata(organization.metadata, origin);
+        const sanitizedMetadata = sanitizeOrganizationMetadata(
+          organization.metadata,
+          origin,
+        );
         const metadataProvided = organization.metadata !== undefined;
 
         if (!DEFAULT_ORGANIZATION_ID) {
           console.error("DEFAULT_ORGANIZATION_ID env var is not configured");
-          return handleError(500, "Organization provisioning is not configured");
+          return handleError(
+            500,
+            "Organization provisioning is not configured",
+          );
         }
 
         if (organization.id !== DEFAULT_ORGANIZATION_ID) {
-          return handleError(403, "Only the primary clinic can be updated while single-clinic mode is active");
+          return handleError(
+            403,
+            "Only the primary clinic can be updated while single-clinic mode is active",
+          );
         }
 
         const existing = await db
@@ -827,7 +965,10 @@ export async function handleFeatureFlagAdmin({
 
           if (audit.error) {
             console.error("Failed to log organization update", audit.error);
-            return handleError(500, "Unable to persist feature flag audit trail");
+            return handleError(
+              500,
+              "Unable to persist feature flag audit trail",
+            );
           }
         } else {
           const insert = await db
@@ -862,12 +1003,22 @@ export async function handleFeatureFlagAdmin({
 
           if (audit.error) {
             console.error("Failed to log organization creation", audit.error);
-            return handleError(500, "Unable to persist feature flag audit trail");
+            return handleError(
+              500,
+              "Unable to persist feature flag audit trail",
+            );
           }
         }
 
-        logApiAccess(req.method, ADMIN_PATH, userContext, existing.data ? 200 : 201);
-        return respond(origin, existing.data ? 200 : 201, { organization: record });
+        logApiAccess(
+          req.method,
+          ADMIN_PATH,
+          userContext,
+          existing.data ? 200 : 201,
+        );
+        return respond(origin, existing.data ? 200 : 201, {
+          organization: record,
+        });
       }
 
       default:
@@ -885,19 +1036,34 @@ export async function handleFeatureFlagAdmin({
 
 // Note: default export is the `handler` below to support GET/OPTIONS CORS logic.
 
-export const applyAdminCors = async (response: Response, origin: string | null = null): Promise<Response> => {
+export const applyAdminCors = async (
+  response: Response,
+  origin: string | null = null,
+): Promise<Response> => {
   const headers = new Headers(response.headers);
   const corsHeadersForOrigin = buildAdminCorsHeaders(origin);
-  headers.set("Access-Control-Allow-Origin", corsHeadersForOrigin["Access-Control-Allow-Origin"]);
+  headers.set(
+    "Access-Control-Allow-Origin",
+    corsHeadersForOrigin["Access-Control-Allow-Origin"],
+  );
   headers.set("Vary", "Origin");
   if (!headers.has("Access-Control-Allow-Methods")) {
-    headers.set("Access-Control-Allow-Methods", corsHeadersForOrigin["Access-Control-Allow-Methods"]);
+    headers.set(
+      "Access-Control-Allow-Methods",
+      corsHeadersForOrigin["Access-Control-Allow-Methods"],
+    );
   }
   if (!headers.has("Access-Control-Allow-Headers")) {
-    headers.set("Access-Control-Allow-Headers", corsHeadersForOrigin["Access-Control-Allow-Headers"]);
+    headers.set(
+      "Access-Control-Allow-Headers",
+      corsHeadersForOrigin["Access-Control-Allow-Headers"],
+    );
   }
   if (!headers.has("Access-Control-Max-Age")) {
-    headers.set("Access-Control-Max-Age", corsHeadersForOrigin["Access-Control-Max-Age"]);
+    headers.set(
+      "Access-Control-Max-Age",
+      corsHeadersForOrigin["Access-Control-Max-Age"],
+    );
   }
 
   if (response.status === 204 || response.body === null) {
@@ -920,14 +1086,18 @@ export async function handler(req: Request): Promise<Response> {
     return respond(origin, 403, { error: "Origin not allowed" });
   }
 
-  const { supabaseModule, protectedAdminHandler } = await initializeDependencies();
+  const { supabaseModule, protectedAdminHandler } =
+    await initializeDependencies();
 
   if (req.method === "GET") {
     const authz = req.headers.get("authorization") ?? "";
     if (!authz.toLowerCase().startsWith("bearer ")) {
       return new Response(
         JSON.stringify({ error: "missing_token" }),
-        withCors(origin, { status: 401, headers: { "Content-Type": "application/json" } }),
+        withCors(origin, {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        }),
       );
     }
 
@@ -941,13 +1111,19 @@ export async function handler(req: Request): Promise<Response> {
     if (error || !user) {
       return new Response(
         JSON.stringify({ error: "invalid_token" }),
-        withCors(origin, { status: 401, headers: { "Content-Type": "application/json" } }),
+        withCors(origin, {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        }),
       );
     }
 
     return new Response(
       JSON.stringify({ flags: { newDashboard: true } }),
-      withCors(origin, { status: 200, headers: { "Content-Type": "application/json" } }),
+      withCors(origin, {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
     );
   }
 

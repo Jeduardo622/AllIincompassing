@@ -6,6 +6,7 @@
 - lane: `critical`
 - why: the live Feature Flags route is blocked by a deployed Edge Function `OPTIONS` timeout, and the bounded repair touches the protected `supabase/functions/**` API boundary
 - triggering paths: `supabase/functions/feature-flags-v2/**`
+- final sync base: current `main` at `0fade83c6c60e853ee5ac0a423d73071222c2bae`
 
 ## Live Reproduction
 
@@ -38,6 +39,7 @@
 - `index.ts` registers that handler with `Deno.serve` only when executed as the deployed entrypoint
 - `preflight.ts` preserves the function's static/environment allowlist, requested-header behavior, and disallowed-origin `403`, and reuses the existing shared resolver for the repository's Netlify deploy-preview pattern
 - `runtime.ts` preserves the prior non-`OPTIONS` GET/POST, request-scoped auth, protected-admin wrapper, and single-organization guards
+- `runtime.ts` is canonically formatted by pinned Deno 2.8.3 after the final-main sync; this changes layout only and the focused behavior/type contracts remain green
 - `supabase/config.toml` registers `feature-flags-v2` with `verify_jwt = true` so Supabase PR previews deploy the reviewed branch function instead of retaining the production-cloned version
 - no migration, RLS, grant, shared auth, shared CORS, workflow, or secret surface changed
 
@@ -78,6 +80,7 @@
   - `npm run typecheck`: pass
   - focused Vitest for `SuperAdminFeatureFlags.test.tsx`, `Settings.test.tsx`, and `guards.test.ts`: pass, 32 tests
   - focused Vitest for `src/tests/security/edgeFunctionConfig.test.ts`: pass
+  - final-main sync rerun: Deno tests `6/6`, Deno type/format checks, focused Vitest `34/34`, policy, lint, typecheck, tenant validation, build, and `git diff --check` pass
   - preview-deployment config contract before registration: fail as expected because `[functions.feature-flags-v2]` was absent
   - preview-deployment config contract after registration: pass, 2 tests
   - widened-diff security, Supabase, DevOps, and code reviews: pass with no findings
@@ -102,6 +105,7 @@
 ## PR Hygiene
 
 - branch-ready: yes, `codex/fix-feature-flags-preflight-startup`
+- final-main sync: conflict-free merge of `0fade83c6c60e853ee5ac0a423d73071222c2bae`; the PR diff remains the same seven intended files
 - linear-ready: yes, tracked under `WIN-43`
 - protected-path drift: expected and contained to `supabase/functions/feature-flags-v2/**`
 - unrelated changes: none
@@ -112,4 +116,4 @@
 
 ## Handoff Summary
 
-Hosted Edge logs traced the unusable Feature Flags route to two 150-second `OPTIONS` timeouts in the deployed `feature-flags-v2` function. The first exact preview proved that a lightweight exported handler was insufficient because the deployed entrypoint never registered it with `Deno.serve`; same-preview gateway and control-function probes isolated that bootstrap gap. A later preview redeploy exposed a second deterministic defect: the function-local origin check rejected the repository's reviewed Netlify deploy-preview pattern unless optional branch environment configuration happened to include it. The bounded follow-up reuses the existing shared resolver without changing shared policy. Focused Deno, policy, lint, typecheck, tenant, build, and prior coverage and tier-0 route checks pass; fresh exact-head preview and CI evidence are pending. This critical change requires human review before merge or deployment.
+Hosted Edge logs traced the unusable Feature Flags route to two 150-second `OPTIONS` timeouts in the deployed `feature-flags-v2` function. The first exact preview proved that a lightweight exported handler was insufficient because the deployed entrypoint never registered it with `Deno.serve`; same-preview gateway and control-function probes isolated that bootstrap gap. A later preview redeploy exposed a second deterministic defect: the function-local origin check rejected the repository's reviewed Netlify deploy-preview pattern unless optional branch environment configuration happened to include it. The bounded follow-up reuses the existing shared resolver without changing shared policy. The branch is synced to final campaign `main`, and focused Deno, policy, lint, typecheck, tenant, build, and prior coverage and tier-0 route checks pass; fresh exact-head preview and CI evidence are pending. This critical change requires human review before merge or deployment.

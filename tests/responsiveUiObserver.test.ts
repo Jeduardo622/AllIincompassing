@@ -13,6 +13,7 @@ import {
   sanitizeObserverFailures,
 } from '../scripts/lib/responsive-ui-observer';
 import {
+  OBSERVER_TIMING_DEFAULTS,
   isExactStaffDashboardProfileRequest,
   isExactStaffDashboardRoleRequest,
   parsePayrollApprovalReadBody,
@@ -178,6 +179,7 @@ describe('responsive-ui-observer contract', () => {
     );
 
     expect(source).not.toMatch(/dotenv|load-playwright-env|storageState|recordHar|recordVideo|tracing/i);
+    expect(source).not.toMatch(/setDefaultTimeout|setDefaultNavigationTimeout/);
     expect(source).not.toMatch(/https:\/\//i);
     expect(source).toContain("chromium.launch({ headless: true })");
     expect(source).toContain("serviceWorkers: 'block'");
@@ -191,6 +193,14 @@ describe('responsive-ui-observer contract', () => {
       { name: 'desktop', width: 1440, height: 900 },
       { name: 'mobile', width: 390, height: 844 },
     ]);
+  });
+
+  it('keeps the production observer timing defaults unchanged', () => {
+    expect(OBSERVER_TIMING_DEFAULTS).toEqual({
+      navigationTimeoutMs: 15_000,
+      settleTimeoutMs: 5_000,
+      extraSettleMs: 250,
+    });
   });
 
   describe('parseObserverArgs', () => {

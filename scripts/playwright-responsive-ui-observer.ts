@@ -19,9 +19,11 @@ import {
 } from './lib/responsive-ui-observer';
 
 const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-const NAVIGATION_TIMEOUT_MS = 15_000;
-const SETTLE_TIMEOUT_MS = 5_000;
-const EXTRA_SETTLE_MS = 250;
+export const OBSERVER_TIMING_DEFAULTS = {
+  navigationTimeoutMs: 15_000,
+  settleTimeoutMs: 5_000,
+  extraSettleMs: 250,
+} as const;
 const INTERACTIVE_CONTROL_SELECTOR = [
   'button',
   'a[href]',
@@ -866,6 +868,16 @@ type ObserverDependencies = {
   removeFile: (filePath: string) => Promise<void>;
 };
 
+type ObserverTimingOverrides = Partial<typeof OBSERVER_TIMING_DEFAULTS>;
+
+type ObserverRuntimeOverrides = Partial<ObserverDependencies> & {
+  timing?: ObserverTimingOverrides;
+};
+
+type ResolvedObserverDependencies = ObserverDependencies & {
+  timing: typeof OBSERVER_TIMING_DEFAULTS;
+};
+
 type RouteObservation = {
   routeId: string;
   viewportName: ObserverViewport['name'];
@@ -882,6 +894,20 @@ const defaultDependencies: ObserverDependencies = {
   writeText: (filePath, payload) => writeFile(filePath, payload, 'utf8'),
   removeFile: (filePath) => rm(filePath, { force: true }),
 };
+
+const resolveObserverDependencies = (
+  overrides: ObserverRuntimeOverrides = {},
+): ResolvedObserverDependencies => ({
+  launchBrowser: overrides.launchBrowser ?? defaultDependencies.launchBrowser,
+  ensureDir: overrides.ensureDir ?? defaultDependencies.ensureDir,
+  writeBinary: overrides.writeBinary ?? defaultDependencies.writeBinary,
+  writeText: overrides.writeText ?? defaultDependencies.writeText,
+  removeFile: overrides.removeFile ?? defaultDependencies.removeFile,
+  timing: {
+    ...OBSERVER_TIMING_DEFAULTS,
+    ...overrides.timing,
+  },
+});
 
 const artifactAbsolutePath = (relativePath: string): string => path.resolve(relativePath);
 
@@ -2093,6 +2119,7 @@ const maybeFulfillScenarioRequest = async (
 const maybeOpenScenarioDialog = async (
   page: Page,
   scenario: ObserverScenario | undefined,
+  timing: typeof OBSERVER_TIMING_DEFAULTS,
 ): Promise<{ dialogId?: string; failure?: string }> => {
   if (scenario !== 'schedule-overlap') {
     if (scenario === 'payroll-time') {
@@ -2106,11 +2133,11 @@ const maybeOpenScenarioDialog = async (
         await Promise.all([
           page.getByRole('heading', { name: 'Dashboard', exact: true }).waitFor({
             state: 'visible',
-            timeout: SETTLE_TIMEOUT_MS,
+            timeout: timing.settleTimeoutMs,
           }),
           page.getByRole('heading', { name: 'Monthly Report Summary', exact: true }).waitFor({
             state: 'visible',
-            timeout: SETTLE_TIMEOUT_MS,
+            timeout: timing.settleTimeoutMs,
           }),
         ]);
       } catch {
@@ -2121,17 +2148,17 @@ const maybeOpenScenarioDialog = async (
       try {
         await page.getByRole('heading', { name: 'Reports', exact: true }).waitFor({
           state: 'visible',
-          timeout: SETTLE_TIMEOUT_MS,
+          timeout: timing.settleTimeoutMs,
         });
         const trigger = page.getByRole('button', { name: 'Generate Report', exact: true });
         await trigger.waitFor({
           state: 'visible',
-          timeout: SETTLE_TIMEOUT_MS,
+          timeout: timing.settleTimeoutMs,
         });
         await trigger.click();
         await page.getByRole('heading', { name: 'Sessions Report', exact: true }).waitFor({
           state: 'visible',
-          timeout: SETTLE_TIMEOUT_MS,
+          timeout: timing.settleTimeoutMs,
         });
       } catch {
         return { failure: 'route-surface-missing' };
@@ -2142,7 +2169,7 @@ const maybeOpenScenarioDialog = async (
 
   const trigger = page.locator(SCHEDULE_OVERLAP_TRIGGER_SELECTOR).first();
   try {
-    await trigger.waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS });
+    await trigger.waitFor({ state: 'visible', timeout: timing.settleTimeoutMs });
   } catch {
     return { failure: 'scenario-trigger-missing' };
   }
@@ -2165,12 +2192,12 @@ const maybeOpenScenarioDialog = async (
         && style.opacity !== '0'
         && rect.width > 0
         && rect.height > 0;
-    }, dialogId, { timeout: SETTLE_TIMEOUT_MS });
+    }, dialogId, { timeout: timing.settleTimeoutMs });
   } catch {
     return { failure: 'scenario-dialog-missing' };
   }
 
-  await page.waitForTimeout(EXTRA_SETTLE_MS);
+  await page.waitForTimeout(timing.extraSettleMs);
   return { dialogId };
 };
 
@@ -2268,7 +2295,10 @@ export const collectLayoutMetrics = async (
 
 const PAYROLL_TAB_NAMES = ['Employment', 'Pay Groups', 'Periods', 'Exceptions', 'Approvals'] as const;
 
-const collectPayrollRouteMetrics = async (page: Page): Promise<{ metrics: LayoutMetrics; failure?: string }> => {
+const collectPayrollRouteMetrics = async (
+  page: Page,
+  timing: typeof OBSERVER_TIMING_DEFAULTS,
+): Promise<{ metrics: LayoutMetrics; failure?: string }> => {
   const aggregate: LayoutMetrics = {
     horizontalOverflow: false,
     clippedFixedControls: [],
@@ -2278,7 +2308,7 @@ const collectPayrollRouteMetrics = async (page: Page): Promise<{ metrics: Layout
   for (const tabName of PAYROLL_TAB_NAMES) {
     const tab = page.getByRole('button', { name: tabName, exact: true });
     try {
-      await tab.waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS });
+      await tab.waitFor({ state: 'visible', timeout: timing.settleTimeoutMs });
       await tab.click();
       await page.waitForTimeout(50);
     } catch {
@@ -2295,23 +2325,26 @@ const collectPayrollRouteMetrics = async (page: Page): Promise<{ metrics: Layout
   return { metrics: aggregate };
 };
 
-const collectPayrollTimeReviewMetrics = async (page: Page): Promise<{ metrics: LayoutMetrics; failure?: string }> => {
+const collectPayrollTimeReviewMetrics = async (
+  page: Page,
+  timing: typeof OBSERVER_TIMING_DEFAULTS,
+): Promise<{ metrics: LayoutMetrics; failure?: string }> => {
   try {
     await Promise.all([
       page.getByRole('heading', { name: 'Time Review', exact: true, level: 1 })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
       page.getByRole('heading', { name: 'Assigned queue', exact: true, level: 2 })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
       page.getByText('Employee 1001', { exact: true })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
       page.getByRole('heading', { name: 'Immutable snapshot details', exact: true, level: 2 })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
       page.getByRole('heading', { name: 'Blockers', exact: true, level: 3 })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
       page.getByRole('button', { name: 'Approve', exact: true })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
       page.getByRole('button', { name: 'Return', exact: true })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
     ]);
   } catch {
     return {
@@ -2323,25 +2356,28 @@ const collectPayrollTimeReviewMetrics = async (page: Page): Promise<{ metrics: L
   return { metrics: await collectLayoutMetrics(page) };
 };
 
-const collectAccountSettingsMetrics = async (page: Page): Promise<{ metrics: LayoutMetrics; failure?: string }> => {
+const collectAccountSettingsMetrics = async (
+  page: Page,
+  timing: typeof OBSERVER_TIMING_DEFAULTS,
+): Promise<{ metrics: LayoutMetrics; failure?: string }> => {
   try {
     const saveChangesButton = page.getByRole('button', { name: 'Save Changes', exact: true });
     await Promise.all([
       page.getByRole('heading', { name: 'My Account', exact: true, level: 1 })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
       page.getByRole('heading', { name: 'Personal Settings', exact: true, level: 2 })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
       page.getByRole('heading', { name: 'Profile Information', exact: true, level: 3 })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
-      page.getByLabel('First Name', { exact: true }).waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
-      page.getByLabel('Last Name', { exact: true }).waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
-      page.getByLabel('Title', { exact: true }).waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
-      page.getByLabel('Email', { exact: true }).waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
+      page.getByLabel('First Name', { exact: true }).waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
+      page.getByLabel('Last Name', { exact: true }).waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
+      page.getByLabel('Title', { exact: true }).waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
+      page.getByLabel('Email', { exact: true }).waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
       page.getByRole('heading', { name: 'Password', exact: true, level: 3 })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
       page.getByRole('button', { name: 'Change password', exact: true })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
-      saveChangesButton.waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
+      saveChangesButton.waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
     ]);
     if (!await saveChangesButton.isDisabled()) {
       return {
@@ -2359,27 +2395,30 @@ const collectAccountSettingsMetrics = async (page: Page): Promise<{ metrics: Lay
   return { metrics: await collectLayoutMetrics(page) };
 };
 
-const collectFeatureFlagsMetrics = async (page: Page): Promise<{ metrics: LayoutMetrics; failure?: string }> => {
+const collectFeatureFlagsMetrics = async (
+  page: Page,
+  timing: typeof OBSERVER_TIMING_DEFAULTS,
+): Promise<{ metrics: LayoutMetrics; failure?: string }> => {
   try {
     await Promise.all([
       page.getByRole('heading', { name: 'Settings', exact: true, level: 1 })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
       page.getByRole('button', { name: 'Feature Flags', exact: true })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
       page.getByRole('heading', { name: 'Super Admin Feature Flags', exact: true, level: 1 })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
       page.getByRole('heading', { name: 'Organization enrollment locked', exact: true, level: 2 })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
       page.getByRole('heading', { name: 'Global feature flags', exact: true, level: 2 })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
       page.getByRole('heading', { name: 'Organization overrides', exact: true, level: 2 })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
       page.getByRole('button', { name: 'Create flag', exact: true })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
       page.getByText('No feature flags have been created yet.', { exact: true })
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
       page.getByText(/^No organization records are available yet\./)
-        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+        .waitFor({ state: 'visible', timeout: timing.settleTimeoutMs }),
     ]);
 
     const featureFlagsTab = page.getByRole('button', { name: 'Feature Flags', exact: true });
@@ -2420,7 +2459,7 @@ const observeRouteAtViewport = async (
   parsedArgs: ObserverArgs,
   route: string,
   viewport: ObserverViewport,
-  deps: ObserverDependencies,
+  deps: ResolvedObserverDependencies,
 ): Promise<RouteObservation> => {
   const baseOrigin = new URL(parsedArgs.baseUrl).origin;
   const targetUrl = `${parsedArgs.baseUrl}${route}`;
@@ -2538,7 +2577,7 @@ const observeRouteAtViewport = async (
     try {
       const response = await page.goto(targetUrl, {
         waitUntil: 'domcontentloaded',
-        timeout: NAVIGATION_TIMEOUT_MS,
+        timeout: deps.timing.navigationTimeoutMs,
       });
       if (!response || response.status() >= 400) {
         failures.push('http response failed');
@@ -2547,33 +2586,33 @@ const observeRouteAtViewport = async (
       failures.push('navigation failed');
     }
 
-    await page.waitForLoadState('networkidle', { timeout: SETTLE_TIMEOUT_MS }).catch(() => undefined);
-    await page.waitForTimeout(EXTRA_SETTLE_MS);
-    const scenarioResult = await maybeOpenScenarioDialog(page, parsedArgs.scenario);
+    await page.waitForLoadState('networkidle', { timeout: deps.timing.settleTimeoutMs }).catch(() => undefined);
+    await page.waitForTimeout(deps.timing.extraSettleMs);
+    const scenarioResult = await maybeOpenScenarioDialog(page, parsedArgs.scenario, deps.timing);
     if (scenarioResult.failure) {
       failures.push(scenarioResult.failure);
     }
     try {
       if (!parsedArgs.scenario && route === '/payroll') {
-        const payrollInspection = await collectPayrollRouteMetrics(page);
+        const payrollInspection = await collectPayrollRouteMetrics(page, deps.timing);
         metrics = payrollInspection.metrics;
         if (payrollInspection.failure) {
           failures.push(payrollInspection.failure);
         }
       } else if (parsedArgs.scenario === 'payroll-time-review') {
-        const reviewInspection = await collectPayrollTimeReviewMetrics(page);
+        const reviewInspection = await collectPayrollTimeReviewMetrics(page, deps.timing);
         metrics = reviewInspection.metrics;
         if (reviewInspection.failure) {
           failures.push(reviewInspection.failure);
         }
       } else if (parsedArgs.scenario === 'account-settings') {
-        const accountInspection = await collectAccountSettingsMetrics(page);
+        const accountInspection = await collectAccountSettingsMetrics(page, deps.timing);
         metrics = accountInspection.metrics;
         if (accountInspection.failure) {
           failures.push(accountInspection.failure);
         }
       } else if (parsedArgs.scenario === 'feature-flags') {
-        const featureFlagsInspection = await collectFeatureFlagsMetrics(page);
+        const featureFlagsInspection = await collectFeatureFlagsMetrics(page, deps.timing);
         metrics = featureFlagsInspection.metrics;
         if (featureFlagsInspection.failure) {
           failures.push(featureFlagsInspection.failure);
@@ -2653,8 +2692,9 @@ const observeRouteAtViewport = async (
 
 export const runResponsiveUiObserver = async (
   argv: string[] = process.argv,
-  deps: ObserverDependencies = defaultDependencies,
+  overrides: ObserverRuntimeOverrides = {},
 ): Promise<ObserverRunSummary> => {
+  const deps = resolveObserverDependencies(overrides);
   const parsedArgs = parseObserverArgs(argv);
   await deps.ensureDir(artifactAbsolutePath(artifactPathForRun(
     'artifacts/responsive-ui-observer',

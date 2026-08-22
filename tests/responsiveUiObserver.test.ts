@@ -351,6 +351,34 @@ describe('responsive-ui-observer contract', () => {
       }
     });
 
+    it('accepts only the fixed synthetic staff-dashboard scenario on the production root route', () => {
+      expect(parseObserverArgs([
+        'node',
+        'scripts/playwright-responsive-ui-observer.ts',
+        `--base-url=${baseUrl}`,
+        '--route=/',
+        '--scenario=staff-dashboard',
+      ])).toEqual({
+        baseUrl,
+        routes: ['/'],
+        scenario: 'staff-dashboard',
+      });
+
+      for (const invalidArgs of [
+        ['--route=/dashboard', '--scenario=staff-dashboard'],
+        ['--route=/clients', '--scenario=staff-dashboard'],
+        ['--route=/', '--route=/schedule', '--scenario=staff-dashboard'],
+        ['--route=/', '--scenario=staff-dashboard', '--scenario=staff-dashboard'],
+      ]) {
+        expect(() => parseObserverArgs([
+          'node',
+          'scripts/playwright-responsive-ui-observer.ts',
+          `--base-url=${baseUrl}`,
+          ...invalidArgs,
+        ])).toThrow();
+      }
+    });
+
     it('accepts a bounded artifact namespace and rejects unsafe or duplicate run IDs', () => {
       expect(parseObserverArgs([
         'node',
@@ -671,6 +699,28 @@ describe('responsive-ui-observer contract', () => {
       expect(evidenceCard).toMatchObject({ scenarioId: 'payroll-time-review' });
       expect(JSON.stringify(evidenceCard)).not.toContain('blockerId');
       expect(JSON.stringify(evidenceCard)).not.toContain('hourlyRateCents');
+    });
+
+    it('records fixed staff-dashboard provenance without exposing dashboard or supervision payload details', () => {
+      const evidenceCard = buildEvidenceCard({
+        route: '/',
+        viewportName: 'desktop',
+        result: 'pass',
+        failures: [],
+        metrics: {
+          horizontalOverflow: false,
+          clippedFixedControls: [],
+          visibleTouchTargets: [{ width: 48, height: 48 }],
+        },
+        screenshotHash: `sha256:${'7'.repeat(64)}`,
+        evidenceHash: `sha256:${'8'.repeat(64)}`,
+        scenario: 'staff-dashboard',
+      } as any);
+
+      expect(evidenceCard).toMatchObject({ scenarioId: 'staff-dashboard' });
+      expect(JSON.stringify(evidenceCard)).not.toContain('observer-local-org');
+      expect(JSON.stringify(evidenceCard)).not.toContain('supervision_template_id');
+      expect(JSON.stringify(evidenceCard)).not.toContain('observer-local-access-token');
     });
 
     it('derives deterministic route slugs and paths while excluding raw payloads', () => {

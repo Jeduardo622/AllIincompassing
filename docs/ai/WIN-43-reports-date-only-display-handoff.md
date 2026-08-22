@@ -5,14 +5,15 @@
 - Lane: `standard`
 - Classification: `low-risk autonomous`
 - Branch: `codex/fix-reports-date-only-display`
+- Base: current `main` at `b4b880b9bf78f54443fd1f09e1a1661042a47f8b`
 - Tracking issue: `WIN-43`
-- PR: pending
+- PR: `#1001`
 - Verification result: `pass-with-blocked-checks`
 - PR ready: yes for human review; exact-head CI remains the aggregate authority
 
 ## Routing
 
-The slice is non-trivial visible page behavior in `src/pages/Reports.tsx`, but it does not touch auth, routing, server, runtime config, database, CI, or deployment surfaces. Fresh re-routing after responsive reproduction retained `classification: low-risk autonomous` and `lane: standard`. Required agents are `specification-engineer`, `implementation-engineer`, `code-review-engineer`, and `test-engineer`; specification and implementation are complete, while final review and test evaluation follow the stacked responsive proof.
+The slice is non-trivial visible page behavior in `src/pages/Reports.tsx`, but it does not touch auth, routing, server, runtime config, database, CI, or deployment surfaces. Fresh re-routing after responsive reproduction retained `classification: low-risk autonomous` and `lane: standard`. Required agents are `specification-engineer`, `implementation-engineer`, `code-review-engineer`, and `test-engineer`; specification, implementation, review, and test evaluation are complete for the bounded diff.
 
 ## Hosted Reproduction
 
@@ -58,11 +59,13 @@ Executed checks:
 - `npm run typecheck`: pass.
 - `npm run build`: pass.
 - `npm run test:ci`: fail outside this slice; 573 files and 5,153 tests passed, while the unchanged `tests/scripts/provision-ci-smoke-bcba.test.ts` canonical-mapping order assertion failed and Vitest reported one worker timeout.
-- `npm run test:ui:responsive -- --base-url=http://127.0.0.1:4178 --route=/reports --scenario=staff-reports --artifact-run-id=reports-production-fix-final`: pass.
+- Final reconstruction on current `main`: conflict-free two-commit cherry-pick with an exact three-file `137` addition / `9` deletion diff and clean `git diff --check`.
+- Final reconstruction rerun: focused Reports tests `3/3`, policy, lint, typecheck, and build passed.
+- `npm run test:ui:responsive -- --base-url=http://127.0.0.1:4178 --route=/reports --scenario=staff-reports --artifact-run-id=reports-production-fix-main-final`: pass.
   - desktop `1440x900`: pass with no failure codes.
   - mobile `390x844`: pass with no failure codes.
   - Vite was started with the app-owned `VITE_DEV_DIAGNOSTICS=0` switch so the development-only Boot Diagnostics overlay was not measured as production UI.
-  - sanitized evidence: `artifacts/responsive-ui-observer/reports-production-fix-final/`.
+  - sanitized evidence: `artifacts/responsive-ui-observer/reports-production-fix-main-final/`.
 
 Blocked or pending checks:
 
@@ -100,10 +103,10 @@ PR hygiene status:
 - Change summary: present.
 - Verification summary: present.
 - Reviewer: completed with no findings.
-- PR handoff: ready for the stacked production PR.
-- Required follow-up: push the final head, open the PR against `codex/add-reports-responsive-scenario`, and wait for exact-head required CI.
+- PR handoff: ready for the production PR directly against `main`.
+- Required follow-up: push the reconstructed final head, retarget PR `#1001` to `main`, and wait for exact-head required CI.
 - Final `pr-ready`: yes.
 
 ## Residual Risk
 
-Hosted post-merge proof remains pending until the repository owner reviews and merges the PR. Aggregate local verification may retain unrelated baseline failures; any such failures must be reported separately from the focused regression result.
+Exact-head CI and hosted post-merge proof remain pending until the reconstructed branch is pushed and PR `#1001` is reviewed and merged. Aggregate local verification may retain unrelated baseline failures; any such failures must be reported separately from the focused regression result.

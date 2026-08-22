@@ -274,7 +274,7 @@ const STAFF_SIDEBAR_MESSAGE_PARTICIPANTS_SELECT = [
 
 const isExactStaffSidebarMessageParticipantsRequest = (requestUrl: URL): boolean => (
   requestUrl.pathname === '/rest/v1/message_thread_participants'
-  && hasExactSearchParams(requestUrl, [
+  && hasExactDashboardSearchParams(requestUrl, [
     ['select', STAFF_SIDEBAR_MESSAGE_PARTICIPANTS_SELECT],
     ['user_id', 'eq.observer-super-admin'],
     ['organization_id', 'eq.observer-local-org'],
@@ -297,7 +297,7 @@ const isExactStaffReportsDropdownRequest = (requestUrl: URL): boolean => (
 
 const isExactStaffReportsSessionMetricsRequest = (requestUrl: URL): boolean => (
   requestUrl.pathname === '/rest/v1/rpc/get_session_metrics'
-  && hasExactSearchParams(requestUrl, [
+  && hasExactDashboardSearchParams(requestUrl, [
     ['p_start_date', '2026-08-01'],
     ['p_end_date', '2026-08-31'],
     ['p_therapist_id', 'is.null'],

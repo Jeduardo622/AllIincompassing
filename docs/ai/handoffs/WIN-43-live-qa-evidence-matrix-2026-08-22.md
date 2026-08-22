@@ -2,8 +2,8 @@
 
 Date: 2026-08-22
 Issue: `WIN-43`
-Status: `incomplete - readiness exact-main CI gate, persistent-persona proof, migration drift, and global cleanup remain`
-Observed production `main`: [`242870ce712372997cb69673a9c09229bd3476ff`](https://github.com/Jeduardo622/AllIincompassing/commit/242870ce712372997cb69673a9c09229bd3476ff)
+Status: `incomplete - readiness gate repair is pending owner merge; persistent-persona proof, migration drift, and global cleanup remain`
+Observed production `main`: [`27c1493478ac33bf09ebc232d2b21865896019df`](https://github.com/Jeduardo622/AllIincompassing/commit/27c1493478ac33bf09ebc232d2b21865896019df)
 
 ## Purpose
 
@@ -29,15 +29,15 @@ This handoff records what the evidence-first QA campaign has and has not proven.
 
 | Surface | Status | Evidence |
 | --- | --- | --- |
-| GitHub `main` | Proven | `242870ce712372997cb69673a9c09229bd3476ff`, produced by owner-merged docs-only [PR #1009](https://github.com/Jeduardo622/AllIincompassing/pull/1009) on top of the #1007 repair |
-| Required aggregate CI | Proven | Docs-only [run 32580531617](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32580531617) passed change scope, docs guard, and `ci-gate` at the observed `main` SHA; code gates skipped by policy |
+| GitHub `main` | Proven | `27c1493478ac33bf09ebc232d2b21865896019df`, produced by owner-merged docs-only [PR #1010](https://github.com/Jeduardo622/AllIincompassing/pull/1010) on top of #1009 and the #1007 repair |
+| Required aggregate CI | Proven | Docs-only [run 32581481472](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32581481472) passed change scope, docs guard, and `ci-gate` at the observed `main` SHA; code gates skipped by policy |
 | Standalone tenant safety | Proven at last code-bearing `main` | [Run 32577951688](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32577951688) succeeded at #1007 merge `96e349ee2f6e2f121cf6ce1222245e88638a9380`; #1009 changed documentation only |
 | Hosted auth and session smoke | Proven at last code-bearing `main` | The #1007 aggregate run passed auth, session lifecycle, BCBA acceptance, evidence upload, and synthetic-actor cleanup; #1009 changed documentation only |
-| Hosted auth verification | Proven | [Run 32580531596](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32580531596) succeeded at the observed `main` SHA |
-| Hosted database checks | Proven | [Run 32580531595](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32580531595) succeeded at the observed `main` SHA |
+| Hosted auth verification | Proven | [Run 32581481506](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32581481506) succeeded at the observed `main` SHA |
+| Hosted database checks | Proven | [Run 32581481462](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32581481462) succeeded at the observed `main` SHA |
 | Production availability | Partial | `https://app.allincompassing.ai` returned HTTP 200 on 2026-08-22 after the merge; exact Netlify deploy-to-commit attribution is unavailable because the deploy-list API now returns HTTP 401 |
 | Production Feature Flags preflight | Proven | After explicit owner authorization, only `feature-flags-v2` was deployed from merge `96e349ee2f6e2f121cf6ce1222245e88638a9380` with `verify_jwt=true`. Active version `64` (`ezbr_sha256=af63733901f8c9d0fd8128397f77ef2f6d81a1099e0e5974b52fc2c6d5f4758c`) contains all 13 authorized files with no readback mismatch. Allowed GET and POST preflights returned `204` in 1.38 and 0.88 seconds, denied-origin preflight returned `403` in 0.94 seconds, and unauthenticated GET and POST remained fail-closed at `401` in 0.84 and 0.83 seconds. Sanitized version-64 Edge logs confirmed the new execution path. |
-| Persistent-persona readiness dispatch | Blocked | `.github/workflows/provision-qa-personas.yaml` requires successful `policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `auth-browser-smoke`, and `ci-gate` checks whose `head_sha` equals exact current `main`. Docs-only #1009 intentionally skipped the first six code checks. A manual CI dispatch uses the same parent diff and remains docs-only, so it cannot supply the missing proof. Do not dispatch readiness until a separately reviewed critical change resolves this gate incompatibility without weakening it. |
+| Persistent-persona readiness dispatch | Repair pending owner merge | The critical repair branch preserves exact current-main authorization while resolving CI evidence only through a unique exact-SHA `CI` main-push run. It permits a maximum ten-commit first-parent fallback only when every intervening commit is single-parent, matches the exact `ci.yml` docs-only allowlist for both current and previous rename paths, and passed `change-scope`, `docs-guard`, and `ci-gate`; the nearest ancestor must pass all seven required code jobs. Local executable contracts pass `16/16`, direct live read-only resolution from current main returns #1007 merge `96e349ee2f6e2f121cf6ce1222245e88638a9380` and run `32577951521`, and no readiness dispatch has occurred. |
 | Supabase Preview external check | Unresolved | Check run `97049150499` failed because remote migration versions were not found in the local migrations directory; this remains migration-drift risk even though the strict GitHub Actions gates passed |
 
 ## Owner-Gated Repair Chain
@@ -116,6 +116,17 @@ The local responsive observer contains scenarios for schedule overlap, clients d
 | [#1007](https://github.com/Jeduardo622/AllIincompassing/pull/1007) | Owner-merged and explicitly deployed critical repair: Feature Flags preflight startup; exact-main checks and bounded production proof passed at version 64 |
 | [#1008](https://github.com/Jeduardo622/AllIincompassing/pull/1008) | Owner-merged critical repair: tenant-safety watchdog observability; exact-main checks green |
 | [#1009](https://github.com/Jeduardo622/AllIincompassing/pull/1009) | Owner-merged evidence-only matrix at current `main`; post-deployment proof is retained in the follow-up documentation PR |
+| [#1010](https://github.com/Jeduardo622/AllIincompassing/pull/1010) | Owner-merged evidence-only production proof at current `main` `27c1493478ac33bf09ebc232d2b21865896019df`; docs-only aggregate run `32581481472` passed |
+
+## Critical Readiness-Gate Repair Verification
+
+- route: `high-risk human-reviewed` / `critical`; issue `WIN-43`; owner merge remains mandatory.
+- focused workflow contracts: `16/16` passed, including exact-main success, two-doc-commit fallback, non-doc rejection, production-to-doc rename rejection, mixed-run ambiguity rejection, missing docs guard rejection, max-depth rejection, symmetric pre-credential revalidation, and hash-bound specialist identities. The related delegated-dispatch policy suite also passed, for `24/24` combined tests.
+- direct workflow YAML parse: passed.
+- direct live read-only resolver: current main `27c1493478ac33bf09ebc232d2b21865896019df` resolved through the two docs-only commits to `96e349ee2f6e2f121cf6ce1222245e88638a9380`, exact CI run `32577951521`.
+- local checks: `npm run ci:check-focused`, `npm run lint`, `npm run typecheck`, and `npm run build` passed.
+- local aggregate: `npm run verify:local` passed policy, lint, and typecheck, then its `npm run test:ci` stage was non-green after unrelated application-test failures (including `Schedule.sessionCloseReadiness`) and Node exhausted the 4 GB Windows heap. The wrapper therefore did not reach coverage, build, or tier-0; the build passed separately. Exact-head Linux CI remains required and is not inferred from the focused pass.
+- scope boundary: no application, Supabase, migration, RLS, grant, RPC, tenant data, credential value, provisioning action, or workflow dispatch changed or ran.
 
 ## Cleanup Evidence
 

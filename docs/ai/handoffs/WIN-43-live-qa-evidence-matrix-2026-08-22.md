@@ -2,8 +2,8 @@
 
 Date: 2026-08-22
 Issue: `WIN-43`
-Status: `incomplete - owner-gated repairs and persistent-persona proof remain`
-Observed production `main`: [`0fade83c6c60e853ee5ac0a423d73071222c2bae`](https://github.com/Jeduardo622/AllIincompassing/commit/0fade83c6c60e853ee5ac0a423d73071222c2bae)
+Status: `incomplete - one owner-gated repair and persistent-persona proof remain`
+Observed production `main`: [`e84cb3e559d295ad2cbb2b5a7bafaf7b88a22a1a`](https://github.com/Jeduardo622/AllIincompassing/commit/e84cb3e559d295ad2cbb2b5a7bafaf7b88a22a1a)
 
 ## Purpose
 
@@ -29,21 +29,22 @@ This handoff records what the evidence-first QA campaign has and has not proven.
 
 | Surface | Status | Evidence |
 | --- | --- | --- |
-| GitHub `main` | Proven | `0fade83c6c60e853ee5ac0a423d73071222c2bae`, produced by merged [PR #1001](https://github.com/Jeduardo622/AllIincompassing/pull/1001) |
-| Required aggregate CI | Proven | [Run 32565981426](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32565981426) succeeded at the observed `main` SHA |
-| Hosted auth smoke | Proven | [Run 32565981411](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32565981411) succeeded at the observed `main` SHA |
-| Hosted database checks | Proven | [Run 32565981489](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32565981489) succeeded at the observed `main` SHA |
-| Production deploy | Proven | Netlify deploy `6a8970b18c5c63000835cf23` was `ready` for `main` at the observed SHA; `https://app.allincompassing.ai` returned HTTP 200 |
-| Supabase Preview external check | Unresolved | Check run `97014711152` failed because remote migration versions were not found in the local migrations directory; this remains migration-drift risk even though the strict GitHub Actions gates passed |
+| GitHub `main` | Proven | `e84cb3e559d295ad2cbb2b5a7bafaf7b88a22a1a`, produced by owner-merged [PR #1008](https://github.com/Jeduardo622/AllIincompassing/pull/1008) |
+| Required aggregate CI | Proven | [Run 32574193897](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32574193897) succeeded at the observed `main` SHA |
+| Standalone tenant safety | Proven | [Run 32574193896](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32574193896) succeeded at the observed `main` SHA without the former false watchdog termination |
+| Hosted auth and session smoke | Proven | The aggregate run passed auth, session lifecycle, BCBA acceptance, evidence upload, and synthetic-actor cleanup at the observed `main` SHA |
+| Hosted database checks | Proven | [Run 32574193899](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32574193899) succeeded at the observed `main` SHA |
+| Production availability | Partial | `https://app.allincompassing.ai` returned HTTP 200 on 2026-08-22 after the merge; exact Netlify deploy-to-commit attribution is unavailable because the deploy-list API now returns HTTP 401 |
+| Supabase Preview external check | Unresolved | Check run `97034066476` failed because remote migration versions were not found in the local migrations directory; this remains migration-drift risk even though the strict GitHub Actions gates passed |
 
 ## Owner-Gated Repair Chain
 
 | PR | State | Evidence | Required next action |
 | --- | --- | --- | --- |
-| [#1008](https://github.com/Jeduardo622/AllIincompassing/pull/1008) `fix(ci): keep tenant safety progress observable` | Blocked on owner merge | Exact head `f5f2c2e9025d8d315e45ed0c75d1b4fcc93ded68`; aggregate [run 32569612258](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32569612258) and standalone tenant-safety [run 32569612325](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32569612325) succeeded | Repository owner personally reviews and merges this critical workflow PR |
-| [#1007](https://github.com/Jeduardo622/AllIincompassing/pull/1007) `fix(edge): short-circuit Feature Flags preflight (WIN-43)` | Blocked behind #1008 | Exact head `4f9a2b7f70f414421490498b4589e0991fe3d89b`; aggregate [run 32566129372](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32566129372) succeeded, but standalone tenant-safety [run 32566129384](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32566129384) encountered the old false watchdog | After #1008 merges, update #1007 onto current `main`, obtain exact-head required checks, then require owner review and merge |
+| [#1008](https://github.com/Jeduardo622/AllIincompassing/pull/1008) `fix(ci): keep tenant safety progress observable` | Merged | Owner merge commit `e84cb3e559d295ad2cbb2b5a7bafaf7b88a22a1a`; exact-main aggregate [run 32574193897](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32574193897) and standalone tenant-safety [run 32574193896](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32574193896) succeeded | None for this PR; retain post-merge evidence |
+| [#1007](https://github.com/Jeduardo622/AllIincompassing/pull/1007) `fix(edge): short-circuit Feature Flags preflight (WIN-43)` | Blocked on owner merge | Synchronized head `4bd4d330ae60686acf87083f26477389dd19fb7f`; aggregate [run 32576553720](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32576553720), standalone tenant-safety [run 32576553734](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32576553734), Lighthouse [run 32576553795](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32576553795), Supabase Preview, Netlify, and all applicable checks succeeded | Repository owner personally reviews and merges this critical Edge Function/config PR |
 
-Codex must not merge either critical PR. Passing CI does not replace owner review.
+Codex did not merge #1008 and must not merge #1007. Passing CI does not replace owner review.
 
 ## Persistent Persona Matrix
 
@@ -84,7 +85,7 @@ The local responsive observer contains scenarios for schedule overlap, clients d
 | Dashboard | Partial | Authorized-units and responsive repairs merged; complete role-by-role data and action coverage remains pending |
 | Reports | Partial | Date and touch-target repairs plus responsive scenario merged; full authorized hosted workflow remains pending |
 | Account settings | Partial | Responsive scenario merged; complete persistent-persona behavior remains pending |
-| Super Admin Feature Flags | Blocked | Loading and responsive repairs merged, but hosted preflight repair is pending PR #1007 after PR #1008 |
+| Super Admin Feature Flags | Blocked | Loading and responsive repairs are merged; the hosted preflight repair is fully green on PR #1007 but remains pending owner merge and post-merge production proof |
 | Client/guardian family workflow | Pending | No complete current persistent-client browser walkthrough |
 | Messaging and documentation | Pending | No complete current per-persona browser walkthrough |
 | Programs, goals, targets, and assignments | Pending | No complete current role-by-role browser walkthrough |
@@ -109,8 +110,8 @@ The local responsive observer contains scenarios for schedule overlap, clients d
 | [#1004](https://github.com/Jeduardo622/AllIincompassing/pull/1004) | Merged: account responsive observer scenario |
 | [#1005](https://github.com/Jeduardo622/AllIincompassing/pull/1005) | Merged: Feature Flags loading state |
 | [#1006](https://github.com/Jeduardo622/AllIincompassing/pull/1006) | Merged: Feature Flags responsive scenario |
-| [#1007](https://github.com/Jeduardo622/AllIincompassing/pull/1007) | Open critical repair: Feature Flags preflight startup |
-| [#1008](https://github.com/Jeduardo622/AllIincompassing/pull/1008) | Open critical repair: tenant-safety watchdog observability |
+| [#1007](https://github.com/Jeduardo622/AllIincompassing/pull/1007) | Open critical repair: Feature Flags preflight startup; exact-head checks green, owner merge pending |
+| [#1008](https://github.com/Jeduardo622/AllIincompassing/pull/1008) | Owner-merged critical repair: tenant-safety watchdog observability; exact-main checks green |
 
 ## Cleanup Evidence
 
@@ -121,15 +122,13 @@ The local responsive observer contains scenarios for schedule overlap, clients d
 
 ## Required Sequence
 
-1. The repository owner personally reviews and merges PR #1008.
-2. Confirm exact-main required CI and production deploy state after that merge.
-3. Update PR #1007 onto current `main`, run exact-head checks, and require owner review and merge.
-4. Confirm exact-main required CI, production deploy state, and the unresolved Supabase Preview migration-drift check after the final repair merge.
-5. The owner may then dispatch `verify-readiness` only with a fresh exact current-main SHA, the eligible merged WIN-43 PR, and the workflow's exact acknowledgement. No authorization is supplied by this document.
-6. If readiness succeeds, execute a separately authorized full persistent-persona workflow audit; the existing readiness workflow proves route entry and denial checks, not complete workflow usability.
-7. Run a final marker-owned hosted zero-residue readback and retain sanitized proof.
-8. Produce the final CTO memo only after the evidence above is complete.
+1. The repository owner personally reviews and merges PR #1007.
+2. Confirm exact-main required CI, production deploy attribution and availability, and the Supabase Preview migration-drift result after that merge.
+3. The owner may then dispatch `verify-readiness` only with a fresh exact current-main SHA, the eligible merged WIN-43 PR, and the workflow's exact acknowledgement. No authorization is supplied by this document.
+4. If readiness succeeds, execute a separately authorized full persistent-persona workflow audit; the existing readiness workflow proves route entry and denial checks, not complete workflow usability.
+5. Run a final marker-owned hosted zero-residue readback and retain sanitized proof.
+6. Produce the final CTO memo only after the evidence above is complete.
 
 ## Readiness Verdict
 
-The currently deployed ordinary production release is live and its strict GitHub Actions gates passed at the observed `main` SHA. The WIN-43 campaign's stronger definition of production usability is **not yet proven**: two critical repairs remain owner-gated, current readiness has not run for the eight persistent personas, complete authenticated persona workflows remain incomplete, migration drift remains unresolved, and final global zero-residue proof is pending.
+The currently deployed ordinary production release is reachable and its strict GitHub Actions gates passed at the observed `main` SHA. The WIN-43 campaign's stronger definition of production usability is **not yet proven**: PR #1007 remains owner-gated, exact production deploy attribution is unavailable, current readiness has not run for the eight persistent personas, complete authenticated persona workflows remain incomplete, migration drift remains unresolved, and final global zero-residue proof is pending.

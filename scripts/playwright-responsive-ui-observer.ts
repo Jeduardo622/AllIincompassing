@@ -235,7 +235,7 @@ const STAFF_DASHBOARD_PROFILE_SELECT = [
   'updated_at',
 ].join(',');
 
-const hasExactSearchParams = (
+const hasExactDashboardSearchParams = (
   requestUrl: URL,
   expectedEntries: ReadonlyArray<readonly [string, string]>,
 ): boolean => {
@@ -246,7 +246,7 @@ const hasExactSearchParams = (
 
 const isExactStaffDashboardProfileRequest = (requestUrl: URL): boolean => (
   requestUrl.pathname === '/rest/v1/profiles'
-  && hasExactSearchParams(requestUrl, [
+  && hasExactDashboardSearchParams(requestUrl, [
     ['select', STAFF_DASHBOARD_PROFILE_SELECT],
     ['id', 'eq.observer-super-admin'],
   ])
@@ -254,7 +254,7 @@ const isExactStaffDashboardProfileRequest = (requestUrl: URL): boolean => (
 
 const isExactStaffDashboardRoleRequest = (requestUrl: URL): boolean => (
   requestUrl.pathname === '/rest/v1/user_roles'
-  && hasExactSearchParams(requestUrl, [
+  && hasExactDashboardSearchParams(requestUrl, [
     ['select', 'is_active,expires_at,roles(name)'],
     ['user_id', 'eq.observer-super-admin'],
   ])

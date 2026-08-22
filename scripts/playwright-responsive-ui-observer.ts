@@ -65,6 +65,20 @@ const SYNTHETIC_AUTH_STORAGE_PAYLOAD = {
     email: 'observer-localhost@example.test',
   },
 };
+const SYNTHETIC_ACCOUNT_AUTH_STORAGE_PAYLOAD = {
+  role: 'client',
+  roleAssignments: ['client'],
+  accessToken: 'observer-account-access-token',
+  refreshToken: 'observer-account-refresh-token',
+  expiresAt: 4_102_444_800_000,
+  user: {
+    id: '00000000-0000-4000-8000-000000000002',
+    role: 'client',
+    email: 'observer-account@example.test',
+    first_name: 'Synthetic',
+    last_name: 'Account',
+  },
+};
 const CLIENTS_DIRECTORY_SELECT = [
   'id',
   'client_id',
@@ -402,6 +416,14 @@ const isAllowedScenarioShellRequest = (
       || SCHEDULE_SCENARIO_STATIC_PATH_PATTERN.test(pathname);
   }
 
+  if (parsedArgs.scenario === 'account-settings') {
+    const { pathname } = requestUrl;
+    return pathname === parsedArgs.routes[0]
+      || pathname === '/@react-refresh'
+      || SCHEDULE_SCENARIO_SHELL_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+      || SCHEDULE_SCENARIO_STATIC_PATH_PATTERN.test(pathname);
+  }
+
   if (parsedArgs.scenario === 'payroll-time') {
     return requestUrl.pathname === parsedArgs.routes[0];
   }
@@ -513,18 +535,30 @@ const maybeEnableScenarioContext = async (
   context: BrowserContext,
   scenario: ObserverScenario | undefined,
 ): Promise<void> => {
-  if (scenario !== 'schedule-overlap' && scenario !== 'clients-directory') {
+  if (
+    scenario !== 'schedule-overlap'
+    && scenario !== 'clients-directory'
+    && scenario !== 'account-settings'
+  ) {
     return;
   }
 
   if (scenario === 'schedule-overlap') {
     await context.clock.install({ time: getSyntheticScheduleNow() });
   }
-  await context.addInitScript(([storageKey, storageValue]) => {
+  const storagePayload = scenario === 'account-settings'
+    ? SYNTHETIC_ACCOUNT_AUTH_STORAGE_PAYLOAD
+    : SYNTHETIC_AUTH_STORAGE_PAYLOAD;
+  await context.addInitScript(([storageKey, storageValue, clearStorage]) => {
+    if (clearStorage) {
+      window.localStorage.clear();
+      window.sessionStorage.clear();
+    }
     window.localStorage.setItem(storageKey, storageValue);
   }, [
     SYNTHETIC_AUTH_STORAGE_KEY,
-    JSON.stringify(SYNTHETIC_AUTH_STORAGE_PAYLOAD),
+    JSON.stringify(storagePayload),
+    scenario === 'account-settings',
   ]);
 };
 
@@ -532,6 +566,25 @@ const maybeFulfillScenarioRequest = async (
   parsedArgs: ObserverArgs,
   routeHandler: Parameters<BrowserContext['route']>[1] extends (arg: infer T) => unknown ? T : never,
 ): Promise<boolean> => {
+  if (parsedArgs.scenario === 'account-settings') {
+    const request = routeHandler.request();
+    const requestUrl = new URL(request.url());
+    if (requestUrl.origin !== new URL(parsedArgs.baseUrl).origin) {
+      return false;
+    }
+
+    if (request.method().toUpperCase() === 'GET' && requestUrl.pathname === '/api/runtime-config') {
+      await routeHandler.fulfill({
+        status: 200,
+        contentType: 'application/json; charset=utf-8',
+        body: JSON.stringify(buildSyntheticRuntimeConfig(requestUrl.origin)),
+      });
+      return true;
+    }
+
+    return false;
+  }
+
   if (parsedArgs.scenario !== 'schedule-overlap') {
     if (parsedArgs.scenario === 'clients-directory') {
       const request = routeHandler.request();
@@ -976,6 +1029,42 @@ const collectPayrollTimeReviewMetrics = async (page: Page): Promise<{ metrics: L
   return { metrics: await collectLayoutMetrics(page) };
 };
 
+const collectAccountSettingsMetrics = async (page: Page): Promise<{ metrics: LayoutMetrics; failure?: string }> => {
+  try {
+    const saveChangesButton = page.getByRole('button', { name: 'Save Changes', exact: true });
+    await Promise.all([
+      page.getByRole('heading', { name: 'My Account', exact: true, level: 1 })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('heading', { name: 'Personal Settings', exact: true, level: 2 })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('heading', { name: 'Profile Information', exact: true, level: 3 })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByLabel('First Name', { exact: true }).waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByLabel('Last Name', { exact: true }).waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByLabel('Title', { exact: true }).waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByLabel('Email', { exact: true }).waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('heading', { name: 'Password', exact: true, level: 3 })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      page.getByRole('button', { name: 'Change password', exact: true })
+        .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+      saveChangesButton.waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS }),
+    ]);
+    if (!await saveChangesButton.isDisabled()) {
+      return {
+        metrics: await collectLayoutMetrics(page),
+        failure: 'route-surface-missing',
+      };
+    }
+  } catch {
+    return {
+      metrics: await collectLayoutMetrics(page),
+      failure: 'route-surface-missing',
+    };
+  }
+
+  return { metrics: await collectLayoutMetrics(page) };
+};
+
 export const redactPageForCapture = async (page: Page): Promise<void> => {
   await page.addStyleTag({ content: RESPONSIVE_CAPTURE_REDACTION_CSS });
 };
@@ -1082,6 +1171,12 @@ const observeRouteAtViewport = async (
         metrics = reviewInspection.metrics;
         if (reviewInspection.failure) {
           failures.push(reviewInspection.failure);
+        }
+      } else if (parsedArgs.scenario === 'account-settings') {
+        const accountInspection = await collectAccountSettingsMetrics(page);
+        metrics = accountInspection.metrics;
+        if (accountInspection.failure) {
+          failures.push(accountInspection.failure);
         }
       } else {
         metrics = await collectLayoutMetrics(page, scenarioResult.dialogId);

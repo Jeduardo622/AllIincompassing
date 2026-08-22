@@ -270,6 +270,33 @@ describe('responsive-ui-observer contract', () => {
       }
     });
 
+    it('accepts only the fixed synthetic feature-flags scenario on /settings/feature-flags', () => {
+      expect(parseObserverArgs([
+        'node',
+        'scripts/playwright-responsive-ui-observer.ts',
+        `--base-url=${baseUrl}`,
+        '--route=/settings/feature-flags',
+        '--scenario=feature-flags',
+      ])).toEqual({
+        baseUrl,
+        routes: ['/settings/feature-flags'],
+        scenario: 'feature-flags',
+      });
+
+      for (const invalidArgs of [
+        ['--route=/super-admin/feature-flags', '--scenario=feature-flags'],
+        ['--route=/settings/feature-flags', '--route=/account', '--scenario=feature-flags'],
+        ['--route=/settings/feature-flags', '--scenario=feature-flags', '--scenario=feature-flags'],
+      ]) {
+        expect(() => parseObserverArgs([
+          'node',
+          'scripts/playwright-responsive-ui-observer.ts',
+          `--base-url=${baseUrl}`,
+          ...invalidArgs,
+        ])).toThrow();
+      }
+    });
+
     it('accepts only the fixed synthetic payroll-time scenario on /time', () => {
       expect(parseObserverArgs([
         'node',
@@ -602,6 +629,27 @@ describe('responsive-ui-observer contract', () => {
       expect(evidenceCard).toMatchObject({ scenarioId: 'payroll-time' });
       expect(JSON.stringify(evidenceCard)).not.toContain('employmentProfileId');
       expect(JSON.stringify(evidenceCard)).not.toContain('sessionAttendance');
+    });
+
+    it('records fixed feature-flags provenance without exposing synthetic super-admin data', () => {
+      const evidenceCard = buildEvidenceCard({
+        route: '/settings/feature-flags',
+        viewportName: 'mobile',
+        result: 'pass',
+        failures: [],
+        metrics: {
+          horizontalOverflow: false,
+          clippedFixedControls: [],
+          visibleTouchTargets: [{ width: 48, height: 48 }],
+        },
+        screenshotHash: `sha256:${'7'.repeat(64)}`,
+        evidenceHash: `sha256:${'8'.repeat(64)}`,
+        scenario: 'feature-flags',
+      } as any);
+
+      expect(evidenceCard).toMatchObject({ scenarioId: 'feature-flags' });
+      expect(JSON.stringify(evidenceCard)).not.toContain('observer-feature-flags@example.test');
+      expect(JSON.stringify(evidenceCard)).not.toContain('observer-feature-flags-access-token');
     });
 
     it('records fixed payroll-time-review provenance without exposing approval payload details', () => {

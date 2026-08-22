@@ -26,6 +26,7 @@ Make deterministic responsive observation mandatory for visible UI changes witho
 - `--scenario=schedule-overlap` is valid only on exactly one `/schedule` route.
 - `--scenario=clients-directory` is valid only on exactly one `/clients` route. It seeds the fixed PHI-free localhost admin-schedule stub and fulfills only the exact runtime-config, unread-message, client-list, payroll-day, and payroll-review read shapes required by that route.
 - `--scenario=account-settings` is valid only on exactly one `/account` route. It starts from fresh storage, seeds a fixed PHI-free localhost client stub, fulfills only runtime config, and requires the account headings, profile fields, password entry point, and disabled save action without activating them.
+- `--scenario=feature-flags` is valid only on exactly one `/settings/feature-flags` route. It starts from fresh storage, seeds a fixed PHI-free localhost super-admin stub, fulfills only runtime config plus the exact feature-flag list read body, and requires the expected headings together with pending and empty-state correctness without activating create, toggle, or plan mutations.
 - Built-in scenarios may load only the loopback route shell/static assets and their enumerated same-origin in-memory responses. They must not contact an external host, accept caller-selected identities or fixture paths, or mutate the loopback server.
 - Computer inspection is supplemental only. It is never gating or authoritative for pass/fail.
 
@@ -60,7 +61,13 @@ For the fixed account-settings proof, start the local app with `VITE_DEV_DIAGNOS
 npm run test:ui:responsive -- --base-url=http://127.0.0.1:4173 --route=/account --scenario=account-settings
 ```
 
-The scenario name is an enum, not a fixture path or caller-selected identity. It is rejected for every other route and does not replace auth/session browser gates. In scenario mode, overflow and clipped fixed-control checks remain document-wide while touch-target measurement is scoped to the exact overlap dialog named by the trigger's `aria-controls`, so unrelated background schedule controls do not change the dialog-state verdict.
+For the fixed feature-flags proof, start the local app with `VITE_DEV_DIAGNOSTICS=0` in the dev-server process, then run:
+
+```bash
+npm run test:ui:responsive -- --base-url=http://127.0.0.1:4173 --route=/settings/feature-flags --scenario=feature-flags
+```
+
+The scenario name is an enum, not a fixture path or caller-selected identity. It is rejected for every other route and does not replace auth/session browser gates. In schedule scenario mode, overflow and clipped fixed-control checks remain document-wide while touch-target measurement is scoped to the exact overlap dialog named by the trigger's `aria-controls`, so unrelated background schedule controls do not change the dialog-state verdict.
 
 ## Required Evidence
 

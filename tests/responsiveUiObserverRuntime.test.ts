@@ -64,11 +64,31 @@ type AccountFixtureMode = 'pass' | 'missing-surface' | 'enabled-save' | 'unexpec
 
 let accountFixtureMode: AccountFixtureMode = 'pass';
 
+type FeatureFlagsFixtureMode =
+  | 'pass'
+  | 'body-drift'
+  | 'runtime-config-query-drift'
+  | 'function-query-drift'
+  | 'profile-query-drift'
+  | 'role-query-drift'
+  | 'authority-missing-auth'
+  | 'authority-wrong-apikey'
+  | 'missing-auth'
+  | 'wrong-auth'
+  | 'wrong-apikey'
+  | 'wrong-content-type'
+  | 'missing-surface'
+  | 'stale-loading'
+  | 'unexpected-read'
+  | 'mutation-action';
+
+let featureFlagsFixtureMode: FeatureFlagsFixtureMode = 'pass';
+
 const buildSyntheticAccountHtml = (mode: AccountFixtureMode): string => `<!doctype html>
 <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>*{box-sizing:border-box}body{margin:0;max-width:100vw;overflow-x:hidden}input,button{min-height:48px}</style>
 </head><body><main id="root"></main><script>
-${mode === 'unexpected-read' ? "fetch('/rest/v1/profiles').catch(() => {});" : ''}
+${mode === 'unexpected-read' ? "fetch('/rest/v1/organizations').catch(() => {});" : ''}
 ${mode === 'mutation-action' ? "fetch('/auth/v1/user', { method: 'PUT' }).catch(() => {});" : ''}
 fetch('/api/runtime-config').then((response) => response.json()).then((runtimeConfig) => {
   const auth = JSON.parse(localStorage.getItem('auth-storage') || '{}');
@@ -90,6 +110,121 @@ fetch('/api/runtime-config').then((response) => response.json()).then((runtimeCo
     + '${mode === 'enabled-save'
       ? '<button type="submit">Save Changes</button>'
       : '<button type="submit" disabled>Save Changes</button>'}';
+});
+</script></body></html>`;
+
+const buildSyntheticFeatureFlagsHtml = (mode: FeatureFlagsFixtureMode): string => `<!doctype html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>*{box-sizing:border-box}body{margin:0;max-width:100vw;overflow-x:hidden;font-family:ui-sans-serif,system-ui,sans-serif}button,input,select{min-height:48px}.shell{padding:24px;display:grid;gap:24px}.tab-bar{display:flex;overflow-x:auto}.tab-bar button{padding:12px 16px;border:0;border-bottom:2px solid transparent;background:transparent}.tab-bar button[aria-current="page"]{border-bottom-color:#2563eb;font-weight:600}.card{border:1px solid #d7deea;border-radius:16px;padding:16px;background:#fff}.grid{display:grid;gap:12px}.grid.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}.field{display:grid;gap:8px}.helper{font-size:12px;color:#475569}.loading{font-size:14px;color:#64748b}.empty{font-size:14px;color:#475569}</style>
+</head><body><main id="root"></main><script>
+${mode === 'unexpected-read' ? "fetch('/rest/v1/profiles').catch(() => {});" : ''}
+${mode === 'mutation-action' ? "fetch('/functions/v1/feature-flags-v2', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'createFlag', flagKey: 'should-not-run' }) }).catch(() => {});" : ''}
+document.getElementById('root').innerHTML = '<div class="shell"><h1>Settings</h1><div class="tab-bar"><button type="button" aria-current="page">Feature Flags</button></div><section class="card"><h1>Super Admin Feature Flags</h1><p>Manage global feature toggles, per-organization overrides, and plan assignments.</p></section><section class="card"><h2>Organization enrollment locked</h2><p>We are operating in single-clinic mode while we stabilise tenant rollouts.</p></section><section class="card"><h2>Global feature flags</h2><form class="grid cols-4"><div class="field"><label for="flag-key">Flag key</label><input id="flag-key" value="" placeholder="new-dashboard"></div><div class="field"><label for="flag-description">Description</label><input id="flag-description" value="" placeholder="Describe the experiment"></div><div class="field"><label for="flag-default-enabled">Enabled by default</label><input id="flag-default-enabled" type="checkbox"></div><div class="field"><button type="submit">Create flag</button><span class="helper">Flag keys cannot be changed after creation.</span></div></form><table aria-label="Global feature flags"><thead><tr><th>Flag</th><th>Description</th><th>Default</th><th>Actions</th></tr></thead><tbody><tr><td colspan="4" class="empty">Loading…</td></tr></tbody></table></section><section class="card"><div style="display:flex;align-items:center;justify-content:space-between"><h2>Organization overrides</h2><span class="loading">Loading…</span></div><div class="empty">Loading organizations…</div></section></div>';
+const sessionStorageKey = 'sb-' + location.hostname.split('.')[0] + '-auth-token';
+const session = JSON.parse(sessionStorage.getItem(sessionStorageKey) || 'null');
+const accessToken = typeof session?.access_token === 'string' ? session.access_token : null;
+const listHeaders = {};
+if (${mode === 'missing-auth' ? 'false' : 'true'} && accessToken) {
+  listHeaders.Authorization = ${mode === 'wrong-auth'
+    ? "'Bearer observer-feature-flags-access-token-drift'"
+    : '\"Bearer \" + accessToken'};
+}
+if (${mode === 'wrong-apikey' ? 'true' : 'false'}) {
+  listHeaders.apikey = 'observer-local-anon-key-drift';
+}
+if (${mode === 'wrong-content-type'
+    ? 'true'
+    : mode === 'mutation-action'
+      ? 'true'
+      : 'true'}) {
+  listHeaders['Content-Type'] = ${mode === 'wrong-content-type'
+    ? "'text/plain'"
+    : "'application/json'"};
+}
+const authHeaders = {};
+if (${mode === 'authority-missing-auth' ? 'false' : 'true'}) {
+  authHeaders.Authorization = 'Bearer ' + accessToken;
+}
+authHeaders.apikey = ${mode === 'authority-wrong-apikey'
+  ? "'observer-local-anon-key-drift'"
+  : "'observer-local-anon-key'"};
+Promise.all([
+  fetch(${mode === 'runtime-config-query-drift'
+    ? "'/api/runtime-config?observer=1'"
+    : "'/api/runtime-config'"}).then((response) => response.json()),
+  fetch(${mode === 'profile-query-drift'
+    ? "'/rest/v1/profiles?select=id%2Cemail%2Crole&id=eq.00000000-0000-4000-8000-000000000003'"
+    : "'/rest/v1/profiles?select=id%2Cemail%2Crole%2Corganization_id%2Cfirst_name%2Clast_name%2Cfull_name%2Cphone%2Cavatar_url%2Ctime_zone%2Cpreferences%2Cis_active%2Clast_login_at%2Ccreated_at%2Cupdated_at&id=eq.00000000-0000-4000-8000-000000000003'"}, {
+    headers: authHeaders,
+  }).then((response) => response.json()),
+  fetch(${mode === 'role-query-drift'
+    ? "'/rest/v1/user_roles?select=is_active%2Croles%28name%29&user_id=eq.00000000-0000-4000-8000-000000000003'"
+    : "'/rest/v1/user_roles?select=is_active%2Cexpires_at%2Croles%28name%29&user_id=eq.00000000-0000-4000-8000-000000000003'"}, {
+    headers: authHeaders,
+  }).then((response) => response.json()),
+  fetch(${mode === 'function-query-drift'
+    ? "'/functions/v1/feature-flags-v2?observer=1'"
+    : "'/functions/v1/feature-flags-v2'"}, {
+    method: 'POST',
+    headers: listHeaders,
+    body: ${mode === 'body-drift'
+      ? "JSON.stringify({ action: 'list', scope: 'global' })"
+      : "JSON.stringify({ action: 'list' })"},
+  }).then((response) => response.json()),
+  fetch('/api/payroll-time-events', {
+    method: 'POST',
+    headers: listHeaders,
+    body: JSON.stringify({ action: 'get_day', localDate: '2026-08-21' }),
+  }).then((response) => response.json()),
+  fetch('/api/payroll-approvals', {
+    method: 'POST',
+    headers: listHeaders,
+    body: JSON.stringify({ action: 'review_queue', selectedLocalDate: '2026-08-21' }),
+  }).then((response) => response.json()),
+  fetch('/api/payroll-administration', {
+    method: 'POST',
+    headers: listHeaders,
+    body: JSON.stringify({ action: 'get_administration', selectedLocalDate: '2026-08-21' }),
+  }).then((response) => response.json()),
+  fetch('/rest/v1/message_thread_participants?select=thread_id%2Clast_read_at%2Carchived_at%2Cmuted_at%2Cjoined_at%2Corganization_id%2Cuser_id&user_id=eq.00000000-0000-4000-8000-000000000003&organization_id=eq.observer-local-org&archived_at=is.null', {
+    headers: authHeaders,
+  }).then((response) => response.json()),
+  fetch('/rest/v1/rpc/get_supervision_session_note_action_count', {
+    method: 'POST',
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    body: '{}',
+  }).then((response) => response.json()),
+]).then(([runtimeConfig, profile, roleRows, payload, payrollDay, reviewQueue, administration, threadParticipants, supervisionCount]) => {
+  const auth = JSON.parse(localStorage.getItem('auth-storage') || '{}');
+  const authIsValid = auth.user?.role === 'super_admin'
+    && auth.roleAssignments?.includes('super_admin')
+    && typeof (auth.accessToken || auth.access_token) === 'string'
+    && typeof (auth.refreshToken || auth.refresh_token) === 'string'
+    && accessToken === 'observer-feature-flags-access-token';
+  const payloadIsValid = Array.isArray(payload?.flags)
+    && Array.isArray(payload?.organizations)
+    && Array.isArray(payload?.organizationFlags)
+    && Array.isArray(payload?.organizationPlans)
+    && Array.isArray(payload?.plans)
+    && payload.flags.length === 0
+    && payload.organizations.length === 0;
+  const authorityBootstrapIsValid = profile?.id === '00000000-0000-4000-8000-000000000003'
+    && profile?.role === 'super_admin'
+    && Array.isArray(roleRows)
+    && roleRows.length === 1
+    && roleRows[0]?.is_active === true
+    && roleRows[0]?.roles?.name === 'super_admin';
+  const shellReadsAreValid = payrollDay?.state === 'feature_disabled'
+    && reviewQueue?.state === 'feature_disabled'
+    && administration?.state === 'ok'
+    && administration?.selectedLocalDate === '2026-08-21'
+    && Array.isArray(threadParticipants)
+    && threadParticipants.length === 0
+    && supervisionCount === 0;
+  if (!authIsValid || runtimeConfig.supabaseUrl !== location.origin || !authorityBootstrapIsValid || !payloadIsValid || !shellReadsAreValid) {
+    throw new Error('synthetic feature flags bootstrap failed');
+  }
+  document.getElementById('root').innerHTML = '<div class="shell"><h1>Settings</h1><div class="tab-bar"><button type="button" aria-current="page">Feature Flags</button></div><section class="card"><h1>Super Admin Feature Flags</h1><p>Manage global feature toggles, per-organization overrides, and plan assignments.</p></section><section class="card"><h2>Organization enrollment locked</h2><p>We are operating in single-clinic mode while we stabilise tenant rollouts.</p></section><section class="card"><h2>Global feature flags</h2><form class="grid cols-4"><div class="field"><label for="flag-key">Flag key</label><input id="flag-key" value="" placeholder="new-dashboard"></div><div class="field"><label for="flag-description">Description</label><input id="flag-description" value="" placeholder="Describe the experiment"></div><div class="field"><label for="flag-default-enabled">Enabled by default</label><input id="flag-default-enabled" type="checkbox"></div><div class="field"><button type="submit">Create flag</button><span class="helper">Flag keys cannot be changed after creation.</span></div></form><table aria-label="Global feature flags"><thead><tr><th>Flag</th><th>Description</th><th>Default</th><th>Actions</th></tr></thead><tbody><tr><td colspan="4" class="empty">${mode === 'missing-surface' ? 'No flags yet.' : 'No feature flags have been created yet.'}</td></tr></tbody></table></section><section class="card"><div style="display:flex;align-items:center;justify-content:space-between"><h2>Organization overrides</h2>${mode === 'stale-loading' ? '<span class="loading">Loading…</span>' : ''}</div><p class="empty">No organization records are available yet. All feature overrides default to the primary clinic observer-local-org.</p></section></div>';
 });
 </script></body></html>`;
 
@@ -217,6 +352,11 @@ beforeAll(async () => {
     if (request.url === '/account') {
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       response.end(buildSyntheticAccountHtml(accountFixtureMode));
+      return;
+    }
+    if (request.url === '/settings/feature-flags') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(buildSyntheticFeatureFlagsHtml(featureFlagsFixtureMode));
       return;
     }
     if (request.url === '/observer-runtime-undersized') {
@@ -565,6 +705,192 @@ describe('responsive UI observer browser runtime', () => {
       `--base-url=${baseUrl}`,
       '--route=/account',
       '--scenario=account-settings',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('non-read-method');
+    }
+  }, 60_000);
+
+  it('runs the fixed feature-flags scenario with exact synthetic authority bootstrap and list reads', async () => {
+    featureFlagsFixtureMode = 'pass';
+    const requestStart = receivedRequests.length;
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/settings/feature-flags',
+      '--scenario=feature-flags',
+    ]);
+
+    expect(summary.ok).toBe(true);
+    expect(summary.results).toHaveLength(2);
+    expect(receivedRequests.slice(requestStart)).toEqual([
+      'GET /settings/feature-flags',
+      'GET /settings/feature-flags',
+    ]);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.result).toBe('pass');
+      expect(result.failureCodes).toEqual([]);
+      const evidence = JSON.parse(await readFile(result.evidencePath, 'utf8')) as Record<string, unknown>;
+      expect(evidence.scenarioId).toBe('feature-flags');
+      expect(JSON.stringify(evidence)).not.toContain('observer-feature-flags@example.test');
+      expect(JSON.stringify(evidence)).not.toContain('observer-feature-flags-access-token');
+    }
+  }, 60_000);
+
+  it('fails when the feature-flags route surface is incomplete', async () => {
+    featureFlagsFixtureMode = 'missing-surface';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/settings/feature-flags',
+      '--scenario=feature-flags',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('route-surface-missing');
+    }
+  }, 60_000);
+
+  it('fails when feature-flags loading and empty states are visible at the same time', async () => {
+    featureFlagsFixtureMode = 'stale-loading';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/settings/feature-flags',
+      '--scenario=feature-flags',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('route-surface-missing');
+    }
+  }, 60_000);
+
+  it('blocks unexpected same-origin reads in the feature-flags scenario', async () => {
+    featureFlagsFixtureMode = 'unexpected-read';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/settings/feature-flags',
+      '--scenario=feature-flags',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('unexpected-scenario-request');
+    }
+  }, 60_000);
+
+  it('blocks feature-flags list body drift', async () => {
+    featureFlagsFixtureMode = 'body-drift';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/settings/feature-flags',
+      '--scenario=feature-flags',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('unexpected-scenario-request');
+    }
+  }, 60_000);
+
+  it.each([
+    ['runtime-config-query-drift'],
+    ['function-query-drift'],
+    ['profile-query-drift'],
+    ['role-query-drift'],
+  ] as const)('blocks feature-flags query drift for %s', async (mode) => {
+    featureFlagsFixtureMode = mode;
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/settings/feature-flags',
+      '--scenario=feature-flags',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('unexpected-scenario-request');
+    }
+  }, 60_000);
+
+  it.each([
+    ['authority-missing-auth'],
+    ['authority-wrong-apikey'],
+  ] as const)('blocks feature-flags authority bootstrap header drift for %s', async (mode) => {
+    featureFlagsFixtureMode = mode;
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/settings/feature-flags',
+      '--scenario=feature-flags',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('unexpected-scenario-request');
+    }
+  }, 60_000);
+
+  it.each([
+    ['missing-auth'],
+    ['wrong-auth'],
+    ['wrong-apikey'],
+    ['wrong-content-type'],
+  ] as const)('blocks feature-flags header drift for %s', async (mode) => {
+    featureFlagsFixtureMode = mode;
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/settings/feature-flags',
+      '--scenario=feature-flags',
+    ]);
+
+    expect(summary.ok).toBe(false);
+    for (const result of summary.results) {
+      artifactPaths.add(result.screenshotPath);
+      artifactPaths.add(result.evidencePath);
+      expect(result.failureCodes).toContain('unexpected-scenario-request');
+    }
+  }, 60_000);
+
+  it('blocks mutation attempts in the feature-flags scenario', async () => {
+    featureFlagsFixtureMode = 'mutation-action';
+    const summary = await runResponsiveUiObserver([
+      'node',
+      'scripts/playwright-responsive-ui-observer.ts',
+      `--base-url=${baseUrl}`,
+      '--route=/settings/feature-flags',
+      '--scenario=feature-flags',
     ]);
 
     expect(summary.ok).toBe(false);

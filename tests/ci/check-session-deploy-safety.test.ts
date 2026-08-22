@@ -659,9 +659,11 @@ ${ciGateInertText}
 `;
 
 const tenantSafetyWorkflow = ({
-  testRun = "npm test",
+  testRun = "npm test -- --reporter=verbose",
   testContinueOnError = false,
   includeTestEnvironment = true,
+  includeHangTimeout = true,
+  hangTimeout = "180000",
 } = {}) => `name: tenant-safety
 
 on:
@@ -690,6 +692,8 @@ ${includeTestEnvironment ? `        env:
           VITE_SUPABASE_ANON_KEY: test-anon
           SUPABASE_ANON_KEY: test-anon
           SUPABASE_SERVICE_ROLE_KEY: test-service
+${includeHangTimeout ? `          VITEST_HANG_TIMEOUT_MS: '${hangTimeout}'
+` : ""}
 ` : ""}
 ${testContinueOnError ? "        continue-on-error: true" : ""}
 `;
@@ -1345,7 +1349,23 @@ describe("check-session-deploy-safety", () => {
     const result = runCheck(fixtureRoot);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("tenant-safety workflow must run `npm test` without masking failures");
+    expect(result.stderr).toContain(
+      "tenant-safety workflow must run `npm test -- --reporter=verbose` without masking failures",
+    );
+  });
+
+  test("rejects tenant-safety test runs without progress reporting", () => {
+    const fixtureRoot = makeFixture({
+      tenant: {
+        testRun: "npm test",
+      },
+    });
+    const result = runCheck(fixtureRoot);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "tenant-safety workflow must run `npm test -- --reporter=verbose` without masking failures",
+    );
   });
 
   test("rejects tenant-safety npm test steps with continue-on-error enabled", () => {
@@ -1357,7 +1377,9 @@ describe("check-session-deploy-safety", () => {
     const result = runCheck(fixtureRoot);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("tenant-safety workflow must run `npm test` without masking failures");
+    expect(result.stderr).toContain(
+      "tenant-safety workflow must run `npm test -- --reporter=verbose` without masking failures",
+    );
   });
 
   test("rejects tenant-safety npm test steps without the required Supabase test environment", () => {
@@ -1372,6 +1394,36 @@ describe("check-session-deploy-safety", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
       "tenant-safety workflow must map the required Supabase test environment",
+    );
+  });
+
+  test("rejects tenant-safety test steps without the required hang timeout", () => {
+    const root = makeFixture({
+      tenant: {
+        includeHangTimeout: false,
+      },
+    });
+
+    const result = runCheck(root);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "tenant-safety workflow must set VITEST_HANG_TIMEOUT_MS to 180000",
+    );
+  });
+
+  test("rejects tenant-safety test steps with a drifted hang timeout", () => {
+    const root = makeFixture({
+      tenant: {
+        hangTimeout: "600000",
+      },
+    });
+
+    const result = runCheck(root);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "tenant-safety workflow must set VITEST_HANG_TIMEOUT_MS to 180000",
     );
   });
 

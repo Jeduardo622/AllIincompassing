@@ -2,7 +2,7 @@
 
 Date: 2026-08-22
 Issue: `WIN-43`
-Status: `incomplete - persistent-persona proof, migration drift, and global cleanup remain`
+Status: `incomplete - readiness exact-main CI gate, persistent-persona proof, migration drift, and global cleanup remain`
 Observed production `main`: [`242870ce712372997cb69673a9c09229bd3476ff`](https://github.com/Jeduardo622/AllIincompassing/commit/242870ce712372997cb69673a9c09229bd3476ff)
 
 ## Purpose
@@ -37,6 +37,7 @@ This handoff records what the evidence-first QA campaign has and has not proven.
 | Hosted database checks | Proven | [Run 32580531595](https://github.com/Jeduardo622/AllIincompassing/actions/runs/32580531595) succeeded at the observed `main` SHA |
 | Production availability | Partial | `https://app.allincompassing.ai` returned HTTP 200 on 2026-08-22 after the merge; exact Netlify deploy-to-commit attribution is unavailable because the deploy-list API now returns HTTP 401 |
 | Production Feature Flags preflight | Proven | After explicit owner authorization, only `feature-flags-v2` was deployed from merge `96e349ee2f6e2f121cf6ce1222245e88638a9380` with `verify_jwt=true`. Active version `64` (`ezbr_sha256=af63733901f8c9d0fd8128397f77ef2f6d81a1099e0e5974b52fc2c6d5f4758c`) contains all 13 authorized files with no readback mismatch. Allowed GET and POST preflights returned `204` in 1.38 and 0.88 seconds, denied-origin preflight returned `403` in 0.94 seconds, and unauthenticated GET and POST remained fail-closed at `401` in 0.84 and 0.83 seconds. Sanitized version-64 Edge logs confirmed the new execution path. |
+| Persistent-persona readiness dispatch | Blocked | `.github/workflows/provision-qa-personas.yaml` requires successful `policy`, `lint-typecheck`, `unit-tests`, `build`, `tier0-browser`, `auth-browser-smoke`, and `ci-gate` checks whose `head_sha` equals exact current `main`. Docs-only #1009 intentionally skipped the first six code checks. A manual CI dispatch uses the same parent diff and remains docs-only, so it cannot supply the missing proof. Do not dispatch readiness until a separately reviewed critical change resolves this gate incompatibility without weakening it. |
 | Supabase Preview external check | Unresolved | Check run `97049150499` failed because remote migration versions were not found in the local migrations directory; this remains migration-drift risk even though the strict GitHub Actions gates passed |
 
 ## Owner-Gated Repair Chain
@@ -125,11 +126,12 @@ The local responsive observer contains scenarios for schedule overlap, clients d
 
 ## Required Sequence
 
-1. The owner may dispatch `verify-readiness` only with a fresh exact current-main SHA, the eligible merged WIN-43 PR, and the workflow's exact acknowledgement. No authorization is supplied by this document.
-2. If readiness succeeds, execute a separately authorized full persistent-persona workflow audit; the existing readiness workflow proves route entry and denial checks, not complete workflow usability.
-3. Run a final marker-owned hosted zero-residue readback and retain sanitized proof.
-4. Produce the final CTO memo only after the evidence above is complete.
+1. Resolve the readiness workflow's exact-main required-check incompatibility after a docs-only merge through a separately reviewed critical change; do not weaken or bypass the required checks.
+2. Only after that correction is owner-merged and exact-main proof is green may the owner separately authorize one `verify-readiness` dispatch with the workflow's exact inputs and acknowledgement.
+3. If readiness succeeds, execute a separately authorized full persistent-persona workflow audit; the existing readiness workflow proves route entry and denial checks, not complete workflow usability.
+4. Run a final marker-owned hosted zero-residue readback and retain sanitized proof.
+5. Produce the final CTO memo only after the evidence above is complete.
 
 ## Readiness Verdict
 
-The production web release is reachable, strict GitHub Actions gates passed at the observed `main` SHA, and the explicitly authorized Feature Flags production repair passed bounded deployment proof. The WIN-43 campaign's stronger definition of production usability is **not yet proven**: exact Netlify deploy attribution is unavailable, current readiness has not run for the eight persistent personas, complete authenticated persona workflows remain incomplete, migration drift remains unresolved, and final global zero-residue proof is pending.
+The production web release is reachable and the explicitly authorized Feature Flags production repair passed bounded deployment proof. The WIN-43 campaign's stronger definition of production usability is **not yet proven**: current docs-only `main` lacks the exact-SHA successful code checks required by the fail-closed readiness workflow, exact Netlify deploy attribution is unavailable, readiness has not run for the eight persistent personas, complete authenticated persona workflows remain incomplete, migration drift remains unresolved, and final global zero-residue proof is pending.

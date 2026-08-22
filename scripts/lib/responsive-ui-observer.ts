@@ -15,7 +15,11 @@ export type ObserverArgs = {
   artifactRunId?: string;
 };
 
-export type ObserverScenario = 'schedule-overlap' | 'payroll-time' | 'payroll-time-review';
+export type ObserverScenario =
+  | 'schedule-overlap'
+  | 'clients-directory'
+  | 'payroll-time'
+  | 'payroll-time-review';
 
 export type LayoutTouchTarget = {
   width: number;
@@ -59,6 +63,7 @@ export const OBSERVER_POLICY: ObserverPolicy = {
 };
 
 const SCHEDULE_OVERLAP_SCENARIO: ObserverScenario = 'schedule-overlap';
+const CLIENTS_DIRECTORY_SCENARIO: ObserverScenario = 'clients-directory';
 const PAYROLL_TIME_SCENARIO: ObserverScenario = 'payroll-time';
 const PAYROLL_TIME_REVIEW_SCENARIO: ObserverScenario = 'payroll-time-review';
 
@@ -189,6 +194,7 @@ export const parseObserverArgs = (argv: string[]): ObserverArgs => {
       const candidate = arg.slice('--scenario='.length);
       if (
         candidate !== SCHEDULE_OVERLAP_SCENARIO
+        && candidate !== CLIENTS_DIRECTORY_SCENARIO
         && candidate !== PAYROLL_TIME_SCENARIO
         && candidate !== PAYROLL_TIME_REVIEW_SCENARIO
       ) {
@@ -220,6 +226,11 @@ export const parseObserverArgs = (argv: string[]): ObserverArgs => {
   if (scenario === SCHEDULE_OVERLAP_SCENARIO) {
     if (routes.length !== 1 || routes[0] !== '/schedule') {
       throw new Error('The schedule-overlap scenario requires exactly one --route=/schedule.');
+    }
+  }
+  if (scenario === CLIENTS_DIRECTORY_SCENARIO) {
+    if (routes.length !== 1 || routes[0] !== '/clients') {
+      throw new Error('The clients-directory scenario requires exactly one --route=/clients.');
     }
   }
   if (scenario === PAYROLL_TIME_SCENARIO) {

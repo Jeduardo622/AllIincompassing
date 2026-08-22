@@ -216,6 +216,33 @@ describe('responsive-ui-observer contract', () => {
       }
     });
 
+    it('accepts only the fixed synthetic clients-directory scenario on /clients', () => {
+      expect(parseObserverArgs([
+        'node',
+        'scripts/playwright-responsive-ui-observer.ts',
+        `--base-url=${baseUrl}`,
+        '--route=/clients',
+        '--scenario=clients-directory',
+      ])).toEqual({
+        baseUrl,
+        routes: ['/clients'],
+        scenario: 'clients-directory',
+      });
+
+      for (const invalidArgs of [
+        ['--route=/schedule', '--scenario=clients-directory'],
+        ['--route=/clients', '--route=/schedule', '--scenario=clients-directory'],
+        ['--route=/clients', '--scenario=clients-directory', '--scenario=clients-directory'],
+      ]) {
+        expect(() => parseObserverArgs([
+          'node',
+          'scripts/playwright-responsive-ui-observer.ts',
+          `--base-url=${baseUrl}`,
+          ...invalidArgs,
+        ])).toThrow();
+      }
+    });
+
     it('accepts only the fixed synthetic payroll-time scenario on /time', () => {
       expect(parseObserverArgs([
         'node',

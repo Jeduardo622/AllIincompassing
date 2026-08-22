@@ -7,6 +7,7 @@ import { parse } from "yaml";
 type WorkflowStep = {
   name?: string;
   env?: Record<string, string>;
+  run?: string;
 };
 
 type Workflow = {
@@ -34,5 +35,16 @@ describe("CI test memory contract", () => {
     expectStepHeap(loadWorkflow("ci.yml"), "unit_tests", "Unit tests + coverage", 8192);
     expectStepHeap(loadWorkflow("supabase-validate.yml"), "test-main", "Run unit tests", 6144);
     expectStepHeap(loadWorkflow("tenant-safety.yml"), "tenant-safety", "Run tests", 8192);
+  });
+
+  it("allows the tenant-safety full suite to remain quiet during browser runtime tests", () => {
+    const workflow = loadWorkflow("tenant-safety.yml");
+    const step = workflow.jobs?.["tenant-safety"]?.steps?.find(
+      (candidate) => candidate.name === "Run tests",
+    );
+
+    expect(step, "tenant-safety/Run tests must exist").toBeDefined();
+    expect(step?.run).toBe("npm test -- --reporter=verbose");
+    expect(step?.env?.VITEST_HANG_TIMEOUT_MS).toBe("180000");
   });
 });

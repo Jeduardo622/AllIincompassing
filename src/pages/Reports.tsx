@@ -8,7 +8,7 @@ import {
   Clock, 
   RefreshCw
 } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { showError } from '../lib/toast';
 import { useDebounce } from '../lib/performance';
@@ -96,10 +96,14 @@ const normalizeSessionMetricsData = (value: unknown): ReportData | null => {
   };
 };
 
+const formatDateOnlyForDisplay = (value: string): string =>
+  format(parseISO(value), 'MMM d, yyyy');
+
 export const __TESTING__ = {
   toNumber,
   toCountMap,
   normalizeSessionMetricsData,
+  formatDateOnlyForDisplay,
 };
 
 // Memoized report sections
@@ -433,7 +437,7 @@ const Reports = React.memo(() => {
         {reportData && canExportReports && (
           <button
             onClick={exportToCsv}
-            className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 flex items-center"
+            className="flex min-h-11 items-center rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
           >
             <Download className="w-4 h-4 mr-2" />
             Export to CSV
@@ -454,7 +458,7 @@ const Reports = React.memo(() => {
                 id="reportType"
                 value={reportType}
                 onChange={(e) => setReportType(e.target.value as ReportType)}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                className="min-h-11 w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
               >
                 <option value="sessions">Sessions Report</option>
                 <option value="clients">Clients Report</option>
@@ -473,7 +477,7 @@ const Reports = React.memo(() => {
                 id="dateRange"
                 value={filters.dateRange}
                 onChange={(e) => setFilters({...filters, dateRange: e.target.value as ReportFilters['dateRange']})}
-                className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                className="min-h-11 w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
               >
                 <option value="current_month">Current Month</option>
                 <option value="last_month">Last Month</option>
@@ -530,7 +534,7 @@ const Reports = React.memo(() => {
                     id="therapistId"
                     value={filters.therapistId || ''}
                     onChange={(e) => setFilters({...filters, therapistId: e.target.value || undefined})}
-                    className="w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                    className="min-h-11 w-full rounded-md border-gray-300 pl-10 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                   >
                     <option value="">All Therapists</option>
                     {therapists.map(therapist => (
@@ -554,7 +558,7 @@ const Reports = React.memo(() => {
                     id="clientId"
                     value={filters.clientId || ''}
                     onChange={(e) => setFilters({...filters, clientId: e.target.value || undefined})}
-                    className="w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                    className="min-h-11 w-full rounded-md border-gray-300 pl-10 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                   >
                     <option value="">All Clients</option>
                     {clients.map(client => (
@@ -578,7 +582,7 @@ const Reports = React.memo(() => {
                     id="status"
                     value={filters.status || ''}
                     onChange={(e) => setFilters({...filters, status: e.target.value || undefined})}
-                    className="w-full pl-10 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-dark dark:text-gray-200"
+                    className="min-h-11 w-full rounded-md border-gray-300 pl-10 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-dark dark:text-gray-200"
                   >
                     <option value="">All Statuses</option>
                     <option value="scheduled">Scheduled</option>
@@ -595,7 +599,7 @@ const Reports = React.memo(() => {
             <button
               onClick={handleGenerateReport}
               disabled={isGenerating}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 flex items-center"
+              className="flex min-h-11 items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
             >
               {isGenerating ? (
                 <>
@@ -627,7 +631,7 @@ const Reports = React.memo(() => {
                 {reportType === 'billing' && 'Billing Report'}
               </h2>
               <div className="text-sm text-gray-500 dark:text-gray-400">
-                {format(new Date(filters.startDate), 'MMM d, yyyy')} - {format(new Date(filters.endDate), 'MMM d, yyyy')}
+                {formatDateOnlyForDisplay(filters.startDate)} - {formatDateOnlyForDisplay(filters.endDate)}
               </div>
             </div>
             

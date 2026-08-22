@@ -21,7 +21,9 @@ export type ObserverScenario =
   | 'account-settings'
   | 'feature-flags'
   | 'payroll-time'
-  | 'payroll-time-review';
+  | 'payroll-time-review'
+  | 'staff-dashboard'
+  | 'staff-reports';
 
 export type LayoutTouchTarget = {
   width: number;
@@ -70,6 +72,8 @@ const ACCOUNT_SETTINGS_SCENARIO: ObserverScenario = 'account-settings';
 const FEATURE_FLAGS_SCENARIO: ObserverScenario = 'feature-flags';
 const PAYROLL_TIME_SCENARIO: ObserverScenario = 'payroll-time';
 const PAYROLL_TIME_REVIEW_SCENARIO: ObserverScenario = 'payroll-time-review';
+const STAFF_DASHBOARD_SCENARIO: ObserverScenario = 'staff-dashboard';
+const STAFF_REPORTS_SCENARIO: ObserverScenario = 'staff-reports';
 
 const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
@@ -203,6 +207,8 @@ export const parseObserverArgs = (argv: string[]): ObserverArgs => {
         && candidate !== FEATURE_FLAGS_SCENARIO
         && candidate !== PAYROLL_TIME_SCENARIO
         && candidate !== PAYROLL_TIME_REVIEW_SCENARIO
+        && candidate !== STAFF_DASHBOARD_SCENARIO
+        && candidate !== STAFF_REPORTS_SCENARIO
       ) {
         throw new Error(`Unknown observer scenario: ${candidate}`);
       }
@@ -257,6 +263,16 @@ export const parseObserverArgs = (argv: string[]): ObserverArgs => {
   if (scenario === PAYROLL_TIME_REVIEW_SCENARIO) {
     if (routes.length !== 1 || routes[0] !== '/time/review') {
       throw new Error('The payroll-time-review scenario requires exactly one --route=/time/review.');
+    }
+  }
+  if (scenario === STAFF_DASHBOARD_SCENARIO) {
+    if (routes.length !== 1 || routes[0] !== '/') {
+      throw new Error('The staff-dashboard scenario requires exactly one --route=/.');
+    }
+  }
+  if (scenario === STAFF_REPORTS_SCENARIO) {
+    if (routes.length !== 1 || routes[0] !== '/reports') {
+      throw new Error('The staff-reports scenario requires exactly one --route=/reports.');
     }
   }
   return { baseUrl, routes, scenario, artifactRunId };

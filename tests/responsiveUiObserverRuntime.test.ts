@@ -21,6 +21,19 @@ let server: http.Server;
 let baseUrl: string;
 const artifactPaths = new Set<string>();
 const execFileAsync = promisify(execFile);
+const FAST_FAILURE_TIMING = {
+  settleTimeoutMs: 50,
+  extraSettleMs: 0,
+} as const;
+const FAST_SCHEDULE_DIALOG_TIMING = {
+  settleTimeoutMs: 1_500,
+  extraSettleMs: 0,
+} as const;
+
+const runResponsiveUiObserverWithFastFailureTiming = (argv: string[]) =>
+  runResponsiveUiObserver(argv, { timing: FAST_FAILURE_TIMING });
+const runResponsiveUiObserverWithFastScheduleDialogTiming = (argv: string[]) =>
+  runResponsiveUiObserver(argv, { timing: FAST_SCHEDULE_DIALOG_TIMING });
 
 const passHtml = `<!doctype html>
 <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -357,7 +370,7 @@ Promise.all([
       dialog.setAttribute('aria-label', '12 overlapping appointments');
       dialog.style.position = 'fixed';
       dialog.style.inset = '8px';
-      dialog.innerHTML = '<button>Open appointment</button>';
+      dialog.innerHTML = '<button>Open appointment</button><button>View details</button>';
       document.body.append(dialog);
     });
   }, 1000);
@@ -813,7 +826,7 @@ describe('responsive UI observer browser runtime', () => {
       expect(result.failureCodes).toEqual([]);
       const evidence = JSON.parse(await readFile(result.evidencePath, 'utf8')) as Record<string, unknown>;
       expect(evidence.scenarioId).toBe('schedule-overlap');
-      expect(evidence.metricsSummary).toMatchObject({ visibleTouchTargetCount: 1 });
+      expect(evidence.metricsSummary).toMatchObject({ visibleTouchTargetCount: 2 });
     }
   }, 60_000);
 
@@ -905,7 +918,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('fails when the production staff Dashboard surface is missing', async () => {
     dashboardFixtureMode = 'missing-surface';
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -923,7 +936,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('fails when the root renders only the correction Dashboard surface', async () => {
     dashboardFixtureMode = 'correction-only-surface';
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -941,7 +954,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('fails when the production Reports generated surface is missing', async () => {
     reportsFixtureMode = 'missing-surface';
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -959,7 +972,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('blocks unexpected same-origin reads in the clients-directory scenario', async () => {
     clientsFixtureMode = 'unexpected-read';
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -977,7 +990,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('blocks unexpected same-origin reads in the staff-dashboard scenario', async () => {
     dashboardFixtureMode = 'unexpected-read';
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -995,7 +1008,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('blocks unexpected same-origin reads in the staff-reports scenario', async () => {
     reportsFixtureMode = 'unexpected-read';
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1013,7 +1026,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('blocks clients-directory query-shape drift', async () => {
     clientsFixtureMode = 'query-drift';
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1031,7 +1044,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('blocks staff-dashboard query-shape drift', async () => {
     dashboardFixtureMode = 'query-drift';
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1049,7 +1062,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('blocks staff-reports query-shape drift', async () => {
     reportsFixtureMode = 'query-drift';
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1067,7 +1080,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('blocks staff-reports dropdown RPC body drift', async () => {
     reportsFixtureMode = 'dropdown-body-drift';
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1088,7 +1101,7 @@ describe('responsive UI observer browser runtime', () => {
     'role-query-drift',
   ] satisfies ReportsFixtureMode[])('blocks staff-reports %s', async (mode) => {
     reportsFixtureMode = mode;
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1112,7 +1125,7 @@ describe('responsive UI observer browser runtime', () => {
     ['sidebar-supervision-count-body-drift', 'non-read-method'],
   ] satisfies Array<[ReportsFixtureMode, string]>)('blocks staff-reports %s', async (mode, failureCode) => {
     reportsFixtureMode = mode;
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1130,7 +1143,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('blocks staff-dashboard supervision body drift', async () => {
     dashboardFixtureMode = 'body-drift';
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1153,7 +1166,7 @@ describe('responsive UI observer browser runtime', () => {
     'administration-body-drift',
   ] satisfies DashboardFixtureMode[])('blocks staff-dashboard %s', async (mode) => {
     dashboardFixtureMode = mode;
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1257,7 +1270,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('fails when the account-settings route surface is incomplete', async () => {
     accountFixtureMode = 'missing-surface';
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1275,7 +1288,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('fails when the account-settings save action is enabled before edits', async () => {
     accountFixtureMode = 'enabled-save';
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1358,7 +1371,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('fails when the feature-flags route surface is incomplete', async () => {
     featureFlagsFixtureMode = 'missing-surface';
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1376,7 +1389,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('fails when feature-flags loading and empty states are visible at the same time', async () => {
     featureFlagsFixtureMode = 'stale-loading';
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1394,7 +1407,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('blocks unexpected same-origin reads in the feature-flags scenario', async () => {
     featureFlagsFixtureMode = 'unexpected-read';
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1412,7 +1425,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('blocks feature-flags list body drift', async () => {
     featureFlagsFixtureMode = 'body-drift';
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1435,7 +1448,7 @@ describe('responsive UI observer browser runtime', () => {
     ['role-query-drift'],
   ] as const)('blocks feature-flags query drift for %s', async (mode) => {
     featureFlagsFixtureMode = mode;
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1456,7 +1469,7 @@ describe('responsive UI observer browser runtime', () => {
     ['authority-wrong-apikey'],
   ] as const)('blocks feature-flags authority bootstrap header drift for %s', async (mode) => {
     featureFlagsFixtureMode = mode;
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1479,7 +1492,7 @@ describe('responsive UI observer browser runtime', () => {
     ['wrong-content-type'],
   ] as const)('blocks feature-flags header drift for %s', async (mode) => {
     featureFlagsFixtureMode = mode;
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1540,7 +1553,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('fails closed when the payroll-time-review production surface is absent', async () => {
     const requestStart = receivedRequests.length;
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1618,7 +1631,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('blocks unexpected same-origin reads in the schedule scenario', async () => {
     scheduleFixtureMode = 'unexpected-read';
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1636,7 +1649,7 @@ describe('responsive UI observer browser runtime', () => {
 
   it('keeps payroll mutation actions fail-closed in the schedule scenario', async () => {
     scheduleFixtureMode = 'mutation-action';
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastFailureTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,
@@ -1659,7 +1672,7 @@ describe('responsive UI observer browser runtime', () => {
     ['missing-dialog', 'scenario-dialog-missing'],
   ] as const)('reports the canonical %s scenario failure', async (mode, expectedFailure) => {
     scheduleFixtureMode = mode;
-    const summary = await runResponsiveUiObserver([
+    const summary = await runResponsiveUiObserverWithFastScheduleDialogTiming([
       'node',
       'scripts/playwright-responsive-ui-observer.ts',
       `--base-url=${baseUrl}`,

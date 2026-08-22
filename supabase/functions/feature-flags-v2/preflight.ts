@@ -1,4 +1,7 @@
-import { resolveAllowedOrigin } from "../_shared/cors.ts";
+import {
+  resolveAllowedOrigin,
+  resolveAllowedOriginForRequest,
+} from "../_shared/cors.ts";
 
 const STATIC_ALLOWED_ORIGINS = [
   "https://app.allincompassing.ai",
@@ -35,7 +38,10 @@ export const resolveRequestOrigin = (
     return { origin: null, requestedOrigin: null };
   }
 
-  if (adminAllowedOrigins.has(requestedOrigin)) {
+  if (
+    adminAllowedOrigins.has(requestedOrigin) ||
+    resolveAllowedOriginForRequest(req) === requestedOrigin
+  ) {
     return { origin: requestedOrigin, requestedOrigin };
   }
 

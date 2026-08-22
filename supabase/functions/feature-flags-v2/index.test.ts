@@ -75,6 +75,24 @@ Deno.test("GET preflight uses the runtime CORS contract without loading the appl
   );
 });
 
+Deno.test("GET preflight allows the Netlify deploy preview origin", async () => {
+  const handler = createHandler(async () => {
+    throw new Error("application loader must not run for preflight");
+  });
+  const previewOrigin =
+    "https://deploy-preview-1007--velvety-cendol-dae4d6.netlify.app";
+
+  const response = await handler(
+    createPreflightRequest(previewOrigin, "GET"),
+  );
+
+  assertEquals(response.status, 204);
+  assertEquals(
+    response.headers.get("Access-Control-Allow-Origin"),
+    previewOrigin,
+  );
+});
+
 Deno.test("OPTIONS preflight rejects disallowed origins without loading the application", async () => {
   const handler = createHandler(async () => {
     throw new Error("application loader must not run for preflight");

@@ -20,6 +20,8 @@
 - root cause: the deployed `index.ts` exported `handler` but never registered it with `Deno.serve`, so gateway-owned JWT denials worked while worker-owned preflight handling never started
 - repaired-preview evidence: exact preview version 65 (`ezbr_sha256=83c739e9fbfa5da1523f5d785dd94e2e242e3e5c0bf7a583531b7054614889c1`) contains both guarded `Deno.serve(handler)` and the lazy runtime import; allowed `OPTIONS` returned `204` in 0.97 seconds, denied `OPTIONS` returned `403` in 1.07 seconds, and unauthenticated `GET`/`POST` retained gateway `401` responses in under 0.2 seconds
 - repaired-preview log evidence: sanitized Edge readback records the allowed and denied worker executions at 791 ms and 929 ms for the exact function id, with no request body, identity, token, or PHI retained
+- final-head preview regression evidence: preview version 66 retained the registered handler and lazy import but returned `403` in 1.05 seconds for the exact Netlify deploy-preview origin while denied `OPTIONS` remained `403` and unauthenticated `GET`/`POST` remained prompt `401`; source inspection proved the function-local origin check depended on optional `EDGE_ALLOWED_ORIGINS` instead of the repository's shared Netlify preview allowlist
+- regression repair: the function-local resolver now preserves its static and environment origins while delegating additional validation to the existing shared CORS resolver, so the reviewed deploy-preview pattern is deterministic across preview redeployments
 - evidence handling: sanitized status, duration, function slug, version, and contract evidence only; no identity, credential, token, PHI, or raw request payload retained
 
 ## Scope
@@ -34,7 +36,7 @@
 
 - `index.ts` handles `OPTIONS` before the literal dynamic import of `runtime.ts`
 - `index.ts` registers that handler with `Deno.serve` only when executed as the deployed entrypoint
-- `preflight.ts` preserves the function's existing narrow origin allowlist, requested-header behavior, and disallowed-origin `403`
+- `preflight.ts` preserves the function's static/environment allowlist, requested-header behavior, and disallowed-origin `403`, and reuses the existing shared resolver for the repository's Netlify deploy-preview pattern
 - `runtime.ts` preserves the prior non-`OPTIONS` GET/POST, request-scoped auth, protected-admin wrapper, and single-organization guards
 - `supabase/config.toml` registers `feature-flags-v2` with `verify_jwt = true` so Supabase PR previews deploy the reviewed branch function instead of retaining the production-cloned version
 - no migration, RLS, grant, shared auth, shared CORS, workflow, or secret surface changed
@@ -65,6 +67,9 @@
 - executed checks:
   - entrypoint registration contract before `Deno.serve`: fail as expected, with the other 4 preflight/delegation tests passing
   - `deno test --no-lock --node-modules-dir=none --no-prompt --allow-env --allow-read ./supabase/functions/feature-flags-v2/index.test.ts`: pass, 5 tests
+  - deploy-preview origin regression test against the version 66 source: fail as expected with `403` instead of `204`
+  - focused Deno test after shared-resolver wiring: pass, 6 tests
+  - focused `deno check`, `deno fmt --check`, and `git diff --check` after the preview-origin repair: pass
   - `deno check --no-lock --node-modules-dir=none` for `index.ts`, `runtime.ts`, and `preflight.ts`: pass
   - `deno info --json` for `index.ts`: pass; `runtime.ts` is recorded as a dynamic dependency
   - Supabase Edge Runtime v1.74.3 `bundle` for the actual `index.ts`: pass
@@ -102,9 +107,9 @@
 - unrelated changes: none
 - generated artifact drift: none; temporary Docker proof containers and volume were removed
 - verification summary: present
-- pr-ready: yes, for human review only
-- required follow-up: complete final reviewer pass, push and open a critical-lane PR, require human review and exact-head CI, then perform hosted preflight/authz/tenant/log readback after owner merge and deployment
+- pr-ready: pending a fresh exact-head preview and CI cycle for the deploy-preview origin repair
+- required follow-up: push the bounded repair, prove the exact preview origin returns `204`, require human review and exact-head CI, then perform hosted preflight/authz/tenant/log readback after owner merge and deployment
 
 ## Handoff Summary
 
-Hosted Edge logs traced the unusable Feature Flags route to two 150-second `OPTIONS` timeouts in the deployed `feature-flags-v2` function. The first exact preview proved that a lightweight exported handler was insufficient because the deployed entrypoint never registered it with `Deno.serve`; same-preview gateway and control-function probes isolated that bootstrap gap. The repair now registers the handler and keeps the existing application/auth module behind a literal dynamic import while preserving function-local CORS and tenant contracts. Focused Deno, policy, lint, typecheck, tenant, build, and prior coverage and tier-0 route checks pass; the inherited full-suite watchdog and secret-backed production checks remain explicitly classified. This critical change requires human review before merge or deployment.
+Hosted Edge logs traced the unusable Feature Flags route to two 150-second `OPTIONS` timeouts in the deployed `feature-flags-v2` function. The first exact preview proved that a lightweight exported handler was insufficient because the deployed entrypoint never registered it with `Deno.serve`; same-preview gateway and control-function probes isolated that bootstrap gap. A later preview redeploy exposed a second deterministic defect: the function-local origin check rejected the repository's reviewed Netlify deploy-preview pattern unless optional branch environment configuration happened to include it. The bounded follow-up reuses the existing shared resolver without changing shared policy. Focused Deno, policy, lint, typecheck, tenant, build, and prior coverage and tier-0 route checks pass; fresh exact-head preview and CI evidence are pending. This critical change requires human review before merge or deployment.

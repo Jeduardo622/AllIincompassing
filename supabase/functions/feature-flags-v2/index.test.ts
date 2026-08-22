@@ -1,4 +1,7 @@
-import { assertEquals } from "https://deno.land/std@0.224.0/testing/asserts.ts";
+import {
+  assertEquals,
+  assertMatch,
+} from "https://deno.land/std@0.224.0/testing/asserts.ts";
 import { createHandler } from "./index.ts";
 
 const FUNCTION_URL =
@@ -13,6 +16,17 @@ const createPreflightRequest = (origin: string, requestedMethod = "POST") =>
       "Access-Control-Request-Headers": "authorization,apikey",
     },
   });
+
+Deno.test("deployed entrypoint registers its handler with Deno.serve", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./index.ts", import.meta.url),
+  );
+
+  assertMatch(
+    source,
+    /if\s*\(import\.meta\.main\)\s*\{\s*Deno\.serve\(handler\);\s*\}/,
+  );
+});
 
 Deno.test("OPTIONS preflight does not load the feature flags application", async () => {
   let applicationLoads = 0;

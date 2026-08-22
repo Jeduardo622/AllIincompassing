@@ -21,4 +21,9 @@ export const createHandler = (
 };
 
 export const handler = createHandler();
+
+if (import.meta.main) {
+  Deno.serve(handler);
+}
+
 export default handler;

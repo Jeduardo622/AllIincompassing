@@ -16,11 +16,13 @@
 - backend evidence: current hosted Edge logs recorded two `OPTIONS` requests to `feature-flags-v2` version 63 ending in `504` after approximately 150 seconds, with no following `POST`
 - deployed-entrypoint evidence: hosted function metadata identifies `supabase/functions/feature-flags-v2/index.ts` as the active entrypoint
 - preview-deployment evidence: the first PR preview retained production-cloned function version 63 because `feature-flags-v2` was absent from `supabase/config.toml`; branch-action logs showed only explicitly registered functions being deployed
+- preview-runtime evidence: after registration, preview version 64 contained the branch `index.ts`, `preflight.ts`, and `runtime.ts`, but allowed and denied `OPTIONS` requests still returned no bytes within 10 seconds; a registered control function on the same preview returned `204` in about one second, a missing slug returned `404` in 0.15 seconds, and unauthenticated `GET`/`POST` requests received gateway `401` responses promptly
+- root cause: the deployed `index.ts` exported `handler` but never registered it with `Deno.serve`, so gateway-owned JWT denials worked while worker-owned preflight handling never started
 - evidence handling: sanitized status, duration, function slug, version, and contract evidence only; no identity, credential, token, PHI, or raw request payload retained
 
 ## Scope
 
-- task intent: keep the deployed entrypoint dependency-light so allowed and denied CORS preflights return before the heavy application/auth module graph is evaluated
+- task intent: register the deployed handler and keep its entrypoint dependency-light so allowed and denied CORS preflights return before the heavy application/auth module graph is evaluated
 - files touched: `supabase/functions/feature-flags-v2/index.ts`, `supabase/functions/feature-flags-v2/preflight.ts`, `supabase/functions/feature-flags-v2/runtime.ts`, `supabase/functions/feature-flags-v2/index.test.ts`, `supabase/config.toml`, `src/tests/security/edgeFunctionConfig.test.ts`, and this handoff
 - non-goals: feature-flag behavior, auth capability, tenant scope, database schema, migrations, RLS, grants, shared CORS policy, frontend rendering, workflows, credentials, production deployment, or hosted mutation
 - stop condition: stop before merge or deployment pending human review; re-route if containment requires any non-goal surface
@@ -29,6 +31,7 @@
 ## Implementation
 
 - `index.ts` handles `OPTIONS` before the literal dynamic import of `runtime.ts`
+- `index.ts` registers that handler with `Deno.serve` only when executed as the deployed entrypoint
 - `preflight.ts` preserves the function's existing narrow origin allowlist, requested-header behavior, and disallowed-origin `403`
 - `runtime.ts` preserves the prior non-`OPTIONS` GET/POST, request-scoped auth, protected-admin wrapper, and single-organization guards
 - `supabase/config.toml` registers `feature-flags-v2` with `verify_jwt = true` so Supabase PR previews deploy the reviewed branch function instead of retaining the production-cloned version
@@ -58,7 +61,8 @@
   - `npm run build`
   - `npm run verify:local`
 - executed checks:
-  - `deno test --no-lock --node-modules-dir=none --no-prompt --allow-env --allow-read ./supabase/functions/feature-flags-v2/index.test.ts`: pass, 4 tests
+  - entrypoint registration contract before `Deno.serve`: fail as expected, with the other 4 preflight/delegation tests passing
+  - `deno test --no-lock --node-modules-dir=none --no-prompt --allow-env --allow-read ./supabase/functions/feature-flags-v2/index.test.ts`: pass, 5 tests
   - `deno check --no-lock --node-modules-dir=none` for `index.ts`, `runtime.ts`, and `preflight.ts`: pass
   - `deno info --json` for `index.ts`: pass; `runtime.ts` is recorded as a dynamic dependency
   - Supabase Edge Runtime v1.74.3 `bundle` for the actual `index.ts`: pass
@@ -81,10 +85,10 @@
 - blocked checks:
   - `npm run ci:playwright`: protected hosted persona credentials are not available to this process; no `.env*` file was read
   - `npm run verify:local`: aggregate cannot be green locally because its `test:ci` stage contains the unchanged Windows CRLF-sensitive BCBA provisioning assertion above; exact-head Linux CI remains required
-  - preview deployed `OPTIONS` and function metadata readback: pending the new exact-head Supabase Preview deployment with the registration stanza
+  - preview deployed `OPTIONS` and function metadata readback: version 64 branch source was confirmed, but preflight still timed out because the deployed handler was not registered; the next exact-head preview must prove the `Deno.serve` repair
   - production authenticated `GET`/`POST`, wrong-org denial, and Edge log readback: require a human-reviewed merge and explicit production deployment of this critical-path change
 - result: `pass-with-blocked-checks`
-- residual risk: source, focused tests, Deno graph checks, and the production Edge Runtime bundler support the lazy startup boundary, but only post-deploy hosted preflight latency and authenticated readback can prove the production timeout is resolved
+- residual risk: source and focused tests now prove both server registration and the lazy startup boundary, but only the next preview can prove the Edge worker dispatches preflight promptly, and production authenticated readback remains owner-gated
 
 ## PR Hygiene
 
@@ -99,4 +103,4 @@
 
 ## Handoff Summary
 
-Hosted Edge logs traced the unusable Feature Flags route to two 150-second `OPTIONS` timeouts in the deployed `feature-flags-v2` function. The repair moves the existing application and auth handler behind a literal dynamic import while preserving the function-local CORS and tenant contracts in a lightweight deployed entrypoint. Focused Deno, Edge Runtime bundle, policy, lint, typecheck, coverage, tenant, build, and all 250 tier-0 route checks pass; the aggregate Windows test failure is unchanged from `origin/main`, and secret-backed plus post-deploy checks remain explicitly blocked. This critical change requires human review before merge or deployment.
+Hosted Edge logs traced the unusable Feature Flags route to two 150-second `OPTIONS` timeouts in the deployed `feature-flags-v2` function. The first exact preview proved that a lightweight exported handler was insufficient because the deployed entrypoint never registered it with `Deno.serve`; same-preview gateway and control-function probes isolated that bootstrap gap. The repair now registers the handler and keeps the existing application/auth module behind a literal dynamic import while preserving function-local CORS and tenant contracts. Focused Deno, policy, lint, typecheck, tenant, build, and prior coverage and tier-0 route checks pass; the inherited full-suite watchdog and secret-backed production checks remain explicitly classified. This critical change requires human review before merge or deployment.
